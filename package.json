@@ -1,0 +1,37 @@
+{
+  "name": "edgy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Edgy — active agentic documents grown from a single cell",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "server": "tsx --disable-warning=ExperimentalWarning src/server/index.ts",
+    "web": "vite",
+    "build": "vite build",
+    "start": "NODE_ENV=production tsx --disable-warning=ExperimentalWarning src/server/index.ts",
+    "mcp": "tsx src/mcp/server.ts",
+    "test": "tsx --disable-warning=ExperimentalWarning --test src/core/*.test.ts src/server/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fontsource-variable/newsreader": "^5.3.0",
+    "@fontsource-variable/recursive": "^5.3.0",
+    "@hono/node-server": "^2.1.3",
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "hono": "^4.13.12",
+    "lucide-react": "^1.49.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "edgy": {
+      "command": "npx",
+      "args": ["tsx", "src/mcp/server.ts"],
+      "env": { "EDGY_URL": "http://127.0.0.1:8787", "EDGY_AGENT_NAME": "Claude" }
+    }
+  }
+}
