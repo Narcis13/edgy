@@ -6,7 +6,9 @@ export type Json = null | boolean | number | string | Json[] | { [k: string]: Js
 export type Sx = Json;
 
 export type Dir = 'row' | 'col';
-export const LEAF_KINDS = ['empty', 'text', 'formula', 'input', 'button', 'image', 'icon', 'chart', 'table'] as const;
+export const LEAF_KINDS = [
+  'empty', 'text', 'formula', 'input', 'button', 'image', 'icon', 'chart', 'table', 'list', 'calendar', 'canvas', 'stat', 'break',
+] as const;
 export type LeafKind = (typeof LEAF_KINDS)[number];
 export type Kind = Dir | LeafKind;
 
@@ -44,6 +46,12 @@ export interface Cell {
   fit?: string;
   alt?: string;
   icon?: string;
+  /** stat: the earlier value the current one is compared with. */
+  compare?: Sx;
+  /** stat: a list of numbers drawn as a sparkline. */
+  trend?: Sx;
+  /** table: which columns to show, in order, as names or {key, label, format}. */
+  columns?: Json;
 }
 
 export interface DocMeta {
@@ -51,6 +59,14 @@ export interface DocMeta {
   width?: number;
   minHeight?: number;
   currency?: string;
+  /** Print surface: "A4", "A5", "Letter" or "Legal". */
+  page?: string;
+  /** "portrait" or "landscape". */
+  orientation?: string;
+  /** Page margin in millimetres. */
+  margin?: number;
+  /** What each printed page shows at its foot: "none", "number" or "title". */
+  footer?: string;
   [k: string]: Json | undefined;
 }
 

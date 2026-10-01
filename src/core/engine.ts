@@ -11,7 +11,7 @@ export interface CellState {
   error?: string;
   style?: Record<string, unknown>;
   hidden?: boolean;
-  /** Resolved label, placeholder, src, alt, options, min, max, step. */
+  /** Resolved label, placeholder, src, alt, options, min, max, step; a calendar's events; a stat's compare and trend. */
   props?: Record<string, unknown>;
   /** Ids of the cells this one reads. */
   reads?: string[];
@@ -166,7 +166,12 @@ class Evaluator {
       case 'text': return this.template(cell, cell.text ?? '');
       case 'formula':
       case 'chart':
-      case 'table': return cell.expr === undefined ? null : this.evalIn(cell, cell.expr);
+      case 'table':
+      case 'stat': return cell.expr === undefined ? null : this.evalIn(cell, cell.expr);
+      case 'list': return cell.expr !== undefined ? this.evalIn(cell, cell.expr) : listItems(cell.value, cell.type);
+      // A calendar is worth the day picked on it; its events are worked out with the other props.
+      case 'calendar': return typeof cell.value === 'string' && cell.value ? cell.value : null;
+      case 'canvas': return Array.isArray(cell.value) ? cell.value : [];
       case 'input': {
         const v = cell.value ?? null;
         const t = cell.type ?? 'text';
@@ -204,15 +209,32 @@ class Evaluator {
       const v = cell[k];
       if (typeof v === 'string' && hasTemplate(v)) guard(() => { props[k] = this.template(cell, v); });
     }
-    for (const k of ['options', 'min', 'max', 'step'] as const) {
+    for (const k of ['options', 'min', 'max', 'step', 'compare', 'trend'] as const) {
       const v = cell[k];
       if (isExpr(v)) guard(() => { props[k] = this.evalIn(cell, v); });
     }
+    if (cell.kind === 'calendar' && cell.expr !== undefined) guard(() => { props.events = this.evalIn(cell, cell.expr!); });
     if (Object.keys(props).length) st.props = props;
     const reads = this.reads.get(cell.id);
     if (reads?.size) st.reads = [...reads];
     return st;
   }
+}
+
+/**
+ * A list cell's stored items. Checklists always give {text, done} records so
+ * formulas can count what is done; other lists give their items as written.
+ */
+export function listItems(value: unknown, type?: string): unknown[] {
+  const items = Array.isArray(value) ? value : [];
+  if (type !== 'check') return items.map((it) => (it && typeof it === 'object' && !Array.isArray(it) && 'text' in it ? (it as { text: unknown }).text ?? '' : it));
+  return items.map((it) => {
+    if (it && typeof it === 'object' && !Array.isArray(it)) {
+      const r = it as Record<string, unknown>;
+      return { ...r, text: r.text == null ? '' : String(r.text), done: truthy(r.done) };
+    }
+    return { text: it == null ? '' : String(it), done: false };
+  });
 }
 
 /** Evaluate the whole document. Pass the previous result to keep unchanged cells identical. */

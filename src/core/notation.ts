@@ -9,7 +9,7 @@
 // Shape: [kind, props?, ...body]. The body is the children of a row/col, the
 // text of a text cell, the expression of a formula/chart/table, the label
 // (and optional action) of a button, the source of an image, the name of an
-// icon. A bare string among children is a text cell.
+// icon, the items of a list. A bare string among children is a text cell.
 
 import { type Cell, type Json, type Kind, LEAF_KINDS, NAME_RE, RESERVED_NAMES, isGroup } from './types';
 import { validSize } from './tree';
@@ -20,14 +20,15 @@ const KINDS = new Set<string>(['row', 'col', ...LEAF_KINDS]);
 
 const PROPS = [
   'name', 'size', 'style', 'hidden', 'text', 'expr', 'format', 'type', 'value', 'label', 'placeholder',
-  'min', 'max', 'step', 'options', 'do', 'variant', 'src', 'fit', 'alt', 'icon',
+  'min', 'max', 'step', 'options', 'do', 'variant', 'src', 'fit', 'alt', 'icon', 'compare', 'trend', 'columns',
 ] as const;
 export const SETTABLE = new Set<string>(PROPS);
 
-export const STYLE_KEYS = new Set(['bg', 'fg', 'pad', 'gap', 'align', 'valign', 'font', 'size', 'weight', 'italic', 'border', 'radius', 'line']);
+export const STYLE_KEYS = new Set(['bg', 'fg', 'pad', 'gap', 'align', 'valign', 'font', 'size', 'weight', 'italic', 'border', 'radius', 'line', 'stack']);
 
 const BODY: Partial<Record<Kind, keyof Cell>> = {
   text: 'text', formula: 'expr', chart: 'expr', table: 'expr', button: 'label', image: 'src', icon: 'icon',
+  calendar: 'expr', stat: 'expr',
 };
 
 const isObject = (v: unknown): v is Record<string, Json> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -102,6 +103,10 @@ export function build(n: Json, ctx: BuildCtx): Cell {
 
   if (kind === 'row' || kind === 'col') {
     cell.children = body.map((b) => build(b, ctx));
+  } else if (kind === 'list') {
+    // The body is the items themselves: ["list", {"type": "check"}, "Milk", {"text": "Eggs", "done": true}]
+    if (body.length && cell.value === undefined) cell.value = body.filter((b) => b != null);
+    if (cell.value !== undefined && !Array.isArray(cell.value)) throw new NotationError('a list holds its items as a list');
   } else {
     const key = BODY[kind as Kind];
     if (key && body.length && body[0] != null && (cell as unknown as Record<string, Json>)[key] === undefined) {
@@ -122,7 +127,10 @@ export function toNotation(cell: Cell, withIds = true): Json {
   for (const [k, v] of Object.entries(rest)) if (k !== key && v !== undefined) props[k] = v as Json;
   let body: Json[] = [];
   if (isGroup(cell)) body = children!.map((ch) => toNotation(ch, withIds));
-  else if (key && (rest as Record<string, Json>)[key] !== undefined) body = [(rest as Record<string, Json>)[key]];
+  else if (kind === 'list' && Array.isArray(rest.value) && rest.value.length) {
+    delete props.value;
+    body = rest.value as Json[];
+  } else if (key && (rest as Record<string, Json>)[key] !== undefined) body = [(rest as Record<string, Json>)[key]];
   const needProps = Object.keys(props).length > 0 || (body.length > 0 && isObject(body[0]));
   return [kind, ...(needProps ? [props] : []), ...body];
 }

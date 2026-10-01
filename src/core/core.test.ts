@@ -220,3 +220,71 @@ test('notation and outline', () => {
   const text = outline(doc, evaluate(doc, world));
   assert.match(text, /c3 formula x = \(\+ 1 2\) → 3/);
 });
+
+test('reading errors say where', () => {
+  const at = (src: string) => {
+    try { read(src); } catch (e) { return (e as { pos?: number }).pos; }
+    return undefined;
+  };
+  assert.equal(at('(+ 1 (* 2 3)'), 0);
+  assert.equal(at('(+ 1 2))'), 7);
+  assert.equal(at('(str "abc'), 5);
+  assert.equal(at('(+ 1 2) 3'), 8);
+});
+
+test('lists: items in the body, checklists as records, computed lists', () => {
+  const doc = docWith(['col',
+    ['list', { name: 'todo', type: 'check' }, 'Book the venue', { text: 'Send invites', done: true }],
+    ['list', { name: 'steps', type: 'number' }, 'One', 'Two'],
+    ['list', { name: 'squares', expr: ['map', ['*', '$it', '$it'], ['range', 1, 4]] }],
+    ['formula', { name: 'done' }, ['count-if', ['get', '$it', 'done'], '$todo']]]);
+  const todo = resolve(doc.root, 'todo')!;
+  assert.deepEqual(todo.value, ['Book the venue', { text: 'Send invites', done: true }]);
+  assert.deepEqual(val(doc, 'todo').value, [{ text: 'Book the venue', done: false }, { text: 'Send invites', done: true }]);
+  assert.deepEqual(val(doc, 'steps').value, ['One', 'Two']);
+  assert.deepEqual(val(doc, 'squares').value, [1, 4, 9]);
+  assert.equal(val(doc, 'done').value, 1);
+  // The items come back as the body, so notation round-trips.
+  const n = toNotation(todo, false);
+  assert.deepEqual(n, ['list', { name: 'todo', type: 'check' }, 'Book the venue', { text: 'Send invites', done: true }]);
+  assert.deepEqual(toNotation(docWith(['list', {}, { text: 'a' }]).root, false), ['list', {}, { text: 'a' }]);
+  assert.throws(() => docWith(['list', { value: 'nope' }]), OpError);
+});
+
+test('calendar, canvas, stat and break', () => {
+  const doc = docWith(['col',
+    ['input', { name: 'when', type: 'date', value: '2026-10-05' }],
+    ['calendar', { name: 'cal', value: '2026-10-02' }, ['list', { date: '$when', title: 'Launch' }]],
+    ['canvas', { name: 'sig', label: 'Sign here' }],
+    ['stat', { name: 'revenue', label: 'Revenue', format: 'currency', compare: 80, trend: ['list', 1, 3, 2] }, ['*', 50, 2]],
+    ['stat', { name: 'growth', compare: ['-', '$revenue', 20] }, '$revenue'],
+    ['break'],
+    ['formula', { name: 'signed' }, ['not', ['empty?', '$sig']]]]);
+  const c = evaluate(doc, world);
+  const at = (name: string) => c.cells[resolve(doc.root, name)!.id];
+  assert.equal(at('cal').value, '2026-10-02');
+  assert.deepEqual(at('cal').props?.events, [{ date: '2026-10-05', title: 'Launch' }]);
+  assert.ok(at('cal').reads?.includes(resolve(doc.root, 'when')!.id), 'the calendar reads what its events read');
+  assert.deepEqual(at('sig').value, []);
+  assert.equal(at('signed').value, false);
+  assert.equal(at('revenue').value, 100);
+  assert.deepEqual(at('growth').props?.compare, 80);
+  const signed = applyOp(doc, ['set', 'sig', 'value', [{ c: 'ink', w: 2, p: [10, 10, 40, 40] }]]).doc;
+  assert.equal(val(signed, 'signed').value, true);
+  // Renaming follows into compare and trend.
+  const renamed = applyOp(doc, ['set', 'revenue', 'name', 'income']).doc;
+  assert.deepEqual(resolve(renamed.root, 'growth')!.compare, ['-', '$income', 20]);
+  const text = outline(doc, c);
+  assert.match(text, /calendar cal events \(list \{date when title "Launch"\}\) picked "2026-10-02"/);
+  assert.match(text, /canvas sig 0 strokes/);
+  assert.match(text, /stat revenue = \(\* 50 2\) → 100/);
+  assert.match(text, /break/);
+});
+
+test('page setup lives in meta and a row can opt out of stacking', () => {
+  let doc = applyOps(newDoc('t'), [['meta', 'page', 'Letter'], ['meta', 'orientation', 'landscape'], ['meta', 'margin', 12]]).doc;
+  assert.equal(doc.meta.page, 'Letter');
+  assert.equal(doc.meta.orientation, 'landscape');
+  doc = applyOp(doc, ['put', 'c1', ['row', { style: { stack: 'never' } }, 'a', 'b']]).doc;
+  assert.equal(doc.root.style?.stack, 'never');
+});

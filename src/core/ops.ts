@@ -341,7 +341,7 @@ function renameSx(x: Sx, from: string, to: string): Sx {
   return x;
 }
 
-const SX_PROPS = ['expr', 'do', 'hidden', 'options', 'min', 'max', 'step', 'style'] as const;
+const SX_PROPS = ['expr', 'do', 'hidden', 'options', 'min', 'max', 'step', 'style', 'compare', 'trend'] as const;
 const TEXT_PROPS = ['text', 'label', 'placeholder', 'src', 'alt'] as const;
 
 /** Point every reference to `from` at `to`, in formulas, actions, styles and templates. */

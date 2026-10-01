@@ -69,7 +69,12 @@ Kinds and their body:
 - input: no body. Props: type (text, number, slider, checkbox, toggle, select, date, textarea, rating), value, label, placeholder, min, max, step, options (an expression such as ["list", "S", "M", "L"]).
 - button: label, then optionally the action. Props: do (action), variant (solid, soft, ghost).
 - chart: an expression giving numbers, [label, value] pairs or {label, value} records. Props: type (bar, line, area, donut, meter), label.
-- table: an expression giving a list of records.
+- table: an expression giving a list of records. Props: label (a title), columns (optional data, not an expression: a list of field names or {"key", "label", "format"} records, in the order to show). People can search and sort it; on a phone each row becomes a card.
+- list: the items themselves as the body: ["list", {"type": "check", "name": "todo"}, "Book the venue", {"text": "Send invites", "done": true}]. Props: type (check, bullet, number), label. People tick, add and edit items; a checklist's value is a list of {text, done} records, so (count-if (get it "done") todo) counts what is done. With an expr prop instead of items it shows a computed list (read only).
+- calendar: an expression giving events, records with a date ("YYYY-MM-DD") and a title (optional end date, color token). Its value is the day people picked (or the value prop), so other cells can read it: (where (rows "events") "date" cal). Props: value, label.
+- canvas: a surface people draw or sign on; its value is the list of strokes, so (empty? sig) tells whether it has been signed. Props: label (e.g. "Sign here").
+- stat: a headline number. Body: the expression. Props: label, format, compare (an expression for the earlier value; shows the change in %), trend (an expression giving numbers, drawn as a sparkline), icon.
+- break: a page break when the document is printed. Put it between the cells of the top-level column.
 - image: a URL. Props: fit (cover, contain), alt.
 - icon: a Lucide icon name in kebab-case, e.g. "sparkles".
 - empty: nothing yet.
@@ -79,7 +84,7 @@ Props on any cell:
 - name: lets other cells refer to it. Letters, digits, - and _.
 - size: within its row/col, a weight (default 1), "hug" (as small as its content), or a fixed "120px".
 - hidden: true, or an expression; the cell disappears while it is true.
-- style: bg, fg, pad, gap (rows/cols), align (start, center, end), valign (start, center, end), font (sans, serif, mono), size (px), weight, italic, border ("all", or sides like "b", "tb", or "none"), radius. Colors are tokens that adapt to light and dark: ink, muted, faint, paper, sunken, line, accent, accent-soft, agent, agent-soft, live, live-soft, warn, warn-soft, bad, bad-soft, or any CSS color. A style value may be an expression, e.g. {"fg": ["if", ["<", "$balance", 0], "bad", "ink"]}.
+- style: bg, fg, pad, gap (rows/cols), align (start, center, end), valign (start, center, end), font (sans, serif, mono), size (px), weight, italic, border ("all", or sides like "b", "tb", or "none"), radius, stack (rows only: "auto" wraps the cells under each other on a narrow screen, the default; "never" keeps them side by side, for table-like lines; "always"). Colors are tokens that adapt to light and dark: ink, muted, faint, paper, sunken, line, accent, accent-soft, agent, agent-soft, live, live-soft, warn, warn-soft, bad, bad-soft, or any CSS color. A style value may be an expression, e.g. {"fg": ["if", ["<", "$balance", 0], "bad", "ink"]}.
 
 ## Expressions
 
@@ -106,7 +111,9 @@ ${['Math', 'Logic', 'Lists', 'Records', 'Text', 'Dates', 'Cells', 'Actions']
   ["put", cell, notation]     give a cell new content, keeping its id, name and size. The fastest way to build: put a whole row/col tree into one cell.
   ["set", cell, prop, value]  one property: "value", "text", "expr", "name", "size", "style.bg", … (null removes)
   ["style", cell, {…}]        several style properties at once
-  ["meta", "title"|"width"|"minHeight"|"currency", value]
+  ["meta", "title"|"width"|"minHeight"|"currency"|"page"|"orientation"|"margin"|"footer", value]
+                              page: "A4" (default), "A5", "Letter", "Legal"; orientation: "portrait" or "landscape";
+                              margin: millimetres (default 16); footer: "number", "title" or "none" — used by the printed pages
   ["do", op, op, …]           all or nothing
 
 cell is an id or a name. Ops in one call are applied atomically.

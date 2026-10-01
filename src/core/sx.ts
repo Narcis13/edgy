@@ -9,7 +9,12 @@
 
 import type { Json, Op, Sx } from './types';
 
-export class SxError extends Error {}
+export class SxError extends Error {
+  /** Where in the source text a reading error was found, when known. */
+  constructor(message: string, readonly pos?: number) {
+    super(message);
+  }
+}
 
 export type Effect =
   | { type: 'op'; op: Op }
@@ -46,19 +51,22 @@ type Node =
 const NUM_RE = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
 const PLACE_FORMS = new Set(['set!', 'toggle!', 'dup!', 'remove!', 'ref', 'child']);
 
-function tokenize(src: string): (string | { str: string })[] {
-  const out: (string | { str: string })[] = [];
+type Token = { t: string | { str: string }; pos: number };
+
+function tokenize(src: string): Token[] {
+  const out: Token[] = [];
   let i = 0;
   while (i < src.length) {
     const ch = src[i];
     if (/[\s,]/.test(ch)) { i++; continue; }
     if (ch === ';') { while (i < src.length && src[i] !== '\n') i++; continue; }
-    if ('(){}'.includes(ch)) { out.push(ch); i++; continue; }
+    if ('(){}'.includes(ch)) { out.push({ t: ch, pos: i }); i++; continue; }
     if (ch === '"') {
+      const start = i;
       let s = '';
       i++;
       for (;;) {
-        if (i >= src.length) throw new SxError('a "string" is missing its closing quote');
+        if (i >= src.length) throw new SxError('a "string" is missing its closing quote', start);
         const c = src[i++];
         if (c === '"') break;
         if (c === '\\') {
@@ -66,34 +74,35 @@ function tokenize(src: string): (string | { str: string })[] {
           s += e === 'n' ? '\n' : e === 't' ? '\t' : e;
         } else s += c;
       }
-      out.push({ str: s });
+      out.push({ t: { str: s }, pos: start });
       continue;
     }
     let j = i;
     while (j < src.length && !/[\s,(){}";]/.test(src[j])) j++;
-    out.push(src.slice(i, j));
+    out.push({ t: src.slice(i, j), pos: i });
     i = j;
   }
   return out;
 }
 
-function parse(tokens: (string | { str: string })[]): Node[] {
+function parse(tokens: Token[], end: number): Node[] {
   let pos = 0;
   const form = (): Node => {
-    const tok = tokens[pos++];
-    if (tok === undefined) throw new SxError('the expression ends too early');
+    const token = tokens[pos++];
+    if (token === undefined) throw new SxError('the expression ends too early', end);
+    const tok = token.t;
     if (typeof tok !== 'string') return { t: 'str', v: tok.str };
     if (tok === '(' || tok === '{') {
       const close = tok === '(' ? ')' : '}';
       const items: Node[] = [];
       for (;;) {
-        if (pos >= tokens.length) throw new SxError(`missing ${close}`);
-        if (tokens[pos] === close) { pos++; break; }
+        if (pos >= tokens.length) throw new SxError(`missing ${close}`, token.pos);
+        if (tokens[pos].t === close) { pos++; break; }
         items.push(form());
       }
       return { t: tok === '(' ? 'list' : 'map', v: items };
     }
-    if (tok === ')' || tok === '}') throw new SxError(`unexpected ${tok}`);
+    if (tok === ')' || tok === '}') throw new SxError(`unexpected ${tok}`, token.pos);
     if (tok === 'true') return { t: 'lit', v: true };
     if (tok === 'false') return { t: 'lit', v: false };
     if (tok === 'nil' || tok === 'null') return { t: 'lit', v: null };
@@ -101,7 +110,10 @@ function parse(tokens: (string | { str: string })[]): Node[] {
     return { t: 'sym', v: tok.startsWith('$') ? tok.slice(1) : tok };
   };
   const forms: Node[] = [];
-  while (pos < tokens.length) forms.push(form());
+  while (pos < tokens.length) {
+    if (forms.length) throw new SxError('expected one expression; wrap several in (do …)', tokens[pos].pos);
+    forms.push(form());
+  }
   return forms;
 }
 
@@ -146,10 +158,8 @@ function toJson(n: Node, head = false): Sx {
 
 /** Parse Lisp text into its JSON form. Empty text reads as null. */
 export function read(src: string): Sx {
-  const forms = parse(tokenize(src));
-  if (!forms.length) return null;
-  if (forms.length > 1) throw new SxError('expected one expression; wrap several in (do …)');
-  return toJson(forms[0]);
+  const forms = parse(tokenize(src), src.length);
+  return forms.length ? toJson(forms[0]) : null;
 }
 
 // ───────────────────────────── printer ─────────────────────────────

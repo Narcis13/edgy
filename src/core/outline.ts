@@ -19,14 +19,18 @@ function line(cell: Cell, computed?: Computed): string {
     case 'text': parts.push(JSON.stringify(clip((cell.text ?? '').replace(/\n/g, ' ⏎ ')))); break;
     case 'formula':
     case 'chart':
-    case 'table': parts.push('= ' + clip(print(cell.expr ?? null, 10_000), 90)); break;
+    case 'table':
+    case 'stat': parts.push('= ' + clip(print(cell.expr ?? null, 10_000), 90)); break;
+    case 'list': parts.push(cell.expr !== undefined ? '= ' + clip(print(cell.expr, 10_000), 90) : `${Array.isArray(cell.value) ? cell.value.length : 0} items`); break;
+    case 'calendar': parts.push('events ' + clip(print(cell.expr ?? null, 10_000), 80), 'picked ' + lit(cell.value ?? null)); break;
+    case 'canvas': parts.push(`${Array.isArray(cell.value) ? cell.value.length : 0} strokes`); break;
     case 'input': parts.push('= ' + lit(cell.value ?? null)); break;
     case 'button': parts.push(JSON.stringify(cell.label ?? ''), 'do ' + clip(print(cell.do ?? null, 10_000), 90)); break;
     case 'image': parts.push(clip(cell.src ?? '')); break;
     case 'icon': parts.push(cell.icon ?? ''); break;
   }
   if (st?.error && !isGroup(cell)) parts.push('→ ! ' + st.error);
-  else if (st && (cell.kind === 'formula' || (cell.kind === 'text' && (cell.text ?? '').includes('{{')))) parts.push('→ ' + lit(st.value));
+  else if (st && (cell.kind === 'formula' || cell.kind === 'stat' || (cell.kind === 'list' && cell.expr !== undefined) || (cell.kind === 'text' && (cell.text ?? '').includes('{{')))) parts.push('→ ' + lit(st.value));
   return parts.join(' ');
 }
 
