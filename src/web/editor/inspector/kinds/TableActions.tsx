@@ -77,7 +77,7 @@ export function TableActions({ e, rows, keys, collection }: { e: Edit; rows: Rec
                       <IconChoice value={typeof a.icon === 'string' ? a.icon : undefined} onChange={(v) => update(i, { icon: v })} />
                     </Prop>
                     <Prop label="Look">
-                      <Chips label="Look" value={typeof a.variant === 'string' ? a.variant : 'solid'} onChange={(v) => update(i, { variant: v === 'solid' ? null : v })} options={LOOKS} />
+                      <Chips label="Look" value={typeof a.variant === 'string' ? a.variant : 'ghost'} onChange={(v) => update(i, { variant: v === 'ghost' ? null : v })} options={LOOKS} />
                     </Prop>
                     <Prop label="Ask first" hint="People must confirm before it runs.">
                       <TextField value={typeof a.confirm === 'string' ? a.confirm : ''} label="Question asked first" placeholder="Are you sure?" onCommit={(v) => update(i, { confirm: v.trim() || null })} />

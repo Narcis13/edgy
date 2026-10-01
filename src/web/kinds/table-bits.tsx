@@ -223,6 +223,8 @@ export function CellInput({ at, initial, label, commit }: { at: At; initial: str
 export function AddColumn({ add, wide }: { add: (name: string) => boolean; wide?: boolean }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
+  // Set once Enter has added the column, so the blur that follows doesn't add it again.
+  const added = useRef(false);
   const close = () => {
     setOpen(false);
     setName('');
@@ -239,14 +241,18 @@ export function AddColumn({ add, wide }: { add: (name: string) => boolean; wide?
       className="ktable-input ktable-colname" value={name} placeholder="Column name" aria-label="New column name" autoFocus
       onChange={(e) => setName(e.target.value)} onClick={stop} onDoubleClick={stop}
       onBlur={() => {
-        if (name.trim()) add(name);
+        if (name.trim() && !added.current) add(name);
+        added.current = false;
         close();
       }}
       onKeyDown={(e) => {
         e.stopPropagation();
         if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
           e.preventDefault();
-          if (add(name)) close();
+          if (add(name)) {
+            added.current = true;
+            close();
+          }
         } else if (e.key === 'Escape') {
           e.preventDefault();
           close();
@@ -277,7 +283,8 @@ export function ResizeHandle({ label, width, live, done }: {
     const start = measured(el);
     const x0 = e.clientX;
     let w: number | null = null;
-    el.setPointerCapture?.(e.pointerId);
+    // Capture keeps the drag going outside the handle; a pointer that is already gone can't be captured.
+    try { el.setPointerCapture(e.pointerId); } catch { /* the moves still reach the handle */ }
     setDragging(true);
     document.body.classList.add('resize-x');
     const move = (ev: PointerEvent) => {
@@ -300,7 +307,7 @@ export function ResizeHandle({ label, width, live, done }: {
   return (
     <div
       className={cx('ktable-resize', dragging && 'is-dragging')} role="separator" aria-orientation="vertical" tabIndex={0}
-      aria-label={`Resize the ${label} column`} aria-valuenow={width} aria-valuemin={MIN_WIDTH}
+      aria-label={`Resize the ${label} column`} aria-valuenow={width} aria-valuemin={MIN_WIDTH} aria-valuemax={2000}
       title="Drag to resize; double-click to fit"
       onPointerDown={onDown} onClick={stop}
       onDoubleClick={(e) => { e.stopPropagation(); done(null); }}

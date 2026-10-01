@@ -71,17 +71,18 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string) {
     if (template?.meta) for (const [k, v] of Object.entries(template.meta)) ops.push(['meta', k, v]);
     const content = root ?? template?.root;
     if (content != null) ops.push(['put', 'c1', content]);
-    for (const [name, records] of Object.entries(template?.data ?? {})) {
-      if (store.rows(name).length) continue;
-      for (const record of records) store.insert(name, record, { template: template!.id });
-      hub.publishAll({ type: 'data', collection: name });
-    }
     if (!ops.length) {
       store.createDoc(doc);
       return doc;
     }
     const r = applyOps(doc, ops);
     doc = { ...r.doc, v: 1 };
+    // Sample records, once the document is known to build: only into collections that are still empty.
+    for (const [name, records] of Object.entries(template?.data ?? {})) {
+      if (store.rows(name).length) continue;
+      for (const record of records) store.insert(name, record, { template: template!.id });
+      hub.publishAll({ type: 'data', collection: name });
+    }
     store.createDoc({ ...doc, v: 0 });
     store.saveDoc(doc, actor, ops.length === 1 ? [r.op] : (r.op.slice(1) as Op[]));
     return doc;

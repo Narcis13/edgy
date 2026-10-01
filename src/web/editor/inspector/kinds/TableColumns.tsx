@@ -4,12 +4,12 @@
 import { useState } from 'react';
 import { AlignCenter, AlignLeft, AlignRight, ChevronDown, ChevronRight, ChevronUp, Trash2 } from 'lucide-react';
 import type { Json } from '../../../../core/types';
-import { type Column, type ColumnChoice, type Rec, columnChoices, columnsProp, patchColumn, resolveColumns } from '../../../kinds/rows';
+import { type Column, type ColumnChoice, type Rec, alignOf, columnChoices, columnsProp, numericColumn, patchColumn, resolveColumns } from '../../../kinds/rows';
 import { NumberField, TextField } from '../../fields';
-import { cx } from '../../ctx';
+import { cx, useSession } from '../../ctx';
 import { Chips, FormatSelect, Hint, Prop, STRONG_TOKENS, Swatches, Toggle, colorName, stop } from '../controls';
 import type { Edit } from '../edit';
-import { deleteFieldOps, distinctValues, missingColumns, renameFieldOps, withoutColumns } from '../tableOps';
+import { deleteFieldOps, distinctValues, hasField, missingColumns, renameFieldOps, withoutColumns } from '../tableOps';
 
 const SHOWS = [
   { value: 'text', label: 'Text', art: <span className="ins-col-art">Abc</span> },
@@ -75,8 +75,11 @@ export function TableColumns({ e, rows, typed }: { e: Edit; rows: Rec[]; typed: 
 }
 
 function ColumnEditor({ e, rows, col, typed, onRenamed }: { e: Edit; rows: Rec[]; col: Column; typed: boolean; onRenamed: (key: string | null) => void }) {
+  const session = useSession();
   const c = e.cell;
   const key = col.key;
+  // What the table does when no alignment is set: numbers to the right, ticks in the middle.
+  const auto = alignOf({ ...col, align: undefined }, numericColumn(rows, key));
   const patch = (p: Record<string, Json>) => e.set('columns', patchColumn(rows, c.columns, key, p));
   const show = col.show ?? 'text';
   const values = show === 'badge' ? distinctValues(rows, key) : [];
@@ -90,6 +93,7 @@ function ColumnEditor({ e, rows, col, typed, onRenamed }: { e: Edit; rows: Rec[]
           <TextField value={key} label="Field name" mono onCommit={(v) => {
             const to = v.trim();
             if (!to || to === key) return;
+            if (hasField(c, to)) return session.toast(`There is already a column called “${to}”.`);
             e.ops(renameFieldOps(c, key, to));
             onRenamed(to);
           }} />
@@ -122,7 +126,7 @@ function ColumnEditor({ e, rows, col, typed, onRenamed }: { e: Edit; rows: Rec[]
       </Prop>
       <div className="ins-pair">
         <Prop label="Align">
-          <Chips label="Align" value={col.align ?? 'start'} onChange={(v) => patch({ align: v === 'start' ? null : v })}
+          <Chips label="Align" value={col.align ?? auto} onChange={(v) => patch({ align: v === auto ? null : v })}
             options={[
               { value: 'start', label: <AlignLeft size={15} />, title: 'Left' },
               { value: 'center', label: <AlignCenter size={15} />, title: 'Centre' },

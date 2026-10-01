@@ -6,12 +6,12 @@ import { useRef, useState } from 'react';
 import { Plus, Search, X } from 'lucide-react';
 import type { Cell, Json, Op, Sx } from '../../core/types';
 import type { CellState } from '../../core/engine';
-import { TOTALS, isRecord, typedRows } from '../../core/table';
+import { BORDERS, DENSITIES, HEADERS, TOTALS, isRecord, typedRows } from '../../core/table';
 import { formatValue, show } from '../../core/sx';
 import { cx, useS, useSession } from '../editor/ctx';
 import {
   type At, type Column, type Group, type Rec, type Sort,
-  addField, addRow, aggregate, ago, cardsAt, coerce, deleteRow, findRows, groupRows, indexRows, livePicks, moveEdit,
+  addField, addRow, aggregate, ago, cardsAt, coerce, numericColumn, picksAfterDelete, deleteRow, findRows, groupRows, indexRows, livePicks, moveEdit,
   orderRows, patchColumn, pickMany, progressFraction, rawText, resolveColumns, rowActions, rowCount, setCell, togglePick,
 } from './rows';
 import { AddColumn, type Block, type Model, type Then } from './table-bits';
@@ -43,12 +43,12 @@ export function TableView({ cell, st }: { cell: Cell; st: CellState | undefined 
   const rows = indexRows(st?.value);
   const recs = rows.map((r) => r.rec);
   const cols = resolveColumns(recs, cell.columns);
-  const numeric = new Set(cols.filter((c) => isNumeric(recs, c.key)).map((c) => c.key));
+  const numeric = new Set(cols.filter((c) => numericColumn(recs, c.key)).map((c) => c.key));
   const typed = typedRows(cell);
   const editable = mode === 'edit' && typed !== null;
   const select = page ? null : cell.select === 'one' || cell.select === 'many' ? cell.select : null;
   const actions = page ? [] : rowActions(cell.actions);
-  const header = pick(cell.header, ['plain', 'filled', 'strong', 'none'] as const, 'plain');
+  const header = pick(cell.header, HEADERS, 'plain');
   const searchable = cell.search !== false && !page;
   const query = searchable ? q : '';
   const cards = w > 0 && w <= cardsAt(cols.length, !!select, actions.length);
@@ -98,9 +98,9 @@ export function TableView({ cell, st }: { cell: Cell; st: CellState | undefined 
   const allGroups = group ? (groups as Group[]) : [];
   const allFolded = allGroups.length > 0 && allGroups.every((g) => folded.has(g.value));
 
-  // Typed rows, changed in place.
+  // Typed rows, changed in place. Each change is its own undo step.
   const setRows = (next: Json[], extra: Op[] = []) =>
-    session.dispatch([['set', cell.id, 'value', next], ...extra], { key: cell.id + ':value', transition: false });
+    session.dispatch([['set', cell.id, 'value', next], ...extra], { transition: false });
   const startEdit = (at: At | null) => {
     editing.current = at;
     setEditAt(at);
@@ -152,7 +152,12 @@ export function TableView({ cell, st }: { cell: Cell; st: CellState | undefined 
     stripes: cell.stripes === true,
     editable, editAt: editable ? editAt : null, startEdit, commit,
     initial: (at) => rawText(valueAt(at)),
-    removeRow: (row) => { if (typed) setRows(deleteRow(typed, row.i)); },
+    // Picks of rows known by position follow the rows that move up.
+    removeRow: (row) => {
+      if (!typed) return;
+      const picks = picksAfterDelete(session.cell(cell.id)?.selected, row.rec, row.i);
+      setRows(deleteRow(typed, row.i), picks === (cell.selected ?? null) ? [] : [['set', cell.id, 'selected', picks]]);
+    },
     addColumn,
     rowClick: (row, e) => {
       if (mode !== 'live' || !select) return;
@@ -172,8 +177,8 @@ export function TableView({ cell, st }: { cell: Cell; st: CellState | undefined 
   return (
     <div
       className={cx('ktable', cards && 'is-cards', editable && 'is-editable', page && 'is-page')} ref={ref} onKeyDown={ownKeys}
-      data-borders={pick(cell.borders, ['rows', 'columns', 'grid', 'outer', 'none'] as const, 'rows')}
-      data-header={header} data-density={pick(cell.density, ['compact', 'normal', 'roomy'] as const, 'normal')}>
+      data-borders={pick(cell.borders, BORDERS, 'rows')}
+      data-header={header} data-density={pick(cell.density, DENSITIES, 'normal')}>
       <div className="ktable-bar">
         {label && <span className="kind-label ktable-title">{label}</span>}
         {rows.length > 0 && <span className="ktable-count">{rowCount(found.length, rows.length)}</span>}
@@ -251,15 +256,4 @@ function totalText(c: Column, recs: Rec[], cellFormat: string | undefined, curre
   return format ? formatValue(n, format, currency, now) : show(n);
 }
 
-/** A column whose filled values are all numbers. */
-function isNumeric(rows: Rec[], key: string): boolean {
-  let any = false;
-  for (const r of rows.slice(0, 50)) {
-    const v = r[key];
-    if (v == null || v === '') continue;
-    if (typeof v !== 'number') return false;
-    any = true;
-  }
-  return any && key !== 'at';
-}
 

@@ -149,3 +149,14 @@ test('small helpers', () => {
   assert.deepEqual(moved([1, 2, 3], 0, -1), [1, 2, 3]);
   assert.deepEqual(distinctValues([{ s: 'Paid' }, { s: 'Due' }, { s: 'Paid' }, { s: '' }, { s: 3 }], 's'), ['Paid', 'Due', '3']);
 });
+
+test('a field is never renamed or added over one that exists, so no values are lost', async () => {
+  const { addColumnOps, hasField, renameFieldOps } = await import('./tableOps');
+  const cell = { id: 'c2', kind: 'table' as const, value: [{ item: 'Tea', price: 3, qty: 2 }], columns: ['item', { key: 'price' }, 'extra'] };
+  assert.equal(hasField(cell, 'qty'), true);
+  assert.equal(hasField(cell, 'extra'), true);
+  assert.equal(hasField(cell, 'note'), false);
+  assert.deepEqual(renameFieldOps(cell, 'price', 'qty'), []);
+  assert.deepEqual(addColumnOps(cell, 'price'), []);
+  assert.equal(renameFieldOps(cell, 'price', 'cost').length, 2);
+});

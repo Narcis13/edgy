@@ -288,8 +288,8 @@ export function aggregate(rows: Rec[], key: string, kind: string): number | null
   if (kind === 'sum') return tidy(nums.reduce((a, b) => a + b, 0));
   if (!nums.length) return null;
   if (kind === 'avg') return tidy(nums.reduce((a, b) => a + b, 0) / nums.length);
-  if (kind === 'min') return Math.min(...nums);
-  if (kind === 'max') return Math.max(...nums);
+  if (kind === 'min') return nums.reduce((a, b) => (b < a ? b : a));
+  if (kind === 'max') return nums.reduce((a, b) => (b > a ? b : a));
   return null;
 }
 
@@ -433,7 +433,8 @@ export function coerce(text: string, others: unknown[], showAs?: string): Json {
   if (t === '') return '';
   const filled = others.filter((v) => !empty(v));
   if ((showAs === 'check' || (filled.length && filled.every((v) => typeof v === 'boolean'))) && /^(true|false)$/i.test(t)) return t.toLowerCase() === 'true';
-  if (NUMBER_RE.test(t) && filled.every((v) => typeof v === 'number')) return Number(t);
+  // A number, unless the column holds text; a first value with leading zeros ("007", a postcode) stays text.
+  if (NUMBER_RE.test(t) && filled.every((v) => typeof v === 'number') && (filled.length || !/^[-+]?0\d/.test(t))) return Number(t);
   return text;
 }
 
@@ -475,3 +476,27 @@ export function moveEdit(order: number[], keys: string[], at: At, how: 'down' | 
  */
 export const cardsAt = (columns: number, picking: boolean, actions: number): number =>
   Math.min(560, Math.round(110 * columns + (picking ? 40 : 0) + 44 * actions));
+
+/** A column whose filled values (among the first rows) are all numbers. */
+export function numericColumn(rows: Rec[], key: string): boolean {
+  let any = false;
+  for (const r of rows.slice(0, 50)) {
+    const v = r[key];
+    if (v == null || v === '') continue;
+    if (typeof v !== 'number') return false;
+    any = true;
+  }
+  return any && key !== 'at';
+}
+
+/**
+ * The picks after the typed row at position `i` was deleted: rows known by
+ * their position move up one, so picks keep pointing at the same rows.
+ * Rows known by an id are untouched.
+ */
+export function picksAfterDelete(selected: unknown, deleted: Rec, i: number): Json {
+  const keys = selectedKeys(selected);
+  if (rowKey(deleted, i) !== i) return keys.length ? keys : null;
+  const next = keys.filter((k) => k !== i).map((k) => (typeof k === 'number' && k > i ? k - 1 : k));
+  return next.length ? next : null;
+}

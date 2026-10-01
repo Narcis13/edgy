@@ -1,7 +1,7 @@
 // A canvas cell: a surface to draw or sign on with a mouse, a pen or a
 // finger. Each stroke is saved when it ends, so ⌘Z takes back one stroke.
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Eraser, Undo2 } from 'lucide-react';
 import type { Cell, Json } from '../../core/types';
 import type { CellState } from '../../core/engine';
@@ -29,6 +29,8 @@ export function CanvasView({ cell, st }: { cell: Cell; st: CellState | undefined
   const first = typeof cell.color === 'string' && cell.color ? cell.color : 'ink';
   const inks = INKS.some(([c]) => c === first) ? INKS : [[first, first] as [string, string], ...INKS];
   const [ink, setInk] = useState<string>(first);
+  // A new colour chosen for the cell becomes the pen's.
+  useEffect(() => setInk(first), [first]);
   const [thick, setThick] = useState(false);
   const [drawing, setDrawing] = useState<Stroke | null>(null);
   const pointer = useRef<number | null>(null);

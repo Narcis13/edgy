@@ -169,3 +169,21 @@ test('a small table keeps its grid in a narrow cell; a wide one turns into cards
   assert.equal(cardsAt(5, true, 3), 560);
   assert.ok(cardsAt(3, true, 1) < 560);
 });
+
+test('deleting a typed row keeps picks on the same rows; text keeps its zeros', async () => {
+  const { coerce, numericColumn, picksAfterDelete } = await import('./rows');
+  // Rows 0..3 known by position; row 2 picked, then row 0 deleted: the pick moves to position 1.
+  assert.deepEqual(picksAfterDelete([2], { item: 'Tea' }, 0), [1]);
+  assert.equal(picksAfterDelete([0], { item: 'Tea' }, 0), null);
+  assert.deepEqual(picksAfterDelete([1, 3], { item: 'Pie' }, 2), [1, 2]);
+  // Rows with ids are known by them; deleting one moves nothing.
+  assert.deepEqual(picksAfterDelete(['r2'], { id: 'r1' }, 0), ['r2']);
+  assert.equal(picksAfterDelete(null, { item: 'x' }, 0), null);
+  assert.equal(coerce('007', []), '007');
+  assert.equal(coerce('7', []), 7);
+  assert.equal(coerce('0.5', []), 0.5);
+  assert.equal(coerce('12', [3, '']), 12);
+  assert.equal(coerce('12', ['a']), '12');
+  assert.equal(numericColumn([{ a: 1 }, { a: '' }, { a: 2 }], 'a'), true);
+  assert.equal(numericColumn([{ a: 1 }, { a: 'x' }], 'a'), false);
+});

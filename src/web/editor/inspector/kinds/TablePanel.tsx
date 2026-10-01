@@ -4,15 +4,15 @@
 import { useEffect, useState } from 'react';
 import { Ban, Columns3, Grid3x3, Plus, Rows3, Square } from 'lucide-react';
 import { indexTree } from '../../../../core/tree';
-import { selectedKeys } from '../../../../core/table';
+import { pickRows } from '../../../../core/table';
 import { type Rec, detectKeys, records } from '../../../kinds/rows';
 import { api } from '../../../lib/api';
 import { SxField, TextField } from '../../fields';
-import { cx, useS } from '../../ctx';
+import { cx, useS, useSession } from '../../ctx';
 import { Chips, FormatSelect, Hint, Prop, Sub, Tiles, Toggle, stop } from '../controls';
 import type { Edit } from '../edit';
 import { LOOK_DEFAULTS, TABLE_LOOKS, lookOps, lookValue, matchLook } from '../presets';
-import { type Source, addColumnOps, addRowOps, collectionOf, freeName, pickingOps, tableSource, toSavedOps, toTypedOps } from '../tableOps';
+import { type Source, addColumnOps, addRowOps, collectionOf, freeName, hasField, pickingOps, tableSource, toSavedOps, toTypedOps } from '../tableOps';
 import { TableActions } from './TableActions';
 import { TableColumns } from './TableColumns';
 import { DENSITY } from './ListPanel';
@@ -34,7 +34,7 @@ export function TablePanel({ e, st }: KindProps) {
         </Prop>
       )}
       <Sub>Rows</Sub>
-      <TableRows e={e} keys={keys} />
+      <TableRows e={e} keys={keys} rows={rows} />
       <Sub>Row buttons</Sub>
       <TableActions e={e} rows={rows} keys={keys} collection={collectionOf(e.cell)} />
       <Sub>Look</Sub>
@@ -50,6 +50,14 @@ function TableData({ e, rows, source }: { e: Edit; rows: Rec[]; source: Source }
   const [pending, setPending] = useState<Source | null>(null);
   const shown = pending ?? source;
   const [col, setCol] = useState<string | null>(null);
+  const session = useSession();
+  const addColumn = () => {
+    const name = (col ?? '').trim();
+    if (!name) return;
+    if (hasField(c, name)) return session.toast(`There is already a column called “${name}”.`);
+    e.ops(addColumnOps(c, name));
+    setCol(null);
+  };
   const choose = (s: Source) => {
     if (s === source) return setPending(null);
     if (s === 'typed') {
@@ -77,10 +85,10 @@ function TableData({ e, rows, source }: { e: Edit; rows: Rec[]; source: Source }
                 onChange={(ev) => setCol(ev.target.value)}
                 onKeyDown={(ev) => {
                   ev.stopPropagation();
-                  if (ev.key === 'Enter' && col.trim()) { e.ops(addColumnOps(c, col)); setCol(null); }
+                  if (ev.key === 'Enter' && col.trim()) addColumn();
                   if (ev.key === 'Escape') setCol(null);
                 }} />
-              <button type="button" className="btn solid small" disabled={!col.trim()} onClick={() => { e.ops(addColumnOps(c, col)); setCol(null); }}>Add</button>
+              <button type="button" className="btn solid small" disabled={!col.trim()} onClick={addColumn}>Add</button>
             </div>
           )}
         </>
@@ -128,11 +136,12 @@ function CollectionPick({ current, onPick }: { current: string | null; onPick: (
 
 // ── rows ──
 
-function TableRows({ e, keys }: { e: Edit; keys: string[] }) {
+function TableRows({ e, keys, rows }: { e: Edit; keys: string[]; rows: Rec[] }) {
   const c = e.cell;
   const root = useS((s) => s.doc?.root);
   const picking = c.select === 'one' || c.select === 'many' ? c.select : 'off';
-  const picked = selectedKeys(c.selected).length;
+  // Only picks of rows that are still there count, as in the table itself.
+  const picked = pickRows(rows, c.selected).length;
   const nameIt = () => {
     if (!root) return;
     const idx = indexTree(root);

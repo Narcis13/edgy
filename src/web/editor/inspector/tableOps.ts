@@ -40,20 +40,27 @@ export function addRowOps(cell: Cell): Op[] {
   return [['set', cell.id, 'value', [...rows, row]]];
 }
 
-/** A new field on every typed row (a first row when there are none); listed columns get it too. */
+/** Whether a field of that name is already in the typed rows or the listed columns. */
+export function hasField(cell: Cell, key: string): boolean {
+  const inRows = typed(cell).some((r) => !!r && typeof r === 'object' && !Array.isArray(r) && key in r);
+  const inColumns = Array.isArray(cell.columns) && cell.columns.some((s) => s === key || (!!s && typeof s === 'object' && !Array.isArray(s) && s.key === key));
+  return inRows || inColumns;
+}
+
+/** A new field on every typed row (a first row when there are none); listed columns get it too. Nothing when the name is taken. */
 export function addColumnOps(cell: Cell, name: string): Op[] {
   const key = name.trim();
-  if (!key) return [];
+  if (!key || hasField(cell, key)) return [];
   const rows = typed(cell);
   const ops: Op[] = [['set', cell.id, 'value', rows.length ? addKey(rows, key) : [{ [key]: '' }]]];
   if (Array.isArray(cell.columns) && cell.columns.length) ops.push(['set', cell.id, 'columns', [...(cell.columns as Json[]), key]]);
   return ops;
 }
 
-/** Rename a typed field; its column settings follow it. */
+/** Rename a typed field; its column settings follow it. Nothing when the new name is taken, so no values are lost. */
 export function renameFieldOps(cell: Cell, from: string, to: string): Op[] {
   const key = to.trim();
-  if (!key || key === from) return [];
+  if (!key || key === from || hasField(cell, key)) return [];
   const ops: Op[] = [['set', cell.id, 'value', renameKey(typed(cell), from, key)]];
   if (Array.isArray(cell.columns)) ops.push(['set', cell.id, 'columns', renameColumn(cell.columns, from, key)]);
   if (cell.group === from) ops.push(['set', cell.id, 'group', key]);
