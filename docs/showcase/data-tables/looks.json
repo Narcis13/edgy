@@ -1,0 +1,12 @@
+{"title":"Table looks","root":["col",{"style":{"gap":10}},
+ ["text",{"size":"hug","style":{"font":"fraunces","size":28,"weight":700}},"Table looks"],
+ ["row",{"size":"hug","style":{"gap":12}},
+  ["table",{"label":"Rows, plain header","borders":"rows","search":false,"columns":["fruit",{"key":"kg","align":"end"}],"value":[{"fruit":"Apples","kg":12},{"fruit":"Pears","kg":7},{"fruit":"Plums","kg":4}]}],
+  ["table",{"label":"Grid, filled header, stripes","borders":"grid","header":"filled","stripes":true,"search":false,"columns":["fruit",{"key":"kg","align":"end"}],"value":[{"fruit":"Apples","kg":12},{"fruit":"Pears","kg":7},{"fruit":"Plums","kg":4}]}]],
+ ["row",{"size":"hug","style":{"gap":12}},
+  ["table",{"label":"Columns, strong header, roomy","borders":"columns","header":"strong","density":"roomy","search":false,"columns":["fruit",{"key":"kg","align":"end"}],"value":[{"fruit":"Apples","kg":12},{"fruit":"Pears","kg":7},{"fruit":"Plums","kg":4}]}],
+  ["table",{"label":"Outer frame, compact, pick one","borders":"outer","density":"compact","select":"one","selected":[1],"search":false,"columns":["fruit",{"key":"kg","align":"end"}],"value":[{"fruit":"Apples","kg":12},{"fruit":"Pears","kg":7},{"fruit":"Plums","kg":4}]}]],
+ ["row",{"size":"hug","style":{"gap":12}},
+  ["table",{"label":"No lines, no header","borders":"none","header":"none","search":false,"columns":["fruit",{"key":"kg","align":"end"}],"value":[{"fruit":"Apples","kg":12},{"fruit":"Pears","kg":7},{"fruit":"Plums","kg":4}]}],
+  ["table",{"label":"Larger text, centred, totals","borders":"rows","header":"filled","search":false,"style":{"size":18,"font":"grotesk"},"columns":[{"key":"fruit","bold":true},{"key":"kg","align":"center","total":"sum","color":"live"}],"value":[{"fruit":"Apples","kg":12},{"fruit":"Pears","kg":7},{"fruit":"Plums","kg":4}]}]]
+]}

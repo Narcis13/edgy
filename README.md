@@ -27,6 +27,7 @@ Other scripts:
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run build` then `npm start` | one production process serving the app and the API on 8787 |
 | `npm run mcp` | the MCP server for agents (started by Claude Code from `.mcp.json`) |
+| `docs/showcase/data-tables/shoot.sh` | rebuilds the data-table showcase screenshots and PDF from a fresh server |
 
 Requires Node 22.13 or newer (it uses `node:sqlite`).
 
