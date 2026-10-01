@@ -408,20 +408,24 @@ function NumberChip({ ctx, value, path }: { ctx: Ctx; value: number; path: Path 
       </button>
     );
   }
+  const n = Number(text.replace(',', '.'));
+  const valid = text.trim() !== '' && Number.isFinite(n);
   const done = (save: boolean) => {
-    const n = Number(text.replace(',', '.'));
-    if (save && text.trim() !== '' && Number.isFinite(n) && n !== value) ctx.set(path, n);
+    if (save && valid && n !== value) ctx.set(path, n);
     ctx.setEditing(null);
   };
   return (
     <input
-      className="bk-input bk-num" autoFocus inputMode="decimal" value={text} aria-label="Number" size={Math.max(2, text.length + 1)}
+      className={cx('bk-input bk-num', !valid && 'is-invalid')} autoFocus inputMode="decimal" value={text} aria-label="Number"
+      aria-invalid={!valid} title={valid ? undefined : 'Not a number'} size={Math.max(2, text.length + 1)}
+      onFocus={(e) => e.currentTarget.select()}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => setText(e.target.value)}
       onBlur={() => done(true)}
       onKeyDown={(e) => {
         e.stopPropagation();
-        if (e.key === 'Enter') done(true);
+        // Enter on something that is not a number keeps the field open, marked, rather than losing the edit.
+        if (e.key === 'Enter' && valid) done(true);
         if (e.key === 'Escape') done(false);
       }}
     />
@@ -447,6 +451,7 @@ function TextChip({ ctx, value, path }: { ctx: Ctx; value: string; path: Path })
   return (
     <input
       className="bk-input bk-text" autoFocus value={text} aria-label="Text" size={Math.max(4, text.length + 1)} placeholder="text"
+      onFocus={(e) => e.currentTarget.select()}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => setText(e.target.value)}
       onBlur={() => done(true)}

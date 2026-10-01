@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Editor } from './editor/Editor';
-import { DataPage } from './pages/DataPage';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Home } from './pages/Home';
+
+// The editor and the data browser load when first visited, so the document list opens fast.
+const Editor = lazy(() => import('./editor/Editor').then((m) => ({ default: m.Editor })));
+const DataPage = lazy(() => import('./pages/DataPage').then((m) => ({ default: m.DataPage })));
 
 export function App() {
   const [path, setPath] = useState(window.location.pathname);
@@ -17,7 +19,9 @@ export function App() {
   }, []);
 
   const doc = /^\/d\/([\w-]+)$/.exec(path);
-  if (doc) return <Editor key={doc[1]} id={doc[1]} navigate={navigate} />;
-  if (path === '/data') return <DataPage navigate={navigate} />;
-  return <Home navigate={navigate} />;
+  return (
+    <Suspense fallback={<div className="screen-note">Opening…</div>}>
+      {doc ? <Editor key={doc[1]} id={doc[1]} navigate={navigate} /> : path === '/data' ? <DataPage navigate={navigate} /> : <Home navigate={navigate} />}
+    </Suspense>
+  );
 }

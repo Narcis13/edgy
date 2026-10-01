@@ -2,7 +2,7 @@
 
 Active documents grown from a single cell, for people and agents to work on together.
 
-A document starts as one cell. Press the **+** on any edge to divide it into two — side by side or stacked — and keep going: the layout is a tree of cells, so any grid, form, invoice or dashboard is reachable by splitting and merging. A cell holds text, an input, a formula, a picture, an icon, a button, a chart or a table. Cells have names; formulas read other cells by name and the links are drawn on the page; buttons run actions that change cells or save records; every change is a small s-expression that a person's click and an agent's tool call both produce.
+A document starts as one cell. Press the **+** on any edge to divide it into two — side by side or stacked — and keep going: the layout is a tree of cells, so any grid, form, invoice or dashboard is reachable by splitting and merging. A cell holds text, an input, a formula, a picture, an icon, a button, a chart, a table, a list or checklist, a calendar, a drawing or signature, a headline stat, or a page break. Cells have names; formulas read other cells by name and the links are drawn on the page; buttons run actions that change cells or save records; every change is a small s-expression that a person's click and an agent's tool call both produce.
 
 ```
 (split c4 row)                        divide a cell
@@ -30,6 +30,16 @@ Other scripts:
 
 Requires Node 22.13 or newer (it uses `node:sqlite`).
 
+## Writing code without knowing the language
+
+Every place that takes an expression is a code editor: colours, matching brackets, autocomplete for functions and for the document's own cells (with their current values), the signature of the function you are in, and errors underlined where they are. Press **⌘E** (or the expand button) for the **code studio**: the same expression as **Blocks** you can click together, a searchable list of functions, the cells you can use, and the live result. The **Ask AI** tab turns a sentence into code in the context of the document — "what is left of the budget, never below zero" becomes `(max 0 (- budget total))`, checked against the document before you see it. It answers with Claude when `ANTHROPIC_API_KEY` is set (model `EDGY_AI_MODEL`, default `claude-sonnet-5-5`), with an agent connected over MCP when one is listening (`edgy_listen` shows the request, `edgy_answer` replies), and otherwise with a built-in composer that understands everyday phrasings offline.
+
+## Phones and paper
+
+The sheet is as wide as the document asks or as the screen allows. On a narrow screen the cells of a row wrap under each other (`"style": {"stack": "never"}` keeps table-like lines side by side), tables become searchable cards, calendars switch to an agenda and the editor's panels become drawers.
+
+**Page** view shows the document as printed pages: A4, A5, Letter or Legal, portrait or landscape, with margins and a footer. The document is laid out once at the page's width and cut into pages between cells, never through one; a `break` cell starts a new page. ⌘P prints exactly those pages. Open a document with `?view=page` to land on them.
+
 ## Working with an agent
 
 The project ships an MCP server (`src/mcp/server.ts`) and a `.mcp.json`, so Claude Code opened in this folder gets these tools once the dev server is running:
@@ -42,7 +52,8 @@ The project ships an MCP server (`src/mcp/server.ts`) and a `.mcp.json`, so Clau
 | `edgy_apply` | change a document with ops, atomically; returns the new outline |
 | `edgy_eval` | try an expression against a document without changing it |
 | `edgy_data` | the collections documents save records into |
-| `edgy_say`, `edgy_listen` | leave a message in the document's Activity panel, or wait for one |
+| `edgy_say`, `edgy_listen` | leave a message in the document's Activity panel, or wait for one (and for code requests from Ask AI) |
+| `edgy_answer` | answer a code request from Ask AI; the answer is checked before the person sees it |
 
 Every change an agent makes lands in the open browser immediately, with the agent's name traced on the cells it touched and its ops in the Activity feed. A person can write to the agent from the same panel; `edgy_listen` blocks until they do, so an agent can sit in a document and take requests.
 
@@ -66,9 +77,12 @@ src/core      the model, shared by everything, no dependencies
   notation.ts   cells as s-expressions: ["row", {props}, ...children]
   outline.ts    the compact text view an agent reads
   templates.ts  the starting points, in notation
-src/server    Hono on Node: the API, SQLite storage, live events over SSE
+src/server    Hono on Node: the API, SQLite storage, live events over SSE, compose (sentence → code)
 src/mcp       the MCP server; each tool calls the HTTP API
 src/web       React + Vite: the editor, the home page, the data browser
+  code/         the code editor, code studio, Blocks and Ask AI
+  kinds/        list, calendar, canvas, stat, break and table cells
+  print/        page setup, the page view and pagination
 ```
 
 Some decisions worth knowing:
@@ -110,6 +124,8 @@ Style tokens that follow the theme: `ink`, `muted`, `faint`, `paper`, `sunken`, 
 | ⌘M | merge the selection |
 | ⌘D | duplicate |
 | ⌘Z, ⇧⌘Z | undo, redo |
+| ⌘E | open the code studio for the selected cell |
+| ⌘P | print the document as pages |
 | Tab | next cell |
 
 While a formula is being edited, clicking another cell inserts its name.

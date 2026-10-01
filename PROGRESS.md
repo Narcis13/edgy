@@ -28,13 +28,21 @@ new feature, verified by screenshots on desktop, mobile and the print view.
 
 ## Status
 
-- [x] 1 Core model (kinds list/calendar/canvas/stat/break, props compare/trend/columns, style.stack, page meta, reader error positions, 4 new tests)
-- [ ] 2 AI compose
-- [ ] 3 Code studio
-- [ ] 4 Content types
-- [~] 5 Mobile — fluid sheet (max-width = doc width), rows wrap under 600px (`style.stack` auto/never/always; columns give way before leaves), phone header with ⋯ menu, drawers with backdrop, Live by default on phones. Verified on the Quote doc at 390px.
-- [x] 6 Print surface — Page view (Edit/Live/Page), `?view=page`, page setup in a bar and in the document panel, slicing pagination (src/web/print/paginate.ts, 7 tests), footers, light paper in dark theme, `@page` size, ⌘P. Verified: headless Chrome PDF of a 39-row doc = 4 A4 pages identical to the screen, cuts between rows, forced break honoured.
-- [ ] 7 Showcase + verification
+All done. 61 tests pass, typecheck is clean, the production build passes, and no console errors or warnings show on any screen (home, data, editor in Edit/Live/Page) at 1440×900 or 390×844.
+
+- [x] 1 Core model — kinds list/calendar/canvas/stat/break, props compare/trend/columns, `style.stack`, page meta, reader error positions.
+- [x] 2 AI compose — `POST /api/docs/:id/compose`, `GET /api/ai`. Claude (when a key is set; mocked in tests), a live MCP agent (`edgy_listen` + `edgy_answer`), and a built-in composer (~100 tested phrasings). Validated against the doc. Verified live: browser Ask AI → agent answer by curl (a typo was rejected with "did you mean budget?") → applied.
+- [x] 3 Code studio — highlighted editor with autocomplete (functions, cells with values, locals, collections), signature help, error underline, Format; Blocks; Functions and Cells panels; Ask AI. ⌘E. Phone sheet layout. Fixed during QA: block chips now select their text on open and keep invalid numbers open, marked, instead of dropping them.
+- [x] 4 Content types — list, calendar, canvas, stat, break; table search/sort/cards/columns. Verified live: tick → stats update, pick day + Add → event saved to a collection and shown, signature → dependent text, table search "boston" → 2 of 10.
+- [x] 5 Mobile — fluid sheet, wrapping rows (columns give way before leaves; `stack: never` lines keep numbers whole), phone header with ⋯ menu, drawers, Live by default on phones.
+- [x] 6 Print surface — Page view, page setup, slicing pagination, footers, light paper in dark mode, `@page`, ⌘P, editing controls hidden on paper. Verified with real PDFs from headless Chrome.
+- [x] 7 Showcase — template `showcase` ("Team offsite"), document `nxpjjjse`. Evidence in `docs/showcase/`: desktop-live.png, mobile.png, code-studio.png, page-view.png, printed-pages.png, team-offsite.pdf (4 A4 pages).
+
+## Notes
+
+- The Claude path is unit-tested with a mocked `fetch`, but it hasn't run against the real API because no `ANTHROPIC_API_KEY` was available here. It sends the `server-side-fallback-2026-07-01` beta header and `thinking: {type: "between_tools"}` per the claude-api skill; drop them in `src/server/compose.ts` if unwanted.
+- Auto mode routes Ask AI to an agent only if one listened on the doc in the last 30 s (an agent loops on `edgy_listen`), so a departed agent doesn't stall requests.
+- The editor and data routes are lazy-loaded (no chunk over 500 kB).
 
 ## Log
 

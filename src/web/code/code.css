@@ -560,3 +560,5 @@ kbd {
 @media (max-width: 699px) {
   .studio.is-phone .bk-label { line-height: 34px; }
 }
+
+.bk-input.is-invalid { outline: 2px solid var(--bad); outline-offset: 0; color: var(--bad); }

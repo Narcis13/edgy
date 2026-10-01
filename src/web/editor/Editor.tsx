@@ -293,7 +293,7 @@ function useKeyboard() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const s = session.state;
-      const t = e.target as HTMLElement;
+      const t = e.target instanceof Element ? e.target : document.body;
       const typing = t.closest('input, textarea, select, [contenteditable="true"]');
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key.toLowerCase() === 'z' && !typing) {
