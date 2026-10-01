@@ -490,6 +490,7 @@ function describeEffect(e: Effect, name: (id: string) => string): ReactNode {
   if (e.type === 'insert') return <>Save a record to <b>“{e.collection}”</b>: <code>{short(e.record)}</code></>;
   if (e.type === 'delete') return <>Delete record <code>{e.id}</code> from <b>“{e.collection}”</b></>;
   if (e.type === 'clear') return <>Empty the <b>“{e.collection}”</b> collection</>;
+  if (e.type === 'update') return <>Change record <code>{e.id}</code> in <b>“{e.collection}”</b>: <code>{short(e.fields)}</code></>;
   const [kind, id, path, value] = e.op;
   if (kind === 'set' && path === 'value') return <>Set <b>{name(String(id))}</b> to <code>{short(value)}</code></>;
   if (kind === 'dup') return <>Copy <b>{name(String(id))}</b></>;

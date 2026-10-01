@@ -5,6 +5,7 @@ import type { Cell, Doc, Sx } from './types';
 import { isGroup } from './types';
 import { type Index, indexTree, walk } from './tree';
 import { type Effect, type Host, Interp, SxError, deepEqual, formatValue, hasTemplate, parseTemplate, truthy } from './sx';
+import { pickRows } from './table';
 
 export interface CellState {
   value: unknown;
@@ -70,6 +71,11 @@ class Evaluator {
         self.collections.add(name);
         return self.world.rows(name);
       },
+      selected: (name) => {
+        const cell = self.find(name);
+        if (cell.kind !== 'table') throw new SxError(`"${name}" is not a table, so nothing in it can be picked`);
+        return pickRows(self.read(cell), cell.selected);
+      },
       now: () => {
         self.usesNow = true;
         return self.world.now;
@@ -114,12 +120,12 @@ class Evaluator {
     }
   }
 
-  /** Evaluate an expression as if written in `cell`. */
-  evalIn(cell: Cell, x: Sx): unknown {
+  /** Evaluate an expression as if written in `cell`, with `vars` bound (a row action's `row`). */
+  evalIn(cell: Cell, x: Sx, vars?: Record<string, unknown>): unknown {
     this.context.push(cell);
     try {
       const I = new Interp(this.effects ? this.host : { ...this.host, effect: undefined, place: undefined });
-      return I.run(x);
+      return I.run(x, vars);
     } finally {
       this.context.pop();
     }
@@ -166,8 +172,9 @@ class Evaluator {
       case 'text': return this.template(cell, cell.text ?? '');
       case 'formula':
       case 'chart':
-      case 'table':
       case 'stat': return cell.expr === undefined ? null : this.evalIn(cell, cell.expr);
+      // A table shows what its expression gives, or the rows typed into it.
+      case 'table': return cell.expr !== undefined ? this.evalIn(cell, cell.expr) : Array.isArray(cell.value) ? cell.value : null;
       case 'list': return cell.expr !== undefined ? this.evalIn(cell, cell.expr) : listItems(cell.value, cell.type);
       // A calendar is worth the day picked on it; its events are worked out with the other props.
       case 'calendar': return typeof cell.value === 'string' && cell.value ? cell.value : null;
@@ -251,13 +258,16 @@ export function evaluate(doc: Doc, world: World, prev?: Computed): Computed {
   return { cells, feeds, usesNow: E.usesNow, collections: [...E.collections].sort() };
 }
 
-/** Run a button's action and collect what it wants done. Reads see the document as it was. */
-export function runAction(doc: Doc, world: World, cellId: string, action: Sx): Effect[] {
+/**
+ * Run an action (a button's, or a table row's with `row` in `vars`) and collect
+ * what it wants done. Reads see the document as it was.
+ */
+export function runAction(doc: Doc, world: World, cellId: string, action: Sx, vars?: Record<string, unknown>): Effect[] {
   const E = new Evaluator(doc, world);
   const cell = E.idx.byId.get(cellId);
   if (!cell) throw new SxError(`no cell ${cellId}`);
   E.effects = [];
-  E.evalIn(cell, action);
+  E.evalIn(cell, action, vars);
   return E.effects;
 }
 

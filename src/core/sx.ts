@@ -20,6 +20,7 @@ export type Effect =
   | { type: 'op'; op: Op }
   | { type: 'insert'; collection: string; record: Record<string, Json> }
   | { type: 'delete'; collection: string; id: string }
+  | { type: 'update'; collection: string; id: string; fields: Record<string, Json> }
   | { type: 'clear'; collection: string };
 
 /** What the language needs from the document it runs in. */
@@ -30,6 +31,8 @@ export interface Host {
   /** The id of the nth cell inside a row or column (negative counts from the end). */
   child(name: string, i: number): string;
   rows(collection: string): unknown[];
+  /** The picked rows of a table cell. */
+  selected?(name: string): unknown[];
   now(): number;
   /** Resolves a cell for `set!` and friends. Only present while running an action. */
   place?(name: string): { id: string; value: unknown };
@@ -49,7 +52,7 @@ type Node =
   | { t: 'map'; v: Node[] };
 
 const NUM_RE = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
-const PLACE_FORMS = new Set(['set!', 'toggle!', 'dup!', 'remove!', 'ref', 'child']);
+const PLACE_FORMS = new Set(['set!', 'toggle!', 'dup!', 'remove!', 'ref', 'child', 'selected']);
 
 type Token = { t: string | { str: string }; pos: number };
 
@@ -563,6 +566,13 @@ const BUILTINS: Record<string, Builtin> = {
     I.host.effect!({ type: 'insert', collection: String(a[0]), record: a[1] as Record<string, Json> });
     return a[1];
   },
+  'update!': (a, I) => {
+    needEffects(I, 'update!');
+    if (a[1] == null || a[1] === '') throw new SxError('update! needs the id of a record: (update! "orders" (get row "id") {status "paid"})');
+    if (!isRecord(a[2])) throw new SxError('update! needs the fields to change: (update! "orders" id {status "paid"})');
+    I.host.effect!({ type: 'update', collection: String(a[0]), id: String(a[1]), fields: a[2] as Record<string, Json> });
+    return a[2];
+  },
   'delete!': (a, I) => {
     needEffects(I, 'delete!');
     I.host.effect!({ type: 'delete', collection: String(a[0]), id: String(a[1]) });
@@ -580,15 +590,16 @@ const ALIASES: Record<string, string> = { mod: '%', pow: '^', 'has?': 'includes?
 export const isBuiltin = (name: string) => name in BUILTINS || name in ALIASES || SPECIAL.has(name);
 export const builtinNames = () => [...Object.keys(BUILTINS), ...SPECIAL].sort();
 
-const SPECIAL = new Set(['if', 'cond', 'and', 'or', 'when', 'let', 'fn', 'do', 'quote', 'map', 'filter', 'find', 'some', 'every', 'count-if', 'sort-by', 'sum-by', 'reduce']);
+const SPECIAL = new Set(['if', 'cond', 'and', 'or', 'when', 'let', 'fn', 'do', 'quote', 'map', 'filter', 'find', 'some', 'every', 'count-if', 'sort-by', 'sum-by', 'reduce', 'selected']);
 
 export class Interp {
   private steps = 0;
   private depth = 0;
   constructor(public host: Host) {}
 
-  run(x: Sx): unknown {
-    return this.ev(x, new Scope({}));
+  /** Evaluate; `vars` are names bound for this run, such as a table action's `row`. */
+  run(x: Sx, vars: Record<string, unknown> = {}): unknown {
+    return this.ev(x, new Scope(vars));
   }
 
   private lookup(name: string, scope: Scope): unknown {
@@ -696,6 +707,12 @@ export class Interp {
           if (name === 'sum-by') return clean(l.reduce((s: number, v, i) => s + toNum(f(v, i)), 0));
           const out = l.map((v, i) => [f(v, i), v] as const).sort((p, q) => compare(p[0], q[0])).map((p) => p[1]);
           return this.ev(x[3] ?? null, scope) === 'desc' ? out.reverse() : out;
+        }
+        case 'selected': {
+          // Names the table rather than reading its value, so (selected orders) and ["selected", "$orders"] both work.
+          if (!this.host.selected) throw new SxError('selected needs a document');
+          if (typeof x[1] !== 'string') throw new SxError('selected needs the name of a table: (selected orders)');
+          return this.host.selected(x[1].replace(/^\$/, ''));
         }
         case 'reduce': {
           const f = this.fnArg(x[1], scope, ['acc', 'it', 'i']);

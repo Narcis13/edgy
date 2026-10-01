@@ -314,7 +314,7 @@ function fillIds(c: Cell, ctx: BuildCtx): Cell {
   return id === c.id && !children ? c : { ...c, id, ...(children ? { children } : {}) };
 }
 
-const PLACE_FORMS = new Set(['set!', 'toggle!', 'dup!', 'remove!', 'ref', 'child']);
+const PLACE_FORMS = new Set(['set!', 'toggle!', 'dup!', 'remove!', 'ref', 'child', 'selected']);
 
 function renameSx(x: Sx, from: string, to: string): Sx {
   if (typeof x === 'string') return x === '$' + from ? '$' + to : x;
@@ -341,7 +341,7 @@ function renameSx(x: Sx, from: string, to: string): Sx {
   return x;
 }
 
-const SX_PROPS = ['expr', 'do', 'hidden', 'options', 'min', 'max', 'step', 'style', 'compare', 'trend'] as const;
+const SX_PROPS = ['expr', 'do', 'hidden', 'options', 'min', 'max', 'step', 'style', 'compare', 'trend', 'actions'] as const;
 const TEXT_PROPS = ['text', 'label', 'placeholder', 'src', 'alt'] as const;
 
 /** Point every reference to `from` at `to`, in formulas, actions, styles and templates. */

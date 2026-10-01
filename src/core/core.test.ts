@@ -298,3 +298,96 @@ test('every template builds and evaluates without errors', async () => {
     assert.deepEqual(broken, [], t.id);
   }
 });
+
+test('a table shows typed rows unless it has an expression', () => {
+  const typed = docWith(['col', ['table', { name: 'menu', value: [{ item: 'Tea', price: 3 }, { item: 'Cake', price: 5 }] }],
+    ['formula', { name: 'n' }, ['sum', ['column', '$menu', 'price']]]]);
+  assert.deepEqual(val(typed, 'menu').value, [{ item: 'Tea', price: 3 }, { item: 'Cake', price: 5 }]);
+  assert.equal(val(typed, 'n').value, 8);
+  const computed = applyOp(typed, ['set', 'menu', 'expr', ['list', { item: 'Pie', price: 4 }]]).doc;
+  assert.deepEqual(val(computed, 'menu').value, [{ item: 'Pie', price: 4 }]);
+  assert.equal(val(docWith(['table']), 'c1').value, null);
+  assert.match(outline(typed, evaluate(typed, world)), /table menu 2 typed rows/);
+});
+
+test('selected gives the picked rows, by id or by position', () => {
+  const byPos = docWith(['col',
+    ['table', { name: 'menu', select: 'many', selected: [0, 2], value: [{ item: 'Tea', price: 3 }, { item: 'Cake', price: 5 }, { item: 'Pie', price: 4 }] }],
+    ['formula', { name: 'picked' }, ['sum-by', ['get', '$it', 'price'], ['selected', 'menu']]]]);
+  assert.equal(val(byPos, 'picked').value, 7);
+  assert.deepEqual(read('(selected menu)'), ['selected', 'menu']);
+  assert.equal(print(['selected', 'menu']), '(selected menu)');
+  // Agents write it with a $; it still names the table instead of reading it.
+  const dollar = applyOp(byPos, ['set', 'picked', 'expr', ['len', ['selected', '$menu']]]).doc;
+  assert.equal(val(dollar, 'picked').value, 2);
+  // Rows with an id are known by it, wherever they sit.
+  const byId = docWith(['col',
+    ['table', { name: 'orders', select: 'one', selected: ['r2'] }, ['list', { id: 'r1', total: 10 }, { id: 'r2', total: 32 }]],
+    ['formula', { name: 'pick' }, ['get', ['first', ['selected', 'orders']], 'total']]]);
+  assert.equal(val(byId, 'pick').value, 32);
+  // Picking changes what reads it; renaming the table follows into (selected …).
+  const more = applyOp(byPos, ['set', 'menu', 'selected', [1]]).doc;
+  assert.equal(val(more, 'picked').value, 5);
+  const renamed = applyOp(byPos, ['set', 'menu', 'name', 'drinks']).doc;
+  assert.deepEqual(resolve(renamed.root, 'picked')!.expr, ['sum-by', ['get', '$it', 'price'], ['selected', 'drinks']]);
+  assert.equal(val(renamed, 'picked').value, 7);
+  const notTable = applyOp(byPos, ['set', 'picked', 'expr', ['selected', 'picked']]).doc;
+  assert.match(val(notTable, 'picked').error ?? '', /not a table/);
+});
+
+test('row actions run with the row bound, and update! asks to change a record', () => {
+  const doc = docWith(['col',
+    ['input', { name: 'chosen', type: 'text', value: '' }],
+    ['table', { name: 'inv', actions: [{ label: 'Paid', do: ['update!', 'invoices', ['get', '$row', 'id'], { status: 'Paid' }] }] },
+      ['rows', 'invoices']]]);
+  const row = { id: 'r7', client: 'Acme', status: 'Due' };
+  const table = resolve(doc.root, 'inv')!;
+  const action = (table.actions as { do: Json }[])[0].do;
+  assert.deepEqual(runAction(doc, world, table.id, action, { row, it: row }), [{ type: 'update', collection: 'invoices', id: 'r7', fields: { status: 'Paid' } }]);
+  const pick = runAction(doc, world, table.id, ['do', ['set!', 'chosen', ['get', '$row', 'client']], ['delete!', 'invoices', ['get', '$it', 'id']]], { row, it: row });
+  assert.deepEqual(pick.map((e) => e.type), ['op', 'delete']);
+  assert.deepEqual((pick[0] as { op: Op }).op, ['set', resolve(doc.root, 'chosen')!.id, 'value', 'Acme']);
+  assert.throws(() => runAction(doc, world, table.id, ['update!', 'invoices', null, {}], { row }), /id of a record/);
+  assert.match(evalIn(doc, world, ['update!', 'invoices', 'r1', { a: 1 }]).error ?? '', /only works in an action/);
+  // Renaming a cell an action reads follows into the actions.
+  const acts = docWith(['col', ['input', { name: 'chosen' }], ['table', { actions: [{ label: 'Pick', do: ['set!', 'chosen', '$chosen'] }] }]]);
+  const re = applyOp(acts, ['set', 'chosen', 'name', 'who']).doc;
+  assert.deepEqual((leaves(re.root)[1].actions as { do: Json }[])[0].do, ['set!', 'who', '$who']);
+});
+
+test('table, list, canvas and other kind props round-trip and can be set', () => {
+  const n: Json = ['table', {
+    name: 't', group: 'team', select: 'many', selected: [1], borders: 'grid', stripes: true, density: 'compact', header: 'filled', search: false,
+    columns: [{ key: 'name', width: 180, align: 'start', bold: true }, { key: 'paid', show: 'badge', colors: { yes: 'live' }, total: 'count' }],
+    actions: [{ label: 'Open', do: ['set!', 'x', 1], icon: 'eye', confirm: 'Sure?' }],
+    value: [{ name: 'A', team: 'X', paid: 'yes' }],
+  }];
+  const doc = docWith(n);
+  assert.deepEqual(toNotation(doc.root, false), n);
+  let d = applyOps(doc, [['set', 't', 'group', null], ['set', 't', 'borders', 'outer']]).doc;
+  assert.equal(d.root.group, undefined);
+  assert.equal(d.root.borders, 'outer');
+  d = docWith(['col',
+    ['list', { type: 'bullet', marker: 'arrow', density: 'roomy', progress: false }, 'a'],
+    ['canvas', { paper: 'grid', color: 'accent' }],
+    ['calendar', { week: 'sun' }, ['list']],
+    ['chart', { color: 'live' }, ['list', 1, 2]],
+    ['stat', { better: 'down' }, 3],
+    ['button', { icon: 'trash', confirm: 'Delete it?' }, 'Delete']]);
+  const [list, canvas, cal, chart, stat, button] = leaves(d.root);
+  assert.equal(list.marker, 'arrow');
+  assert.equal(canvas.paper, 'grid');
+  assert.equal(cal.week, 'sun');
+  assert.equal(chart.color, 'live');
+  assert.equal(stat.better, 'down');
+  assert.equal(button.confirm, 'Delete it?');
+});
+
+test('the new style keys are accepted; unknown ones still are not', () => {
+  const doc = docWith(['text', { style: { font: 'playfair', tracking: 0.04, case: 'upper', decor: 'underline', para: 12, bcolor: 'accent', bwidth: 2, shadow: 'md', pad: '8 16' } }, 'Hi']);
+  assert.equal(doc.root.style?.tracking, 0.04);
+  const d = applyOp(doc, ['style', 'c1', { case: null, line: 1.6 }]).doc;
+  assert.equal(d.root.style?.case, undefined);
+  assert.equal(d.root.style?.line, 1.6);
+  assert.throws(() => applyOp(doc, ['set', 'c1', 'style.glow', 1]), OpError);
+});

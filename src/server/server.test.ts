@@ -90,3 +90,14 @@ test('an agent waiting for a message gets it', async () => {
   const got = (await waiting).json;
   assert.equal(got.messages[0].text, 'Add a total row');
 });
+
+test('a saved record can be changed in place', async () => {
+  const { call } = api();
+  const made = (await call('POST', '/api/data/invoices', { record: { client: 'Acme', status: 'Due', total: 120 } })).json;
+  const changed = await call('PATCH', `/api/data/invoices/${made.id}`, { fields: { status: 'Paid', id: 'nope', at: 1 } });
+  assert.equal(changed.status, 200);
+  assert.deepEqual(changed.json, { client: 'Acme', status: 'Paid', total: 120, id: made.id, at: made.at });
+  assert.deepEqual((await call('GET', '/api/data/invoices')).json, [changed.json]);
+  assert.equal((await call('PATCH', '/api/data/invoices/rmissing', { fields: { a: 1 } })).status, 404);
+  assert.equal((await call('PATCH', `/api/data/invoices/${made.id}`, { fields: [1] })).status, 400);
+});

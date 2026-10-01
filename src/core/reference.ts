@@ -1,6 +1,8 @@
 // The guide an agent reads before touching a document. Also the source for the
 // in-app function reference.
 
+import { FONTS } from './fonts';
+
 export interface FnDoc {
   name: string;
   use: string;
@@ -41,8 +43,10 @@ export const FUNCTIONS: FnDoc[] = [
   { group: 'Cells', name: 'sib idx', use: '(* (sib 1) (sib 2))', does: 'The value of the nth cell in my own row or column, and my own position. Lets a row be duplicated.' },
   { group: 'Cells', name: 'a cell holding (fn …)', use: '(balance 10)', does: 'A formula cell can hold a function; call it by the cell\'s name.' },
   { group: 'Cells', name: 'rows', use: '(rows "orders")', does: 'The records saved in a collection, each with id and at.' },
+  { group: 'Cells', name: 'selected', use: '(selected orders)', does: 'The rows picked in a table (one with a select prop), as records.' },
   { group: 'Actions', name: 'set! toggle!', use: '(set! count (+ count 1))', does: 'Change an input\'s value.' },
   { group: 'Actions', name: 'insert! delete! clear!', use: '(insert! "orders" {qty qty})', does: 'Save a record to a collection, delete one by id, or empty it.' },
+  { group: 'Actions', name: 'update!', use: '(update! "orders" (get row "id") {status "paid"})', does: 'Change some fields of a saved record. In a table\'s row action, row is that row\'s record.' },
   { group: 'Actions', name: 'dup! remove!', use: '(dup! (child lines -1))', does: 'Copy or remove a cell, e.g. add a row. (child group n) picks the nth cell of a row or column; -1 is the last.' },
   { group: 'Actions', name: 'do', use: '(do a b c)', does: 'Several actions in order. Reads see the document as it was before the action.' },
 ];
@@ -67,13 +71,19 @@ Kinds and their body:
 - text: markdown (#, ##, ###, **bold**, *italic*, \`code\`, - lists, [links](url)) with {{expr}} or {{expr | format}} templates in Lisp syntax, e.g. "Total {{(* qty price) | currency}}".
 - formula: an expression. Prop: format.
 - input: no body. Props: type (text, number, slider, checkbox, toggle, select, date, textarea, rating), value, label, placeholder, min, max, step, options (an expression such as ["list", "S", "M", "L"]).
-- button: label, then optionally the action. Props: do (action), variant (solid, soft, ghost).
-- chart: an expression giving numbers, [label, value] pairs or {label, value} records. Props: type (bar, line, area, donut, meter), label.
-- table: an expression giving a list of records. Props: label (a title), columns (optional data, not an expression: a list of field names or {"key", "label", "format"} records, in the order to show). People can search and sort it; on a phone each row becomes a card.
-- list: the items themselves as the body: ["list", {"type": "check", "name": "todo"}, "Book the venue", {"text": "Send invites", "done": true}]. Props: type (check, bullet, number), label. People tick, add and edit items; a checklist's value is a list of {text, done} records, so (count-if (get it "done") todo) counts what is done. With an expr prop instead of items it shows a computed list (read only).
-- calendar: an expression giving events, records with a date ("YYYY-MM-DD") and a title (optional end date, color token). Its value is the day people picked (or the value prop), so other cells can read it: (where (rows "events") "date" cal). Props: value, label.
-- canvas: a surface people draw or sign on; its value is the list of strokes, so (empty? sig) tells whether it has been signed. Props: label (e.g. "Sign here").
-- stat: a headline number. Body: the expression. Props: label, format, compare (an expression for the earlier value; shows the change in %), trend (an expression giving numbers, drawn as a sparkline), icon.
+- button: label, then optionally the action. Props: do (action), variant (solid, soft, ghost), icon (a Lucide name), confirm (a question asked before it runs).
+- chart: an expression giving numbers, [label, value] pairs or {label, value} records. Props: type (bar, line, area, donut, meter), label, color (a token).
+- table: an expression giving a list of records, or (with no expression) the rows typed into it as its value: ["table", {"value": [{"item": "Tea", "price": 3}]}]. People can search and sort it; on a phone each row becomes a card. Props:
+  - label: a title.
+  - columns: data, not an expression: field names, or records {"key", "label", "format", "width" (px), "align" (start, center, end), "show" (text, badge, progress, check, link, stars), "colors" ({"value": color token} for badges), "color" (a token for the whole column), "bold", "wrap", "total" (sum, avg, count, min, max)}, in the order to show.
+  - group: a field; rows with the same value sit under one heading people can fold, with a count and the column totals.
+  - select: "one" or "many" lets people pick rows; selected holds the picked keys (a row's id, or its position). Read them with (selected name).
+  - actions: buttons on every row, [{"label": "Paid", "do": ["update!", "invoices", ["get", "$row", "id"], {"status": "Paid"}], "icon"?: "check", "variant"?: "soft", "confirm"?: "Mark it paid?"}]; do runs with row bound to the row's record.
+  - borders (rows, columns, grid, outer, none), stripes (true), density (compact, normal, roomy), header (plain, filled, strong, none), search (false hides it).
+- list: the items themselves as the body: ["list", {"type": "check", "name": "todo"}, "Book the venue", {"text": "Send invites", "done": true}]. Props: type (check, bullet, number), label, marker (bullets: dot, dash, arrow, star, none), density (compact, normal, roomy), progress (false hides a checklist's bar). People tick, add and edit items; a checklist's value is a list of {text, done} records, so (count-if (get it "done") todo) counts what is done. With an expr prop instead of items it shows a computed list (read only).
+- calendar: an expression giving events, records with a date ("YYYY-MM-DD") and a title (optional end date, color token). Its value is the day people picked (or the value prop), so other cells can read it: (where (rows "events") "date" cal). Props: value, label, week ("mon" or "sun", the first day of the week).
+- canvas: a surface people draw or sign on; its value is the list of strokes, so (empty? sig) tells whether it has been signed. Props: label (e.g. "Sign here"), paper (plain, lines, grid, dots), color (the pen's first colour, a token).
+- stat: a headline number. Body: the expression. Props: label, format, compare (an expression for the earlier value; shows the change in %), trend (an expression giving numbers, drawn as a sparkline), icon, better ("down" when a fall is good news, e.g. costs).
 - break: a page break when the document is printed. Put it between the cells of the top-level column.
 - image: a URL. Props: fit (cover, contain), alt.
 - icon: a Lucide icon name in kebab-case, e.g. "sparkles".
@@ -84,7 +94,7 @@ Props on any cell:
 - name: lets other cells refer to it. Letters, digits, - and _.
 - size: within its row/col, a weight (default 1), "hug" (as small as its content), or a fixed "120px".
 - hidden: true, or an expression; the cell disappears while it is true.
-- style: bg, fg, pad, gap (rows/cols), align (start, center, end), valign (start, center, end), font (sans, serif, mono), size (px), weight, italic, border ("all", or sides like "b", "tb", or "none"), radius, stack (rows only: "auto" wraps the cells under each other on a narrow screen, the default; "never" keeps them side by side, for table-like lines; "always"). Colors are tokens that adapt to light and dark: ink, muted, faint, paper, sunken, line, accent, accent-soft, agent, agent-soft, live, live-soft, warn, warn-soft, bad, bad-soft, or any CSS color. A style value may be an expression, e.g. {"fg": ["if", ["<", "$balance", 0], "bad", "ink"]}.
+- style: bg, fg, pad (px, or "top right bottom left" like "8 16 8 16"), gap (rows/cols), align (start, center, end, justify), valign (start, center, end), font (${FONTS.map((f) => f.id).join(', ')}), size (px), weight (100–900), italic, line (line height, e.g. 1.4), tracking (letter spacing in em, e.g. 0.05), case (upper, lower, title), decor (underline, strike), para (px between paragraphs), shadow (sm, md, lg), bcolor and bwidth (the border's color token and px), border ("all", or sides like "b", "tb", or "none"), radius, stack (rows only: "auto" wraps the cells under each other on a narrow screen, the default; "never" keeps them side by side, for table-like lines; "always"). Colors are tokens that adapt to light and dark: ink, muted, faint, paper, sunken, line, accent, accent-soft, agent, agent-soft, live, live-soft, warn, warn-soft, bad, bad-soft, or any CSS color. A style value may be an expression, e.g. {"fg": ["if", ["<", "$balance", 0], "bad", "ink"]}.
 
 ## Expressions
 
@@ -111,9 +121,10 @@ ${['Math', 'Logic', 'Lists', 'Records', 'Text', 'Dates', 'Cells', 'Actions']
   ["put", cell, notation]     give a cell new content, keeping its id, name and size. The fastest way to build: put a whole row/col tree into one cell.
   ["set", cell, prop, value]  one property: "value", "text", "expr", "name", "size", "style.bg", … (null removes)
   ["style", cell, {…}]        several style properties at once
-  ["meta", "title"|"width"|"minHeight"|"currency"|"page"|"orientation"|"margin"|"footer", value]
+  ["meta", "title"|"width"|"minHeight"|"currency"|"page"|"orientation"|"margin"|"footer"|"font"|"headFont"|"fontSize", value]
                               page: "A4" (default), "A5", "Letter", "Legal"; orientation: "portrait" or "landscape";
-                              margin: millimetres (default 16); footer: "number", "title" or "none" — used by the printed pages
+                              margin: millimetres (default 16); footer: "number", "title" or "none" — used by the printed pages;
+                              font and headFont: the document's text and heading fonts (font ids as in style); fontSize: base px (15)
   ["do", op, op, …]           all or nothing
 
 cell is an id or a name. Ops in one call are applied atomically.

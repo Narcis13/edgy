@@ -151,6 +151,16 @@ export class Store {
     return { ...clean, id, at: ts };
   }
 
+  /** Merge fields into a saved record; null when there is no such record. id and at can't be changed. */
+  update(collection: string, id: string, fields: Record<string, Json>): Row | null {
+    const r = this.db.prepare('SELECT data, ts FROM records WHERE collection = ? AND id = ?').get(collection, id);
+    if (!r) return null;
+    const { id: _i, at: _a, ...clean } = fields;
+    const data = { ...(JSON.parse(r.data as string) as Record<string, Json>), ...clean };
+    this.db.prepare('UPDATE records SET data = ? WHERE collection = ? AND id = ?').run(JSON.stringify(data), collection, id);
+    return { ...data, id, at: r.ts as number };
+  }
+
   deleteRow(collection: string, id: string): boolean {
     return this.db.prepare('DELETE FROM records WHERE collection = ? AND id = ?').run(collection, id).changes > 0;
   }

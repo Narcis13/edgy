@@ -3,7 +3,7 @@
 // undo, selection, and the evaluated values.
 
 import { flushSync } from 'react-dom';
-import type { Actor, Cell, Doc, Json, Op } from '../core/types';
+import type { Actor, Cell, Doc, Json, Op, Sx } from '../core/types';
 import { isGroup } from '../core/types';
 import { type Applied, applyOps } from '../core/ops';
 import { type Computed, evaluate, runAction } from '../core/engine';
@@ -619,20 +619,25 @@ export class Session {
     this.patch({ menu: null, selection: [id], ...(kind === 'text' || kind === 'formula' ? { editing: id, seed: null } : { editing: null }) });
   }
 
-  /** Run a button. Document changes go through dispatch; records go to the server. */
-  async run(id: string): Promise<void> {
+  /**
+   * Run a button, or with `action` one of a table's row actions (its `row` in
+   * `vars`). Document changes go through dispatch; records go to the server.
+   */
+  async run(id: string, action?: { do: Sx; vars: Record<string, unknown> }): Promise<void> {
     const doc = this.s.doc;
     const cell = this.cell(id);
-    if (!doc || !cell || cell.do == null) return;
+    const todo = action ? action.do : cell?.do;
+    if (!doc || !cell || todo == null) return;
     try {
       const s = this.s;
-      const effects = runAction(doc, { rows: (name) => s.collections[name] ?? [], now: Date.now() }, id, cell.do);
+      const effects = runAction(doc, { rows: (name) => s.collections[name] ?? [], now: Date.now() }, id, todo, action?.vars);
       const ops = effects.filter((e) => e.type === 'op').map((e) => (e as { op: Op }).op);
       if (ops.length) this.dispatch(ops);
       for (const e of effects) {
         const path = e.type === 'op' ? '' : `/api/data/${encodeURIComponent(e.collection)}`;
         if (e.type === 'insert') await api('POST', path, { record: e.record, source: { doc: this.id, cell: id } });
         if (e.type === 'delete') await api('DELETE', `${path}/${encodeURIComponent(e.id)}`);
+        if (e.type === 'update') await api('PATCH', `${path}/${encodeURIComponent(e.id)}`, { fields: e.fields });
         if (e.type === 'clear') await api('DELETE', path);
       }
     } catch (e) {

@@ -288,6 +288,17 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string) {
     return c.json(row, 201);
   });
 
+  app.patch('/api/data/:name/:id', async (c) => {
+    const name = c.req.param('name');
+    const body = (await c.req.json()) as { fields?: Record<string, Json> };
+    if (!body.fields || typeof body.fields !== 'object' || Array.isArray(body.fields)) return c.json({ error: 'send {"fields": {…}}' }, 400);
+    const id = c.req.param('id');
+    const row = store.update(name, id, plainValue(body.fields) as Record<string, Json>);
+    if (!row) return c.json({ error: `no record ${id} in "${name}"` }, 404);
+    hub.publishAll({ type: 'data', collection: name });
+    return c.json(row as Record<string, unknown>, 200);
+  });
+
   app.delete('/api/data/:name/:id', (c) => {
     const ok = store.deleteRow(c.req.param('name'), c.req.param('id'));
     if (ok) hub.publishAll({ type: 'data', collection: c.req.param('name') });

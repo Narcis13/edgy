@@ -123,9 +123,9 @@ server.registerTool('edgy_eval', {
 }));
 
 server.registerTool('edgy_data', {
-  description: 'Work with the collections documents save records into. action: "collections" lists them, "rows" reads one, "insert" adds a record, "delete" removes a record by id, "clear" empties a collection.',
+  description: 'Work with the collections documents save records into. action: "collections" lists them, "rows" reads one, "insert" adds a record, "update" merges the fields of record into the record with id, "delete" removes a record by id, "clear" empties a collection.',
   inputSchema: {
-    action: z.enum(['collections', 'rows', 'insert', 'delete', 'clear']),
+    action: z.enum(['collections', 'rows', 'insert', 'update', 'delete', 'clear']),
     collection: z.string().optional(),
     record: z.record(z.string(), z.any()).optional(),
     id: z.string().optional(),
@@ -136,6 +136,7 @@ server.registerTool('edgy_data', {
   const path = `/api/data/${encodeURIComponent(collection)}`;
   if (action === 'rows') return text(JSON.stringify(await api('GET', path)));
   if (action === 'insert') return text(JSON.stringify(await api('POST', path, { record: record ?? {}, source: { actor } })));
+  if (action === 'update') return text(JSON.stringify(await api('PATCH', `${path}/${encodeURIComponent(id ?? '')}`, { fields: record ?? {} })));
   if (action === 'delete') return text(JSON.stringify(await api('DELETE', `${path}/${encodeURIComponent(id ?? '')}`)));
   return text(JSON.stringify(await api('DELETE', path)));
 }));

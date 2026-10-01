@@ -21,10 +21,15 @@ const KINDS = new Set<string>(['row', 'col', ...LEAF_KINDS]);
 const PROPS = [
   'name', 'size', 'style', 'hidden', 'text', 'expr', 'format', 'type', 'value', 'label', 'placeholder',
   'min', 'max', 'step', 'options', 'do', 'variant', 'src', 'fit', 'alt', 'icon', 'compare', 'trend', 'columns',
+  'selected', 'select', 'group', 'actions', 'borders', 'stripes', 'density', 'header', 'search',
+  'paper', 'color', 'marker', 'progress', 'week', 'better', 'confirm',
 ] as const;
 export const SETTABLE = new Set<string>(PROPS);
 
-export const STYLE_KEYS = new Set(['bg', 'fg', 'pad', 'gap', 'align', 'valign', 'font', 'size', 'weight', 'italic', 'border', 'radius', 'line', 'stack']);
+export const STYLE_KEYS = new Set([
+  'bg', 'fg', 'pad', 'gap', 'align', 'valign', 'font', 'size', 'weight', 'italic', 'border', 'radius', 'line', 'stack',
+  'tracking', 'case', 'decor', 'para', 'bcolor', 'bwidth', 'shadow',
+]);
 
 const BODY: Partial<Record<Kind, keyof Cell>> = {
   text: 'text', formula: 'expr', chart: 'expr', table: 'expr', button: 'label', image: 'src', icon: 'icon',

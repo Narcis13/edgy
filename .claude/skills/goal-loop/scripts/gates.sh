@@ -21,7 +21,7 @@ gate typecheck npm run --silent typecheck
 gate test npm test --silent
 gate build npm run --silent build
 # Node's test runner prints a summary; surface the counts so PROGRESS.md can quote them.
-grep -E '^# (tests|pass|fail)' "$LOGS/test.log" | tr '\n' ' '; echo
+grep -E '^(#|ℹ) (tests|pass|fail)' "$LOGS/test.log" | tr '\n' ' '; echo
 # Vite warns about oversized chunks without failing; treat it as a finding, not a pass.
 grep -i 'chunks are larger' "$LOGS/build.log" >/dev/null && echo "WARN  build: chunk size warning (see $LOGS/build.log)"
 exit $fail

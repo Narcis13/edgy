@@ -50,8 +50,43 @@ export interface Cell {
   compare?: Sx;
   /** stat: a list of numbers drawn as a sparkline. */
   trend?: Sx;
-  /** table: which columns to show, in order, as names or {key, label, format}. */
+  /**
+   * table: which columns to show, in order, as names or records
+   * {key, label, format, width, align, show, colors, color, bold, wrap, total}.
+   */
   columns?: Json;
+  /** table: the keys of the picked rows (a row's id, or its position). */
+  selected?: Json;
+  /** table: "one" or "many" rows can be picked; unset, none. */
+  select?: string;
+  /** table: the field whose values group the rows. */
+  group?: string;
+  /** table: buttons on every row, {label, do, icon?, variant?, confirm?}; `do` runs with `row` bound. */
+  actions?: Json;
+  /** table: lines between cells: "rows" (default), "columns", "grid", "outer", "none". */
+  borders?: string;
+  /** table: shade every other row. */
+  stripes?: boolean;
+  /** table, list: "compact", "normal" (default) or "roomy". */
+  density?: string;
+  /** table: the header row: "plain" (default), "filled", "strong" or "none". */
+  header?: string;
+  /** table: false hides the search box. */
+  search?: boolean;
+  /** canvas: the surface: "plain" (default), "lines", "grid" or "dots". */
+  paper?: string;
+  /** canvas: the colour the pen starts with; chart: the colour of the series. */
+  color?: string;
+  /** list: the bullet: "dot" (default), "dash", "arrow", "star" or "none". */
+  marker?: string;
+  /** list: false hides a checklist's progress bar. */
+  progress?: boolean;
+  /** calendar: the first day of the week, "mon" (default) or "sun". */
+  week?: string;
+  /** stat: "down" when a fall is good news (costs, bugs). */
+  better?: string;
+  /** button, row action: a question asked before it runs. */
+  confirm?: string;
 }
 
 export interface DocMeta {

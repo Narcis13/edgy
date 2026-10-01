@@ -19,8 +19,13 @@ function line(cell: Cell, computed?: Computed): string {
     case 'text': parts.push(JSON.stringify(clip((cell.text ?? '').replace(/\n/g, ' ⏎ ')))); break;
     case 'formula':
     case 'chart':
-    case 'table':
     case 'stat': parts.push('= ' + clip(print(cell.expr ?? null, 10_000), 90)); break;
+    case 'table':
+      parts.push(cell.expr !== undefined ? '= ' + clip(print(cell.expr, 10_000), 90) : `${Array.isArray(cell.value) ? cell.value.length : 0} typed rows`);
+      if (cell.group) parts.push('grouped by ' + cell.group);
+      if (cell.select) parts.push(`select ${cell.select}, picked ${lit(cell.selected ?? [])}`);
+      if (Array.isArray(cell.actions) && cell.actions.length) parts.push(`${cell.actions.length} row actions`);
+      break;
     case 'list': parts.push(cell.expr !== undefined ? '= ' + clip(print(cell.expr, 10_000), 90) : `${Array.isArray(cell.value) ? cell.value.length : 0} items`); break;
     case 'calendar': parts.push('events ' + clip(print(cell.expr ?? null, 10_000), 80), 'picked ' + lit(cell.value ?? null)); break;
     case 'canvas': parts.push(`${Array.isArray(cell.value) ? cell.value.length : 0} strokes`); break;
