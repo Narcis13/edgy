@@ -147,3 +147,19 @@ test('list items keep their stored shape', () => {
   assert.deepEqual(moved(['a', 'b', 'c'], 1, 9), ['a', 'c', 'b']);
   assert.deepEqual(progress(check), { done: 1, total: 3 });
 });
+
+test('typed rows and their columns follow a renamed or dropped field', async () => {
+  const { addKey, dropColumn, dropKey, patchColumn, renameColumn, renameKey } = await import('./rows');
+  const rows = [{ item: 'Tea', price: 3 }, { item: 'Cake', price: 5 }];
+  assert.deepEqual(renameKey(rows, 'item', 'name'), [{ name: 'Tea', price: 3 }, { name: 'Cake', price: 5 }]);
+  assert.deepEqual(dropKey(rows, 'price'), [{ item: 'Tea' }, { item: 'Cake' }]);
+  assert.deepEqual(addKey(rows, 'qty'), [{ item: 'Tea', price: 3, qty: '' }, { item: 'Cake', price: 5, qty: '' }]);
+  const cols = patchColumn(rows, null, 'price', { width: 120, align: 'end' });
+  assert.deepEqual(cols, ['item', { key: 'price', width: 120, align: 'end' }]);
+  assert.deepEqual(patchColumn(rows, cols, 'price', { width: null, align: null }), ['item', 'price']);
+  assert.deepEqual(patchColumn(rows, cols, 'item', { bold: true }), [{ key: 'item', bold: true }, { key: 'price', width: 120, align: 'end' }]);
+  assert.deepEqual(renameColumn(cols, 'price', 'cost'), ['item', { key: 'cost', width: 120, align: 'end' }]);
+  assert.deepEqual(dropColumn(cols, 'item'), [{ key: 'price', width: 120, align: 'end' }]);
+  assert.equal(dropColumn(['item'], 'item'), null);
+  assert.equal(renameColumn(null, 'a', 'b'), null);
+});

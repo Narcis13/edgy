@@ -9,6 +9,7 @@ import {
   PartyPopper, PenLine, Percent, Phone, PiggyBank, Pizza, Plane, Printer, Puzzle, Receipt, Rocket, Scale, Scissors, Search,
   Server, Shield, ShoppingCart, Smartphone, Smile, Sparkles, Star, Stethoscope, Sun, Tag, Target, ThumbsUp, Timer, TrendingDown,
   TrendingUp, TriangleAlert, Trophy, Truck, Users, Utensils, Video, Wallet, Wifi, Wrench, X, Zap,
+  Trash2, Pencil, Copy, ExternalLink, Send, CircleCheck, CircleX, Undo2, Plus, Minus, Download, Share2,
 } from 'lucide-react';
 
 export const CELL_ICONS: Record<string, LucideIcon> = {
@@ -28,6 +29,8 @@ export const CELL_ICONS: Record<string, LucideIcon> = {
   'book-open': BookOpen, newspaper: Newspaper, 'pen-line': PenLine, paintbrush: Paintbrush, scissors: Scissors, hammer: Hammer,
   wrench: Wrench, key: Key, lock: Lock, shield: Shield, bug: Bug, eye: Eye, search: Search, clock: Clock, timer: Timer,
   hourglass: Hourglass, 'calendar-days': CalendarDays,
+  'trash-2': Trash2, pencil: Pencil, copy: Copy, 'external-link': ExternalLink, send: Send, 'circle-check': CircleCheck,
+  'circle-x': CircleX, 'undo-2': Undo2, plus: Plus, minus: Minus, download: Download, 'share-2': Share2,
 };
 
 export const ICON_NAMES = Object.keys(CELL_ICONS);

@@ -182,3 +182,35 @@ export function patchColumn(rows: Rec[], columns: unknown, key: string, patch: R
   }
   return out;
 }
+
+// ── changing typed rows (a table's value) ──
+
+const asRecords = (rows: Json[]): Record<string, Json>[] =>
+  rows.map((r) => (r && typeof r === 'object' && !Array.isArray(r) ? (r as Record<string, Json>) : {}));
+
+/** Every typed row with `from` renamed to `to`, keeping the field's place. */
+export function renameKey(rows: Json[], from: string, to: string): Json[] {
+  if (!to || from === to) return rows;
+  return asRecords(rows).map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k === from ? to : k, v])));
+}
+
+/** Every typed row without the field. */
+export const dropKey = (rows: Json[], key: string): Json[] =>
+  asRecords(rows).map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => k !== key)));
+
+/** Every typed row with a new, empty field (or the value given). */
+export const addKey = (rows: Json[], key: string, value: Json = ''): Json[] =>
+  asRecords(rows).map((r) => (key in r ? r : { ...r, [key]: value }));
+
+/** The `columns` prop after a field was renamed: its settings follow it. Null stays null. */
+export function renameColumn(columns: unknown, from: string, to: string): Json {
+  if (!Array.isArray(columns)) return null;
+  return (columns as Json[]).map((s) => (s === from ? to : isRecord(s) && s.key === from ? { ...(s as Record<string, Json>), key: to } : s));
+}
+
+/** The `columns` prop without a field. Null stays null. */
+export function dropColumn(columns: unknown, key: string): Json {
+  if (!Array.isArray(columns)) return null;
+  const out = (columns as Json[]).filter((s) => s !== key && !(isRecord(s) && s.key === key));
+  return out.length ? out : null;
+}
