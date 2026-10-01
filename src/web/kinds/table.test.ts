@@ -160,7 +160,7 @@ test('row actions need something to do and default to ghost buttons', () => {
   assert.deepEqual(rowActions(null), []);
   assert.equal(actionName(acts[0]), 'Paid');
   assert.equal(actionName(acts[1]), 'Delete');
-  assert.equal(actionName({ label: '', icon: 'piggy-bank', do: 1, variant: 'ghost' }), 'Piggy bank');
+  assert.equal(actionName({ label: '', icon: 'piggy-bank' }), 'Piggy bank');
 });
 
 test('a small table keeps its grid in a narrow cell; a wide one turns into cards sooner', async () => {

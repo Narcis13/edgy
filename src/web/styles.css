@@ -680,6 +680,8 @@ table.data td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .group.kind-row[data-stack='auto'] > .divider { display: none; }
   /* Columns give way first, so what is inside them keeps a usable width. */
   .group.kind-row[data-stack='auto'] > .leaf[data-size='fill'] { min-width: min(100%, 120px); }
+  /* Tables, charts, calendars and drawings need room: they take a line of their own sooner. */
+  .group.kind-row[data-stack='auto'] > .leaf[data-size='fill']:is(.kind-table, .kind-chart, .kind-calendar, .kind-canvas) { min-width: min(100%, 260px); }
   .group.kind-row[data-stack='auto'] > .group[data-size='fill'] { min-width: min(100%, 260px); }
   .group.kind-row[data-stack='auto'] > .cell[data-size='fixed'] { max-width: 100%; }
   .leaf { padding: 8px 10px; }

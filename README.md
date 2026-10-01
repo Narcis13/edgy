@@ -34,6 +34,25 @@ Requires Node 22.13 or newer (it uses `node:sqlite`).
 
 Every place that takes an expression is a code editor: colours, matching brackets, autocomplete for functions and for the document's own cells (with their current values), the signature of the function you are in, and errors underlined where they are. Press **⌘E** (or the expand button) for the **code studio**: the same expression as **Blocks** you can click together, a searchable list of functions, the cells you can use, and the live result. The **Ask AI** tab turns a sentence into code in the context of the document — "what is left of the budget, never below zero" becomes `(max 0 (- budget total))`, checked against the document before you see it. It answers with Claude when `ANTHROPIC_API_KEY` is set (model `EDGY_AI_MODEL`, default `claude-sonnet-5-5`), with an agent connected over MCP when one is listening (`edgy_listen` shows the request, `edgy_answer` replies), and otherwise with a built-in composer that understands everyday phrasings offline.
 
+## Data tables
+
+A table shows records: rows typed into the table itself, saved records (`(rows "invoices")`), or anything a formula gives. Beyond search and sort it can:
+
+- **group** rows by a field, under headings people fold, with a count and subtotals;
+- let people **pick** one or many rows (`select`); other cells read them with `(selected invoices)`;
+- carry **buttons on every row** (`actions`): each runs with `row` bound to that row's record, e.g. `(update! "invoices" (get row "id") {status "Paid"})`, and can ask first;
+- format each column: heading, number format, alignment, width (drag a header's edge), bold, wrapping, colour, and **show as** text, a coloured badge, a progress bar, a check, a link or stars;
+- add a **totals** row (sum, average, count, smallest, largest);
+- take a look: lines (rows, columns, grid, outer, none), stripes, density, header style; hide the search box.
+
+Rows typed into a table are edited in place in Edit view: double-click a cell, Enter or Tab to move on. On a phone each row becomes a card; on paper the toolbar, pick boxes and buttons are left out.
+
+## Designing a cell
+
+The panel on the right shows what the selected cell is and everything it can do, in sections: **Content** first — a designer made for that kind of cell (a table's data, columns, rows, row buttons and look; a canvas's paper and pen; a list's markers; a chart's type and colour; an empty cell's choice of what to hold) — then **Text**, **Spacing and size**, **Box**, and the cell's rules and notation. Presets come first (text styles such as Title, Heading, Label or Quote; table looks such as Striped or Grid; ready-made row buttons), so most things take a click and no code.
+
+Fonts: Recursive, Inter, Manrope and Space Grotesk; Newsreader, Lora and Source Serif; Fraunces and Playfair Display; Recursive Mono and JetBrains Mono; Caveat. All are served by the app itself. A document can set its text font, heading font and base size; a cell can set its own font, size, weight, letter spacing, line height, paragraph spacing, case, underline or strike, padding per side, border colour and width, corners and shadow.
+
 ## Phones and paper
 
 The sheet is as wide as the document asks or as the screen allows. On a narrow screen the cells of a row wrap under each other (`"style": {"stack": "never"}` keeps table-like lines side by side), tables become searchable cards, calendars switch to an agenda and the editor's panels become drawers.
@@ -82,6 +101,7 @@ src/mcp       the MCP server; each tool calls the HTTP API
 src/web       React + Vite: the editor, the home page, the data browser
   code/         the code editor, code studio, Blocks and Ask AI
   kinds/        list, calendar, canvas, stat, break and table cells
+  editor/inspector/  the panel on the right: a designer per kind, text, spacing and box
   print/        page setup, the page view and pagination
 ```
 
@@ -90,7 +110,7 @@ Some decisions worth knowing:
 - **Everything is a cell.** A document is one root cell; `row` and `col` cells hold other cells. Splitting a leaf makes it a group; merging collapses a run of siblings, or a rectangle of a grid, into one cell. A `normalize` pass keeps the tree tidy (no empty groups, no group of one, no group nested in a same-direction group).
 - **Ops are the only way to change a document.** `applyOp` is pure and returns the op with every generated id filled in, so replaying the log is deterministic, and the inverse op, so undo is just another dispatch. The browser applies ops optimistically, sends them, and rebases whatever is still in flight on top of what the server confirms over the event stream.
 - **Formulas are JSON arrays.** `["*", "$qty", "$price"]` is stored; `(* qty price)` is what people see and type; `{{total | currency}}` inside text is a template. Everything dynamic — a formula, a button's action, a conditional style, a hidden-when rule — is the same language. Relative references (`(sib 1)`) let a row be duplicated by a button. A cell can hold a function and other cells can call it.
-- **Data leaves the document on purpose.** `(insert! "orders" {…})` saves a record into a named collection on the server; `(rows "orders")` reads it back from any document. Collections are the memory that outlives a document.
+- **Data leaves the document on purpose.** `(insert! "orders" {…})` saves a record into a named collection on the server, `(update! "orders" id {…})` changes one; `(rows "orders")` reads them back from any document. Collections are the memory that outlives a document. A template can bring sample records for collections that are still empty.
 - **Agents and people share one surface.** The outline an agent reads, the notation it writes and the ops it sends are the same structures the editor uses; the Activity panel shows both sides' changes as the same s-expressions.
 
 ## The language, briefly
@@ -104,11 +124,13 @@ Some decisions worth knowing:
 {name name total (* qty price)}  (get record "total")
 (str "Hi " name) (fmt x "EUR") (upper s) (split s ",")
 (now) (today) (days a b) (date+ d 30)
-(sib 1) (idx) (child lines -1) (rows "orders")
-(set! qty 5) (toggle! done) (insert! "orders" {…}) (dup! (child lines -1)) (remove! (child lines -1)) (do a b)
+(sib 1) (idx) (child lines -1) (rows "orders") (selected invoices)
+(set! qty 5) (toggle! done) (insert! "orders" {…}) (update! "orders" id {…}) (delete! "orders" id) (dup! (child lines -1)) (remove! (child lines -1)) (do a b)
 ```
 
 Formats: `int`, `number`, `0.00`, `percent`, `compact`, `currency`, `USD`/`EUR`/…, `date`, `time`, `datetime`, `ago`.
+
+Style keys: `bg fg pad gap align valign font size weight italic line tracking case decor para border bcolor bwidth radius shadow stack`.
 
 Style tokens that follow the theme: `ink`, `muted`, `faint`, `paper`, `sunken`, `line`, `accent`, `accent-soft`, `agent`, `agent-soft`, `live`, `live-soft`, `warn`, `warn-soft`, `bad`, `bad-soft`.
 

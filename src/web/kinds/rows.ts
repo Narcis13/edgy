@@ -411,7 +411,7 @@ const ICON_WORDS: Record<string, string> = {
 };
 
 /** What an action is called, also when it shows only an icon. */
-export function actionName(a: RowAction): string {
+export function actionName(a: Pick<RowAction, 'label' | 'icon'>): string {
   if (a.label) return a.label;
   if (!a.icon) return 'Run';
   const words = ICON_WORDS[a.icon] ?? a.icon.replace(/-\d+$/, '').replace(/-/g, ' ');
