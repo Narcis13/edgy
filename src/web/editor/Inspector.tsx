@@ -2,19 +2,23 @@
 
 import { useState } from 'react';
 import {
-  AlignCenter, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, ChevronRight, Upload,
+  AlignCenter, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, ChevronDown, ChevronRight,
+  ChevronUp, Upload,
 } from 'lucide-react';
 import type { Cell, Json, Op } from '../../core/types';
 import { isGroup } from '../../core/types';
 import { print, read, show } from '../../core/sx';
 import { toNotation } from '../../core/notation';
-import { plainValue } from '../../core/engine';
+import { type CellState, plainValue } from '../../core/engine';
+import { asItems } from '../kinds/items';
+import { type ColumnChoice, columnChoices, columnsProp, records } from '../kinds/rows';
 import { uploadPicture } from '../lib/api';
 import { COLOR_TOKENS } from './look';
 import { CELL_ICONS, ICON_NAMES } from './icons';
 import { NumberField, Row, Seg, SxField, TextField } from './fields';
 import { KIND_LABEL, cx, useS, useSession } from './ctx';
 import { kindOption } from './KindMenu';
+import { PageSetup } from '../print/PageSetup';
 
 const FORMATS = [
   ['auto', 'Auto'], ['int', 'Whole number'], ['number', 'Two decimals'], ['0.0', 'One decimal'], ['percent', 'Percent'],
@@ -46,6 +50,9 @@ function DocPanel() {
       <Row label="Least height"><NumberField value={typeof meta.minHeight === 'number' ? meta.minHeight : null} placeholder="560" min={0} step={40} onCommit={(v) => set('minHeight', v)} /></Row>
       <Row label="Margin"><NumberField value={typeof meta.pad === 'number' ? meta.pad : null} placeholder="28" min={0} max={200} onCommit={(v) => set('pad', v)} /></Row>
       <Row label="Currency"><TextField value={typeof meta.currency === 'string' ? meta.currency : ''} placeholder="USD" onCommit={(v) => set('currency', v.trim().toUpperCase() || null)} /></Row>
+      <h3 className="panel-h">Printing</h3>
+      <PageSetup />
+      <button className="btn soft" onClick={() => session.setMode('page')}>See the pages</button>
     </div>
   );
 }
@@ -88,7 +95,7 @@ function CellPanel({ cell, count }: { cell: Cell; count: number }) {
 
       {cell.kind === 'formula' && (
         <>
-          <Row label="Formula" stack><SxField value={cell.expr} cell={cell.id} preview placeholder="(* qty price)" onCommit={(x) => set('expr', x)} /></Row>
+          <Row label="Formula" stack><SxField value={cell.expr} cell={cell.id} prop="expr" preview placeholder="(* qty price)" onCommit={(x) => set('expr', x)} /></Row>
           <Row label="Format">
             <select className="text-field" value={cell.format ?? 'auto'} onChange={(e) => set('format', e.target.value === 'auto' ? null : e.target.value)}>
               {FORMATS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -102,7 +109,7 @@ function CellPanel({ cell, count }: { cell: Cell; count: number }) {
       {cell.kind === 'button' && (
         <>
           <Row label="Label"><TextField value={cell.label ?? ''} onCommit={(v) => set('label', v)} /></Row>
-          <Row label="Does" stack><SxField value={cell.do} cell={cell.id} placeholder="(set! count (+ count 1))" onCommit={(x) => set('do', x)} /></Row>
+          <Row label="Does" stack><SxField value={cell.do} cell={cell.id} prop="do" placeholder="(set! count (+ count 1))" onCommit={(x) => set('do', x)} /></Row>
           <Row label="Look">
             <Seg label="Look" value={cell.variant ?? 'solid'} onChange={(v) => set('variant', v === 'solid' ? null : v)}
               options={[{ value: 'solid', label: 'Solid' }, { value: 'soft', label: 'Soft' }, { value: 'ghost', label: 'Quiet' }]} />
@@ -116,7 +123,7 @@ function CellPanel({ cell, count }: { cell: Cell; count: number }) {
 
       {(cell.kind === 'chart' || cell.kind === 'table') && (
         <>
-          <Row label="Data" stack><SxField value={cell.expr} cell={cell.id} preview placeholder={cell.kind === 'chart' ? '(list 3 5 2)' : '(rows "orders")'} onCommit={(x) => set('expr', x)} /></Row>
+          <Row label="Data" stack><SxField value={cell.expr} cell={cell.id} prop="expr" preview placeholder={cell.kind === 'chart' ? '(list 3 5 2)' : '(rows "orders")'} onCommit={(x) => set('expr', x)} /></Row>
           {cell.kind === 'chart' && (
             <>
               <Row label="Type">
@@ -128,8 +135,60 @@ function CellPanel({ cell, count }: { cell: Cell; count: number }) {
               {cell.type === 'meter' && <Row label="Maximum"><NumberField value={typeof cell.max === 'number' ? cell.max : null} placeholder="1" onCommit={(v) => set('max', v)} /></Row>}
             </>
           )}
+          {cell.kind === 'table' && <TableProps cell={cell} st={st} set={set} />}
         </>
       )}
+
+      {cell.kind === 'list' && (
+        <>
+          <Row label="Type">
+            <Seg label="List type" value={cell.type === 'check' || cell.type === 'number' ? cell.type : 'bullet'}
+              onChange={(v) => session.dispatch([['set', cell.id, 'type', v], ['set', cell.id, 'value', asItems(cell.value, v)]])}
+              options={[{ value: 'check', label: 'Checklist' }, { value: 'bullet', label: 'Bullets' }, { value: 'number', label: 'Numbers' }]} />
+          </Row>
+          <Row label="Title"><TextField value={cell.label ?? ''} placeholder="Shown above the items" onCommit={(v) => set('label', v || null)} /></Row>
+          <Row label="Computed from" stack>
+            <SxField value={cell.expr} cell={cell.id} prop="expr" preview placeholder="Empty: people edit the items" onCommit={(x) => set('expr', x)} />
+          </Row>
+          {cell.expr !== undefined && <p className="panel-note">The list shows what this computes, so its items can't be edited by hand. Clear it to edit them again.</p>}
+        </>
+      )}
+
+      {cell.kind === 'calendar' && (
+        <>
+          <Row label="Events" stack><SxField value={cell.expr} cell={cell.id} prop="expr" preview placeholder='(rows "events")' onCommit={(x) => set('expr', x)} /></Row>
+          <Row label="Title"><TextField value={cell.label ?? ''} onCommit={(v) => set('label', v || null)} /></Row>
+          <Row label="Picked day">
+            <input type="date" className="text-field" value={typeof cell.value === 'string' ? cell.value : ''} onKeyDown={(e) => e.stopPropagation()}
+              onChange={(e) => set('value', e.target.value || null)} />
+            {typeof cell.value === 'string' && cell.value && <button type="button" className="btn ghost small" onClick={() => set('value', null)}>Clear</button>}
+          </Row>
+        </>
+      )}
+
+      {cell.kind === 'canvas' && (
+        <>
+          <Row label="Line label"><TextField value={cell.label ?? ''} placeholder="Sign here" onCommit={(v) => set('label', v || null)} /></Row>
+          <Row label="Strokes">
+            <span className="panel-count">{Array.isArray(cell.value) ? cell.value.length : 0}</span>
+            <button type="button" className="btn ghost small" disabled={!Array.isArray(cell.value) || !cell.value.length} onClick={() => set('value', null)}>Clear</button>
+          </Row>
+        </>
+      )}
+
+      {cell.kind === 'stat' && (
+        <>
+          <Row label="Value" stack><SxField value={cell.expr} cell={cell.id} prop="expr" preview placeholder="(sum (column orders 3))" onCommit={(x) => set('expr', x)} /></Row>
+          <Row label="Label"><TextField value={cell.label ?? ''} onCommit={(v) => set('label', v || null)} /></Row>
+          <Row label="Format"><FormatSelect value={cell.format} onChange={(v) => set('format', v)} /></Row>
+          <Row label="Compare with" stack><SxField value={cell.compare} cell={cell.id} prop="compare" preview placeholder="last_month" onCommit={(x) => set('compare', x)} /></Row>
+          <Row label="Trend" stack><SxField value={cell.trend} cell={cell.id} prop="trend" preview placeholder="(list 3 5 4 8)" onCommit={(x) => set('trend', x)} /></Row>
+          <IconProps cell={cell} set={set} />
+          {cell.icon && <button type="button" className="btn ghost small" onClick={() => set('icon', null)}>No icon</button>}
+        </>
+      )}
+
+      {cell.kind === 'break' && <p className="panel-note">Printing starts a new page here. Nothing shows while the document is in use.</p>}
 
       {cell.kind === 'text' && (
         <Row label="Text" stack><TextField value={cell.text ?? ''} multiline onCommit={(v) => set('text', v)} label="Text" /></Row>
@@ -168,7 +227,7 @@ function CellPanel({ cell, count }: { cell: Cell; count: number }) {
 
       <h3 className="panel-h">Show only when</h3>
       <Row label="Hidden if" stack>
-        <SxField value={typeof cell.hidden === 'boolean' ? (cell.hidden ? true : undefined) : cell.hidden} cell={cell.id} placeholder="(= total 0)" onCommit={(x) => set('hidden', x === false ? null : x)} />
+        <SxField prop="hidden" value={typeof cell.hidden === 'boolean' ? (cell.hidden ? true : undefined) : cell.hidden} cell={cell.id} placeholder="(= total 0)" onCommit={(x) => set('hidden', x === false ? null : x)} />
       </Row>
 
       {(st?.reads?.length || feeds?.length) ? (
@@ -182,7 +241,7 @@ function CellPanel({ cell, count }: { cell: Cell; count: number }) {
       {!isGroup(cell) && (
         <>
           <h3 className="panel-h">Value</h3>
-          <p className={cx('value-preview', st?.error && 'is-error')}>{st?.error ? st.error : show(plainValue(st?.value)) || '—'}</p>
+          <p className={cx('value-preview', st?.error && 'is-error')}>{st?.error ? st.error : cell.kind === 'canvas' ? strokeCount(st?.value) : show(plainValue(st?.value)) || '—'}</p>
         </>
       )}
 
@@ -199,6 +258,58 @@ const groupProps = (c: Cell): Record<string, Json> => {
   if (c.hidden != null) p.hidden = c.hidden;
   return p;
 };
+
+const strokeCount = (v: unknown) => {
+  const n = Array.isArray(v) ? v.length : 0;
+  return n ? `${n} ${n === 1 ? 'stroke' : 'strokes'}` : 'Nothing drawn yet';
+};
+
+function FormatSelect({ value, onChange }: { value: string | undefined; onChange: (v: Json) => void }) {
+  return (
+    <select className="text-field" value={value ?? 'auto'} onChange={(e) => onChange(e.target.value === 'auto' ? null : e.target.value)}>
+      {FORMATS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      {value && !FORMATS.some(([v]) => v === value) && <option value={value}>{value}</option>}
+    </select>
+  );
+}
+
+function TableProps({ cell, st, set }: { cell: Cell; st: CellState | undefined; set: (p: string, v: Json) => void }) {
+  const rows = records(st?.value);
+  const choices = columnChoices(rows, cell.columns);
+  const write = (next: ColumnChoice[]) => set('columns', columnsProp(rows, next));
+  const swap = (i: number, j: number) => {
+    const next = [...choices];
+    [next[i], next[j]] = [next[j], next[i]];
+    write(next);
+  };
+  const shown = choices.filter((c) => c.shown).length;
+  return (
+    <>
+      <Row label="Title"><TextField value={cell.label ?? ''} onCommit={(v) => set('label', v || null)} /></Row>
+      <Row label="Numbers as"><FormatSelect value={cell.format} onChange={(v) => set('format', v)} /></Row>
+      <div className="prop is-stack">
+        <span className="prop-label">Columns</span>
+        {choices.length ? (
+          <ul className="column-list" aria-label="Columns">
+            {choices.map((c, i) => (
+              <li key={c.key} className={cx(!c.shown && 'is-off')}>
+                <label>
+                  <input type="checkbox" checked={c.shown} disabled={c.shown && shown === 1}
+                    onChange={() => write(choices.map((x, j) => (j === i ? { ...x, shown: !x.shown } : x)))} />
+                  <span>{c.key}</span>
+                  {typeof c.spec === 'object' && c.spec && !Array.isArray(c.spec) && typeof c.spec.label === 'string' && c.spec.label !== c.key && <small>{c.spec.label}</small>}
+                </label>
+                <button type="button" className="icon-btn" aria-label={`Move ${c.key} up`} disabled={i === 0 || !c.shown} onClick={() => swap(i, i - 1)}><ChevronUp size={14} /></button>
+                <button type="button" className="icon-btn" aria-label={`Move ${c.key} down`} disabled={!c.shown || !choices[i + 1]?.shown} onClick={() => swap(i, i + 1)}><ChevronDown size={14} /></button>
+              </li>
+            ))}
+          </ul>
+        ) : <p className="panel-note">The columns show up once the data gives rows.</p>}
+        {cell.columns != null && <button type="button" className="btn ghost small" onClick={() => set('columns', null)}>Show every column</button>}
+      </div>
+    </>
+  );
+}
 
 function SizeControl({ cell, set }: { cell: Cell; set: (p: string, v: Json) => void }) {
   const size = cell.size ?? 1;
@@ -248,7 +359,7 @@ function InputProps({ cell, set }: { cell: Cell; set: (p: string, v: Json) => vo
       {type === 'rating' && <Row label="Stars"><NumberField value={num('max') ?? 5} min={1} max={10} onCommit={(v) => set('max', v)} /></Row>}
       {type === 'select' && (
         <Row label="Options" stack>
-          <SxField value={cell.options} cell={cell.id} placeholder='(list "Small" "Large")' onCommit={(x) => set('options', x)} />
+          <SxField value={cell.options} cell={cell.id} prop="options" placeholder='(list "Small" "Large")' onCommit={(x) => set('options', x)} />
         </Row>
       )}
       {(type === 'text' || type === 'textarea' || type === 'number') && (

@@ -153,7 +153,7 @@ server.registerTool('edgy_say', {
 }));
 
 server.registerTool('edgy_listen', {
-  description: 'Wait for the person to write to you in a document\'s Activity panel. Returns their messages, or nothing after the timeout. Pass the id of the last message you saw as after.',
+  description: 'Wait for the person to write to you in a document\'s Activity panel. Returns their messages, or nothing after the timeout. Pass the id of the last message you saw as after. It also returns compose requests: the person described in words what a cell should compute or do and is waiting (up to 45 seconds) for code; answer each one with edgy_answer.',
   inputSchema: {
     doc: z.string().describe('Document id or title'),
     after: z.number().optional().describe('Only messages newer than this message id'),
@@ -162,8 +162,39 @@ server.registerTool('edgy_listen', {
 }, safely(async ({ doc, after, timeout }) => {
   const id = await docId(doc);
   const r = await api('GET', `/api/docs/${id}/messages/wait?after=${after ?? 0}&timeout=${timeout ?? 30}&agent=${encodeURIComponent(AGENT)}`);
-  if (!r.messages.length) return text('Nothing yet.');
-  return text(r.messages.map((m: any) => `#${m.id} ${m.actor.name}${m.cell ? ` (about ${m.cell})` : ''}: ${m.text}`).join('\n'));
+  const asked = (r.requests ?? []) as { id: string; prompt: string; cell?: string; cellName?: string; target: string; current?: string }[];
+  if (!r.messages.length && !asked.length) return text('Nothing yet.');
+  return text([
+    ...r.messages.map((m: any) => `#${m.id} ${m.actor.name}${m.cell ? ` (about ${m.cell})` : ''}: ${m.text}`),
+    ...asked.map((q) => `Compose request ${q.id} for ${q.cell ? `cell ${q.cellName ?? q.cell}` : 'the document'} (${q.target}): ${JSON.stringify(q.prompt)}. `
+      + `Current code: ${q.current?.trim() || '(none)'}. Answer with edgy_answer.`),
+  ].join('\n'));
+}));
+
+server.registerTool('edgy_answer', {
+  description: 'Answer a compose request from edgy_listen with code in the document\'s Lisp syntax, e.g. "(* qty price)". '
+    + 'Write ONE expression for the request\'s target: expr = what the cell shows; do = a button action (set!, toggle!, insert!, delete!, clear!, dup!, remove!, several in (do …)); '
+    + 'hidden = a condition that hides the cell while true; style = an expression giving a colour token such as (if (< total 0) "bad" "ink"); '
+    + 'options = a list for a select, e.g. (list "S" "M" "L"); compare = a number to compare against; trend = a list of numbers over time. '
+    + 'Use only cell names that exist (edgy_read shows them) and the functions in edgy_guide; actions only for target do. '
+    + 'Add a one or two sentence explanation for a beginner: what it does and which cells it reads. '
+    + 'The code is checked against the document; if it is rejected you get the reason and can call edgy_answer again for the same request.',
+  inputSchema: {
+    doc: z.string().describe('Document id or title'),
+    request: z.string().describe('The request id from edgy_listen, e.g. r7'),
+    code: z.string().describe('One expression in Lisp syntax'),
+    explanation: z.string().optional().describe('One or two plain sentences for a beginner'),
+  },
+}, safely(async ({ doc, request, code, explanation }) => {
+  const id = await docId(doc);
+  try {
+    await api('POST', `/api/docs/${id}/compose/${encodeURIComponent(request)}`, { code, explanation, actor });
+  } catch (e) {
+    const why = e instanceof Error ? e.message : String(e);
+    if (/no such request/.test(why)) throw new Error(`Request ${request} is no longer waiting: it was answered or timed out.`);
+    throw new Error(`The code was rejected: ${why}. Fix it and call edgy_answer again for ${request}.`);
+  }
+  return text(`Answered ${request}; the person now sees ${code} with a preview.`);
 }));
 
 await server.connect(new StdioServerTransport());

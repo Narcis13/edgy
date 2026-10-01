@@ -288,3 +288,13 @@ test('page setup lives in meta and a row can opt out of stacking', () => {
   doc = applyOp(doc, ['put', 'c1', ['row', { style: { stack: 'never' } }, 'a', 'b']]).doc;
   assert.equal(doc.root.style?.stack, 'never');
 });
+
+test('every template builds and evaluates without errors', async () => {
+  const { TEMPLATES, tour } = await import('./templates');
+  for (const t of [...TEMPLATES, tour]) {
+    const doc = applyOp(newDoc('t'), ['put', 'c1', t.root]).doc;
+    const c = evaluate(doc, world);
+    const broken = Object.entries(c.cells).filter(([, st]) => st.error).map(([id, st]) => `${id}: ${st.error}`);
+    assert.deepEqual(broken, [], t.id);
+  }
+});

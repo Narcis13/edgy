@@ -10,10 +10,14 @@ import { type Computed, evaluate, runAction } from '../core/engine';
 import { indexTree, leaves } from '../core/tree';
 import { type LogEntry, type Message, type Row, ApiError, api } from './lib/api';
 import { type Store, createStore } from './lib/store';
+import { asItems } from './kinds/items';
+import { isoOf } from './kinds/month';
 
 export interface LogItem extends LogEntry {
   mine: boolean;
 }
+
+export type Mode = 'edit' | 'live' | 'page';
 
 export interface Presence {
   actor: Actor;
@@ -32,7 +36,10 @@ export interface SessionState {
   /** Text typed to start an edit, so the first keystroke isn't lost. */
   seed: string | null;
   menu: string | null;
-  mode: 'edit' | 'live';
+  /** edit: shape the document; live: use it; page: use it as printed pages. */
+  mode: Mode;
+  /** Set when someone asked to print; the page view prints once its pages are laid out. */
+  printing: boolean;
   links: boolean;
   log: LogItem[];
   messages: Message[];
@@ -115,7 +122,7 @@ export class Session {
   constructor(readonly id: string) {
     this.s = {
       status: 'loading', online: true, doc: null, computed: null, unsaved: 0, selection: [], editing: null, seed: null,
-      menu: null, mode: 'edit', links: true, log: [], messages: [], presence: [], flashes: {}, collections: {},
+      menu: null, mode: initialMode(), printing: false, links: true, log: [], messages: [], presence: [], flashes: {}, collections: {},
       toast: null, canUndo: false, canRedo: false, now: Date.now(),
     };
     this.store = createStore(this.s);
@@ -460,8 +467,23 @@ export class Session {
     this.patch({ menu: id, ...(id ? { selection: [id], editing: null } : {}) });
   }
 
-  setMode(mode: 'edit' | 'live'): void {
+  setMode(mode: Mode): void {
     this.patch({ mode, selection: [], editing: null, menu: null });
+    try {
+      const url = new URL(window.location.href);
+      if (mode === 'page') url.searchParams.set('view', 'page');
+      else url.searchParams.delete('view');
+      window.history.replaceState(null, '', url);
+    } catch { /* not in a browser */ }
+  }
+
+  /** Print the document as pages: switch to the page view, which prints once laid out. */
+  print(): void {
+    this.patch({ mode: 'page', printing: true, selection: [], editing: null, menu: null });
+  }
+
+  printed(): void {
+    if (this.s.printing) this.patch({ printing: false });
   }
 
   setLinks(links: boolean): void {
@@ -544,12 +566,16 @@ export class Session {
     if (a && b) this.dispatch(['swap', a, b]);
   }
 
-  /** Give a cell a new kind, keeping its name, size and look. */
-  setKind(id: string, kind: string, type?: string): void {
+  /** Give a cell a new kind, keeping its name, size and look. `props` are a preset's own (a signature's label). */
+  setKind(id: string, kind: string, type?: string, props?: Record<string, Json>): void {
     const c = this.cell(id);
     if (!c) return;
-    const keep: Record<string, Json> = c.style ? { style: c.style } : {};
+    const keep: Record<string, Json> = { ...(c.style ? { style: c.style } : {}), ...props };
     const text = c.kind === 'text' ? c.text ?? '' : c.kind === 'button' ? c.label ?? '' : '';
+    const same = c.kind === kind;
+    /** Props worth keeping when a cell is given its own kind again. */
+    const own = (...keys: (keyof Cell)[]): Record<string, Json> =>
+      same ? Object.fromEntries(keys.filter((k) => c[k] !== undefined).map((k) => [k, c[k] as Json])) : {};
     let cell: Json;
     switch (kind) {
       case 'text': cell = ['text', keep, text]; break;
@@ -565,8 +591,28 @@ export class Session {
       case 'button': cell = ['button', keep, text || 'Button']; break;
       case 'image': cell = ['image', keep]; break;
       case 'icon': cell = ['icon', keep, 'sparkles']; break;
-      case 'chart': cell = ['chart', { ...keep, type: type ?? 'bar' }, c.kind === 'chart' && c.expr !== undefined ? c.expr : ['list', 3, 5, 4, 8, 6]]; break;
-      case 'table': cell = ['table', keep, ['list', { item: 'Tea', price: 3 }, { item: 'Cake', price: 5 }]]; break;
+      case 'chart': cell = ['chart', { ...keep, type: type ?? 'bar' }, same && c.expr !== undefined ? c.expr : ['list', 3, 5, 4, 8, 6]]; break;
+      case 'table': cell = ['table', keep, same && c.expr !== undefined ? c.expr : ['list', { item: 'Tea', price: 3 }, { item: 'Cake', price: 5 }]]; break;
+      case 'list': {
+        // A list changing type keeps its items, reshaped; a new one starts with a few to show how it works.
+        const t = type ?? 'bullet';
+        const samples: Json[] = t === 'check'
+          ? [{ text: 'Plan the week', done: true }, { text: 'Book the venue', done: false }, { text: 'Send the invites', done: false }]
+          : t === 'number' ? ['First step', 'Second step'] : ['First thing', 'Second thing'];
+        const items = same && Array.isArray(c.value) && c.value.length ? asItems(c.value, t) : samples;
+        cell = ['list', { ...own('label', 'expr'), ...keep, type: t }, ...items];
+        break;
+      }
+      case 'calendar': cell = ['calendar', { ...own('label', 'value'), ...keep }, same && c.expr !== undefined ? c.expr : ['list', { date: isoOf(new Date()), title: 'Today' }]]; break;
+      case 'canvas': cell = ['canvas', { ...own('label', 'value'), ...keep }]; break;
+      case 'stat':
+        cell = same && c.expr !== undefined ? ['stat', { ...own('label', 'format', 'compare', 'trend', 'icon'), ...keep }, c.expr] : [
+          'stat',
+          { label: 'Revenue', format: 'currency', compare: 4200, trend: ['list', 3200, 3900, 4100, 4600, 5000], ...keep },
+          ['*', 1250, 4],
+        ];
+        break;
+      case 'break': cell = ['break']; break;
       default: cell = ['empty', keep];
     }
     this.dispatch(['put', id, cell]);
@@ -602,6 +648,14 @@ export class Session {
       this.toast(e instanceof Error ? e.message : 'The message was not sent.');
     }
   }
+}
+
+/** Open on the page view when the link asks for it; on a phone, start by using the document. */
+function initialMode(): Mode {
+  if (typeof window === 'undefined') return 'edit';
+  const view = new URLSearchParams(window.location.search).get('view');
+  if (view === 'page' || view === 'live' || view === 'edit') return view;
+  return window.innerWidth < 720 ? 'live' : 'edit';
 }
 
 function upsert(list: Presence[], p: Presence): Presence[] {

@@ -1,7 +1,7 @@
 // The document screen: header, formula bar, activity, the sheet, inspector.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity as ActivityIcon, Moon, PanelRight, Redo2, Spline, Sun, Undo2 } from 'lucide-react';
+import { Activity as ActivityIcon, Ellipsis, Moon, PanelRight, Printer, Redo2, Spline, Sun, Undo2 } from 'lucide-react';
 import type { Cell } from '../../core/types';
 import { isGroup } from '../../core/types';
 import { leaves } from '../../core/tree';
@@ -15,6 +15,8 @@ import { Inspector } from './Inspector';
 import { Overlay } from './Overlay';
 import { SessionContext, cx, useS, useSession } from './ctx';
 import { Logo } from '../pages/Logo';
+import { StudioHost } from '../code/Studio';
+import { Pages } from '../print/Pages';
 
 export function Editor({ id, navigate }: { id: string; navigate: (path: string) => void }) {
   const session = useMemo(() => new Session(id), [id]);
@@ -33,6 +35,7 @@ export function Editor({ id, navigate }: { id: string; navigate: (path: string) 
 function Screen({ navigate }: { navigate: (path: string) => void }) {
   const session = useSession();
   const status = useS((s) => s.status);
+  const mode = useS((s) => s.mode);
   const [showActivity, setShowActivity] = useState(() => window.innerWidth > 1320);
   const [showInspector, setShowInspector] = useState(() => window.innerWidth > 1000);
   const touched = useRef(false);
@@ -55,13 +58,15 @@ function Screen({ navigate }: { navigate: (path: string) => void }) {
   if (status === 'failed') return <div className="screen-note">The server did not answer. Is <code>npm run dev</code> running?</div>;
 
   return (
-    <div className={cx('editor', showActivity && 'with-activity', showInspector && 'with-inspector')}>
+    <div className={cx('editor', `mode-${mode}`, showActivity && 'with-activity', showInspector && 'with-inspector')}>
       <Header navigate={navigate} showActivity={showActivity} setShowActivity={toggleActivity} showInspector={showInspector} setShowInspector={toggleInspector} />
       <FormulaBar />
+      {(showActivity || showInspector) && <div className="side-backdrop" onClick={() => { toggleActivity(false); toggleInspector(false); }} />}
       {showActivity && <aside className="side left"><Activity /></aside>}
       <Desk />
       {showInspector && <aside className="side right"><Inspector /></aside>}
       <Toast />
+      <StudioHost />
     </div>
   );
 }
@@ -87,20 +92,55 @@ function Header(props: { navigate: (p: string) => void; showActivity: boolean; s
       <span className={cx('save-state', !online && 'is-off', unsaved > 0 && 'is-busy')}>{!online ? 'Offline, will retry' : unsaved ? 'Saving…' : 'Saved'}</span>
       <div className="grow" />
       <div className="tools">
-        <button className="icon-btn" title="Undo (⌘Z)" disabled={!canUndo} onClick={() => session.undo()}><Undo2 size={16} /></button>
-        <button className="icon-btn" title="Redo (⇧⌘Z)" disabled={!canRedo} onClick={() => session.redo()}><Redo2 size={16} /></button>
+        <button className={cx('icon-btn', mode !== 'edit' && 'wide-only')} title="Undo (⌘Z)" aria-label="Undo" disabled={!canUndo} onClick={() => session.undo()}><Undo2 size={16} /></button>
+        <button className={cx('icon-btn', mode !== 'edit' && 'wide-only')} title="Redo (⇧⌘Z)" aria-label="Redo" disabled={!canRedo} onClick={() => session.redo()}><Redo2 size={16} /></button>
         <i className="sep" />
-        <button className={cx('icon-btn', links && 'is-on')} title="Show what the selected cell reads and feeds" aria-pressed={links} onClick={() => session.setLinks(!links)}><Spline size={16} /></button>
-        <button className={cx('icon-btn', props.showActivity && 'is-on')} title="Activity and messages" aria-pressed={props.showActivity} onClick={() => props.setShowActivity(!props.showActivity)}><ActivityIcon size={16} /></button>
-        <button className={cx('icon-btn', props.showInspector && 'is-on')} title="Cell details" aria-pressed={props.showInspector} onClick={() => props.setShowInspector(!props.showInspector)}><PanelRight size={16} /></button>
+        <button className={cx('icon-btn wide-only', links && 'is-on')} title="Show what the selected cell reads and feeds" aria-pressed={links} onClick={() => session.setLinks(!links)}><Spline size={16} /></button>
+        <button className={cx('icon-btn wide-only', props.showActivity && 'is-on')} title="Activity and messages" aria-pressed={props.showActivity} onClick={() => props.setShowActivity(!props.showActivity)}><ActivityIcon size={16} /></button>
+        <button className={cx('icon-btn wide-only', props.showInspector && 'is-on')} title="Cell details" aria-pressed={props.showInspector} onClick={() => props.setShowInspector(!props.showInspector)}><PanelRight size={16} /></button>
         <i className="sep" />
         <div className="seg mode" role="group" aria-label="Mode">
-          <button className={cx(mode === 'edit' && 'is-on')} aria-pressed={mode === 'edit'} onClick={() => session.setMode('edit')}>Edit</button>
-          <button className={cx(mode === 'live' && 'is-on')} aria-pressed={mode === 'live'} onClick={() => session.setMode('live')}>Live</button>
+          <button className={cx(mode === 'edit' && 'is-on')} aria-pressed={mode === 'edit'} onClick={() => session.setMode('edit')} title="Shape the document">Edit</button>
+          <button className={cx(mode === 'live' && 'is-on')} aria-pressed={mode === 'live'} onClick={() => session.setMode('live')} title="Use it as people will">Live</button>
+          <button className={cx(mode === 'page' && 'is-on')} aria-pressed={mode === 'page'} onClick={() => session.setMode('page')} title="See it as printed pages">Page</button>
         </div>
-        <button className="icon-btn" title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
+        <button className="icon-btn wide-only" title="Print (⌘P)" aria-label="Print" onClick={() => session.print()}><Printer size={16} /></button>
+        <button className="icon-btn wide-only" title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
+        <More {...props} />
       </div>
     </header>
+  );
+}
+
+/** On a phone the header keeps the essentials; everything else lives in this menu. */
+function More(props: { showActivity: boolean; setShowActivity: (v: boolean) => void; showInspector: boolean; setShowInspector: (v: boolean) => void }) {
+  const session = useSession();
+  const links = useS((s) => s.links);
+  const [theme, setTheme] = useTheme();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('pointerdown', away, true);
+    return () => document.removeEventListener('pointerdown', away, true);
+  }, [open]);
+  const item = (label: string, icon: React.ReactNode, on: boolean | undefined, run: () => void) => (
+    <button role="menuitem" className={cx(on && 'is-on')} onClick={() => { setOpen(false); run(); }}>{icon}{label}</button>
+  );
+  return (
+    <div className="more" ref={ref} style={{ position: 'relative' }}>
+      <button className="icon-btn more-btn" aria-label="More" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}><Ellipsis size={18} /></button>
+      {open && (
+        <div className="more-menu" role="menu">
+          {item('Activity and messages', <ActivityIcon size={16} />, props.showActivity, () => props.setShowActivity(!props.showActivity))}
+          {item('Cell details', <PanelRight size={16} />, props.showInspector, () => props.setShowInspector(!props.showInspector))}
+          {item('Show links between cells', <Spline size={16} />, links, () => session.setLinks(!links))}
+          {item('Print', <Printer size={16} />, false, () => session.print())}
+          {item(theme === 'dark' ? 'Light theme' : 'Dark theme', theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />, false, () => setTheme(theme === 'dark' ? 'light' : 'dark'))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -132,6 +172,13 @@ function Desk() {
   }, [session]);
   if (!doc) return null;
   const meta = doc.meta;
+  if (mode === 'page') {
+    return (
+      <main className="desk paged">
+        <Pages />
+      </main>
+    );
+  }
 
   const onPointerDown = (e: React.PointerEvent) => {
     const target = e.target as HTMLElement;
@@ -148,19 +195,19 @@ function Desk() {
       if (cell) session.pick(cell.name ?? cell.id);
       return;
     }
-    if (mode === 'live') return;
+    if (mode !== 'edit') return;
     wasSelected.current = session.state.selection.length === 1 && session.state.selection[0] === id && !session.state.editing;
     if (e.button === 0) session.select(id, e.shiftKey || e.metaKey);
   };
   const onClick = (e: React.MouseEvent) => {
-    if (mode === 'live') return;
+    if (mode !== 'edit') return;
     const el = (e.target as HTMLElement).closest<HTMLElement>('[data-cell]');
     if (!el || !wasSelected.current) return;
     const cell = session.cell(el.dataset.cell!);
     if (cell && (cell.kind === 'text' || cell.kind === 'empty') && !(e.target as HTMLElement).closest('a')) session.edit(cell.id);
   };
   const onDoubleClick = (e: React.MouseEvent) => {
-    if (mode === 'live') return;
+    if (mode !== 'edit') return;
     const el = (e.target as HTMLElement).closest<HTMLElement>('[data-cell]');
     const cell = el && session.cell(el.dataset.cell!);
     if (cell && ['text', 'empty', 'formula', 'button'].includes(cell.kind)) session.edit(cell.id);
@@ -196,7 +243,7 @@ function Desk() {
   return (
     <main className={cx('desk', mode)} onPointerDown={onPointerDown} onClick={onClick} onDoubleClick={onDoubleClick} onDragOver={onDragOver} onDragLeave={() => setDropping(null)} onDrop={(e) => void onDrop(e)}>
       <div className="desk-inner" ref={host}>
-        <div className={cx('sheet', dropping && 'is-dropping')} style={{ width: typeof meta.width === 'number' ? meta.width : 880, minHeight: typeof meta.minHeight === 'number' ? meta.minHeight : 560, padding: typeof meta.pad === 'number' ? meta.pad : 28 }}>
+        <div className={cx('sheet', dropping && 'is-dropping')} style={{ maxWidth: typeof meta.width === 'number' ? meta.width : 880, minHeight: typeof meta.minHeight === 'number' ? meta.minHeight : 560, '--pad': `${typeof meta.pad === 'number' ? meta.pad : 28}px` } as React.CSSProperties}>
           <CellView cell={doc.root} dir={null} />
         </div>
         <Overlay host={host} />
@@ -255,7 +302,11 @@ function useKeyboard() {
         else session.undo();
         return;
       }
-      if (typing || s.mode === 'live' || s.editing) return;
+      if (mod && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        return session.print();
+      }
+      if (typing || s.mode !== 'edit' || s.editing) return;
       const id = s.selection.at(-1);
       const cell = id ? session.cell(id) : undefined;
       if (e.key === 'Escape') {

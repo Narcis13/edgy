@@ -1,0 +1,55 @@
+/* ─────────────────────────── page view ─────────────────────────── */
+
+.desk.paged { background: var(--glass-2); }
+.pages-view { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 0 12px 120px; min-width: 0; }
+
+.page-bar {
+  position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 10px;
+  padding: 10px 12px; margin: 0 -12px; width: calc(100% + 24px);
+  background: color-mix(in oklab, var(--glass-2) 86%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+}
+.page-setup { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
+.page-setup .text-field { width: auto; padding: 5px 8px; }
+.page-setup .seg button { display: inline-flex; align-items: center; gap: 5px; }
+.page-count { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.page-bar .btn { display: inline-flex; align-items: center; gap: 6px; }
+
+.pages { display: flex; flex-direction: column; align-items: center; gap: calc(24px * var(--fit, 1)); color: var(--ink); }
+.page-slot { position: relative; flex: none; }
+.page {
+  position: absolute; top: 0; left: 0; transform-origin: top left; background: var(--paper); color: var(--ink);
+  box-shadow: var(--shadow), 0 0 0 1px var(--line); overflow: hidden; font-size: 15px; line-height: 1.5;
+}
+.page-window { position: relative; overflow: hidden; }
+.page-flow { position: relative; display: flex; flex-direction: column; }
+.page-flow > .cell { flex: 1 1 auto; }
+.page-foot {
+  position: absolute; display: flex; justify-content: space-between; gap: 12px; font-size: 9.5px; line-height: 1; color: var(--faint);
+  font-variant-numeric: tabular-nums; letter-spacing: 0.02em;
+}
+
+/* The printed copy never animates cells into place, and every page repeats the same cells. */
+.pages .cell { view-transition-name: none !important; }
+.pages .divider { pointer-events: none; }
+.pages .divider::after { display: none; }
+.pages .leaf.kind-break { min-height: 0; padding: 0; }
+
+/* ─────────────────────────── printing ─────────────────────────── */
+
+@media print {
+  html, body, #root { height: auto !important; overflow: visible !important; background: #fff !important; }
+  .topbar, .fbar, .side, .toast, .overlay, .page-bar, .studio-backdrop { display: none !important; }
+  .editor { display: block !important; height: auto !important; overflow: visible !important; }
+  .desk { overflow: visible !important; background: #fff !important; }
+  .desk-inner { padding: 0 !important; min-width: 0 !important; }
+  .pages-view { padding: 0 !important; gap: 0 !important; display: block !important; }
+  .pages { display: block !important; gap: 0 !important; }
+  .page-slot { width: auto !important; height: auto !important; }
+  .page { position: relative !important; transform: none !important; box-shadow: none !important; break-after: page; break-inside: avoid; }
+  .page-slot:last-child .page { break-after: auto; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  /* Controls for changing a cell are for screens; paper shows the content. */
+  .klist-add, .klist-grip, .klist-del, .ktable-search, .ktable-more, .kcal-nav, .kcal-today, .kcanvas-tools { display: none !important; }
+  /* Printing from the editor rather than the page view: just the sheet. */
+  .sheet { box-shadow: none !important; margin: 0 !important; width: 100% !important; }
+}

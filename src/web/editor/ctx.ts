@@ -19,5 +19,6 @@ export const cx = (...parts: (string | false | null | undefined)[]) => parts.fil
 
 export const KIND_LABEL: Record<string, string> = {
   row: 'Row', col: 'Column', empty: 'Empty', text: 'Text', formula: 'Formula', input: 'Input', button: 'Button',
-  image: 'Picture', icon: 'Icon', chart: 'Chart', table: 'Table',
+  image: 'Picture', icon: 'Icon', chart: 'Chart', table: 'Table', list: 'List', calendar: 'Calendar', canvas: 'Drawing', stat: 'Stat',
+  break: 'Page break',
 };

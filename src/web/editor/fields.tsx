@@ -1,10 +1,12 @@
 // Small form pieces shared by the formula bar, the inspector and in-cell editing.
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { Maximize2 } from 'lucide-react';
 import type { Sx } from '../../core/types';
-import { deepEqual, print, read, show } from '../../core/sx';
-import { evalIn, plainValue } from '../../core/engine';
-import { cx, useSession } from './ctx';
+import { deepEqual, print, read } from '../../core/sx';
+import { CodeEditor, type CodeEditorHandle } from '../code/CodeEditor';
+import { openStudio, setActiveField } from '../code/store';
+import { cx } from './ctx';
 
 const grow = (el: HTMLTextAreaElement | null) => {
   if (!el) return;
@@ -25,17 +27,23 @@ interface SxFieldProps {
   label?: string;
   /** Line width before the printer wraps. */
   width?: number;
+  /** Which property of the cell this edits ('expr', 'do', 'hidden', …); lets the field open the code studio. */
+  prop?: string;
 }
 
-/** An expression editor in Lisp syntax. While focused, clicking a cell inserts its name. */
-export function SxField({ value, onCommit, onDone, cell, placeholder, autoFocus, preview, className, label, width }: SxFieldProps) {
-  const session = useSession();
+/**
+ * An expression editor in Lisp syntax, with colours, completion and help.
+ * Enter commits, Esc cancels. While focused, clicking a cell inserts its name.
+ */
+export function SxField({ value, onCommit, onDone, cell, placeholder, autoFocus, preview, className, label, width, prop }: SxFieldProps) {
   const source = value === undefined || value === null ? '' : print(value, width ?? 56);
   const [text, setText] = useState(source);
   const [focused, setFocused] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ref = useRef<HTMLTextAreaElement>(null);
   const skip = useRef(false);
+  const textRef = useRef(text);
+  textRef.current = text;
+  const editor = useRef<CodeEditorHandle>(null);
 
   useEffect(() => {
     if (!focused) {
@@ -43,25 +51,6 @@ export function SxField({ value, onCommit, onDone, cell, placeholder, autoFocus,
       setError(null);
     }
   }, [source, focused]);
-  useEffect(() => grow(ref.current), [text]);
-  useEffect(() => {
-    if (autoFocus && ref.current) {
-      ref.current.focus();
-      ref.current.setSelectionRange(ref.current.value.length, ref.current.value.length);
-    }
-  }, [autoFocus]);
-
-  const result = useMemo(() => {
-    if (!preview || !focused || !text.trim()) return null;
-    const s = session.state;
-    if (!s.doc) return null;
-    try {
-      const r = evalIn(s.doc, { rows: (n) => s.collections[n] ?? [], now: s.now }, read(text), cell);
-      return r.error ? { error: r.error } : { value: show(plainValue(r.value)) };
-    } catch (e) {
-      return { error: (e as Error).message };
-    }
-  }, [preview, focused, text, cell, session]);
 
   const commit = (): boolean => {
     try {
@@ -75,60 +64,73 @@ export function SxField({ value, onCommit, onDone, cell, placeholder, autoFocus,
     }
   };
 
-  const insert = (name: string) => {
-    const el = ref.current;
-    if (!el) return;
-    const before = el.value.slice(0, el.selectionStart);
-    const pad = before && !/[\s(]$/.test(before) ? ' ' : '';
-    el.setRangeText(pad + name, el.selectionStart, el.selectionEnd, 'end');
-    setText(el.value);
+  // Hand the draft over to the studio; this field then lets go without committing.
+  const field = useMemo(() => (cell && prop ? {
+    cell, prop,
+    take: () => {
+      const draft = textRef.current;
+      skip.current = true;
+      setText(source);
+      setError(null);
+      return draft;
+    },
+  } : null), [cell, prop, source]);
+  const expand = () => {
+    if (!cell || !prop) return;
+    openStudio({ cell, prop });
   };
+  useEffect(() => () => setActiveField(null, field ?? undefined), [field]);
 
   return (
-    <div className={cx('sx-field', className, error && 'has-error')}>
-      <textarea
-        ref={ref}
-        rows={1}
-        value={text}
-        aria-label={label ?? 'Formula'}
-        placeholder={placeholder}
-        spellCheck={false}
-        autoCapitalize="off"
-        autoCorrect="off"
-        onChange={(e) => setText(e.target.value)}
-        onFocus={() => {
-          setFocused(true);
-          session.pick = insert;
-        }}
-        onBlur={() => {
-          if (session.pick === insert) session.pick = null;
-          setFocused(false);
-          if (skip.current) skip.current = false;
-          else commit();
-          onDone?.();
-        }}
-        onKeyDown={(e) => {
-          e.stopPropagation();
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            if (commit()) {
-              skip.current = true;
-              e.currentTarget.blur();
-            }
-          } else if (e.key === 'Escape') {
-            e.preventDefault();
-            skip.current = true;
-            setText(source);
-            setError(null);
-            e.currentTarget.blur();
-          }
-        }}
-      />
-      {error && <p className="field-error">{error}</p>}
-      {!error && result && (
-        <p className={cx('sx-preview', result.error && 'is-error')}>{result.error ? result.error : `= ${result.value}`}</p>
+    <CodeEditor
+      ref={editor}
+      value={text}
+      onChange={(t) => {
+        setText(t);
+        if (error) setError(null);
+      }}
+      cell={cell}
+      label={label ?? 'Formula'}
+      placeholder={placeholder}
+      autoFocus={autoFocus}
+      preview={preview}
+      className={cx(className, field && 'has-actions')}
+      commitKey="enter"
+      error={error}
+      onExpand={field ? expand : undefined}
+      onFocus={() => {
+        setFocused(true);
+        if (field) setActiveField(field);
+      }}
+      onBlur={() => {
+        setFocused(false);
+        if (field) setActiveField(null, field);
+        if (skip.current) skip.current = false;
+        else commit();
+        onDone?.();
+      }}
+      onCommit={() => {
+        if (commit()) {
+          skip.current = true;
+          (document.activeElement as HTMLElement | null)?.blur();
+        }
+      }}
+      onCancel={() => {
+        skip.current = true;
+        setText(source);
+        setError(null);
+        (document.activeElement as HTMLElement | null)?.blur();
+      }}
+      actions={field && (
+        <button
+          type="button" className="cf-act" title="Open in the code studio (⌘E)" aria-label="Open in the code studio"
+          onPointerDown={(e) => e.preventDefault()}
+          onClick={expand}
+        >
+          <Maximize2 size={13} strokeWidth={2} />
+        </button>
       )}
-    </div>
+    />
   );
 }
 

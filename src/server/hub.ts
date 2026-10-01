@@ -1,6 +1,7 @@
 // Fan-out of live events to everyone watching a document.
 
 import type { Actor, Op } from '../core/types';
+import type { AgentRequest } from './compose';
 import type { Message } from './store';
 
 export type DocEvent =
@@ -9,12 +10,17 @@ export type DocEvent =
   | { type: 'message'; message: Message }
   | { type: 'presence'; actor: Actor; state: 'reading' | 'editing' | 'listening' | 'idle'; ts: number }
   | { type: 'data'; collection: string }
+  | { type: 'compose'; request: AgentRequest }
   | { type: 'deleted' };
 
 type Listener = (e: DocEvent) => void;
 
+/** How long an agent counts as present after it last listened. */
+const LISTEN_GRACE = 30_000;
+
 export class Hub {
   private rooms = new Map<string, Set<Listener>>();
+  private ears = new Map<string, { waiting: number; at: number }>();
 
   subscribe(docId: string, fn: Listener): () => void {
     let room = this.rooms.get(docId);
@@ -33,6 +39,28 @@ export class Hub {
   /** Data belongs to no single document, so everyone hears about it. */
   publishAll(e: DocEvent): void {
     for (const id of [...this.rooms.keys()]) this.publish(id, e);
+  }
+
+  /** An agent is waiting on this document; call the returned function when it stops. */
+  listen(docId: string): () => void {
+    const e = this.ears.get(docId) ?? { waiting: 0, at: 0 };
+    this.ears.set(docId, e);
+    e.waiting++;
+    e.at = Date.now();
+    return () => {
+      e.waiting--;
+      e.at = Date.now();
+    };
+  }
+
+  /** Whether an agent is listening on this document (or on any) now or did in the last half minute (an agent loops on edgy_listen). */
+  listening(docId?: string): boolean {
+    const near = (e: { waiting: number; at: number }) => e.waiting > 0 || Date.now() - e.at < LISTEN_GRACE;
+    if (docId) {
+      const e = this.ears.get(docId);
+      return !!e && near(e);
+    }
+    return [...this.ears.values()].some(near);
   }
 
   /** Resolve with the first matching event, or null after the timeout. */

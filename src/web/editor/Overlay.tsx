@@ -65,7 +65,7 @@ export function Overlay({ host }: { host: RefObject<HTMLDivElement | null> }) {
   const links = useS((s) => s.links);
   const flashes = useS((s) => s.flashes);
   const editing = useS((s) => s.editing);
-  const live = useS((s) => s.mode === 'live');
+  const live = useS((s) => s.mode !== 'edit');
   const menu = useS((s) => s.menu);
   const [rects, setRects] = useState<Record<string, Rect>>({});
   const [, setTick] = useState(0);

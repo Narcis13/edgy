@@ -1,6 +1,8 @@
 /* ─────────────────────────── tokens ─────────────────────────── */
 
-:root {
+/* .theme-light keeps a region on paper colours whatever the theme: the printed pages. */
+:root,
+.theme-light {
   --font-ui: 'Recursive Variable', ui-sans-serif, system-ui, sans-serif;
   --font-serif: 'Newsreader Variable', Georgia, 'Times New Roman', serif;
 
@@ -299,10 +301,11 @@ select.text-field { appearance: auto; }
 .side.left { grid-column: 1; width: 300px; border-right: 1px solid var(--line); }
 .side.right { grid-column: 3; width: 320px; border-left: 1px solid var(--line); }
 .desk { grid-column: 2; position: relative; overflow: auto; background: var(--glass); }
-.desk-inner { position: relative; padding: 64px 40px 200px; min-width: max-content; }
+.desk-inner { position: relative; padding: 64px 40px 200px; }
+/* The sheet is as wide as the document asks, or as the screen allows: then its rows reflow. */
 .sheet {
   position: relative; margin: 0 auto; background: var(--paper); box-shadow: var(--shadow), 0 0 0 1px var(--line); display: flex; flex-direction: column;
-  font-size: 15px; line-height: 1.5; border-radius: 2px;
+  font-size: 15px; line-height: 1.5; border-radius: 2px; width: 100%; padding: var(--pad, 28px); container: sheet / inline-size;
 }
 .sheet.is-dropping { outline: 2px dashed var(--accent); outline-offset: 4px; }
 .sheet > .cell { flex: 1 1 auto; }
@@ -391,6 +394,8 @@ select.text-field { appearance: auto; }
 .text-editor::placeholder { color: var(--faint); font-style: italic; }
 
 /* formula */
+/* A number in a row is never broken across lines; the cells beside it give way instead. */
+.group.kind-row > .leaf.kind-formula { min-width: auto; }
 .value { font-variant-numeric: tabular-nums; overflow-wrap: break-word; }
 .value.fn { color: var(--muted); }
 .cell.is-editing .sx-field { font-size: 13px; font-weight: 400; font-style: normal; color: var(--ink); text-align: left; letter-spacing: 0; line-height: 1.45; }
@@ -650,15 +655,65 @@ table.data td.num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* ─────────────────────────── small screens ─────────────────────────── */
 
+/*
+ * A row lays its cells side by side. On a narrow sheet it lets them wrap: each
+ * cell that shares space keeps at least a readable width and the rest move to
+ * the next line. Rows marked stack "never" (table lines) stay side by side;
+ * "always" stacks at any width.
+ */
+.group.kind-row[data-stack='always'] { flex-direction: column; }
+.group.kind-row[data-stack='always'] > .divider { display: none; }
+.group.kind-row[data-stack='always'] { gap: var(--gap, 0px); }
+@container sheet (max-width: 600px) {
+  .group.kind-row[data-stack='auto'] { flex-wrap: wrap; gap: var(--gap, 0px); }
+  .group.kind-row[data-stack='auto'] > .divider { display: none; }
+  /* Columns give way first, so what is inside them keeps a usable width. */
+  .group.kind-row[data-stack='auto'] > .leaf[data-size='fill'] { min-width: min(100%, 120px); }
+  .group.kind-row[data-stack='auto'] > .group[data-size='fill'] { min-width: min(100%, 260px); }
+  .group.kind-row[data-stack='auto'] > .cell[data-size='fixed'] { max-width: 100%; }
+  .leaf { padding: 8px 10px; }
+  /* Lines that stay side by side: values keep whole words; the fields beside them give way. */
+  .group[data-stack='never'] > .leaf { padding-left: 5px; padding-right: 5px; }
+  .group[data-stack='never'] > .leaf.kind-formula,
+  .group[data-stack='never'] > .leaf.kind-text { min-width: auto; }
+  .group[data-stack='never'] > .leaf .control { padding-left: 6px; padding-right: 6px; }
+}
+.side-backdrop,
+.more-btn { display: none; }
+
 @media (max-width: 720px) {
   .side.left,
-  .side.right { position: fixed; top: 88px; bottom: 0; z-index: 20; width: min(320px, 90vw); box-shadow: var(--pop); }
+  .side.right { position: fixed; top: 0; bottom: 0; z-index: 41; width: min(340px, 88vw); box-shadow: var(--pop); }
   .side.left { left: 0; }
   .side.right { right: 0; }
-  .desk-inner { padding: 40px 16px 160px; }
-  .topbar .title { width: 12ch; }
+  .side-backdrop { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(16, 15, 29, 0.32); animation: fade 160ms; }
+  .desk-inner { padding: 14px 8px 140px; }
+  .sheet { padding: 14px !important; min-height: 0 !important; }
+  .topbar { gap: 6px; padding-left: 10px; padding-right: 8px; }
+  .topbar .title { width: auto; flex: 1 1 0; min-width: 4ch; }
+  .topbar .grow { display: none; }
+  .logo-word { display: none; }
   .save-state { display: none; }
+  .tools .sep, .wide-only { display: none !important; }
+  .more-btn { display: grid; }
+  .seg.mode button { padding-left: 8px; padding-right: 8px; }
+  .editor.mode-live .fbar,
+  .editor.mode-page .fbar { display: none; }
+  .fbar { padding-left: 10px; gap: 6px; }
+  .fbar-name { min-width: 0; max-width: 34%; overflow: hidden; }
+  .toolbar { max-width: calc(100% - 8px); overflow-x: auto; }
   .home { padding: 24px 16px 60px; }
   .data-page { grid-template-columns: 1fr; }
   .collections { border-right: 0; border-bottom: 1px solid var(--line); }
 }
+@keyframes fade { from { opacity: 0; } }
+
+.more-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 45; min-width: 210px; background: var(--raised); border-radius: 12px; box-shadow: var(--pop);
+  padding: 6px; display: flex; flex-direction: column; animation: rise 140ms;
+}
+.more-menu button {
+  display: flex; align-items: center; gap: 10px; border: 0; background: none; text-align: left; padding: 9px 10px; border-radius: 8px; color: var(--ink);
+}
+.more-menu button:hover, .more-menu button.is-on { background: var(--sunken); }
+.more-menu button svg { color: var(--muted); }

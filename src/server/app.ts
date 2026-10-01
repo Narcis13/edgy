@@ -15,12 +15,15 @@ import { indexTree } from '../core/tree';
 import { GUIDE } from '../core/reference';
 import { TEMPLATES, tour } from '../core/templates';
 import { Hub } from './hub';
+import { type Provider, type Target, ComposeError, Requests, TARGETS, claudeConfig, compose, context, validate } from './compose';
 import { type Store, shortId } from './store';
 
 const ASSET_TYPES: Record<string, string> = {
   'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif', 'image/svg+xml': 'svg',
 };
 const MAX_ASSET = 8 * 1024 * 1024;
+/** How long a person's compose request waits for a listening agent. */
+const AGENT_WAIT = 45_000;
 
 function cleanActor(a: unknown): Actor {
   const o = (a ?? {}) as Record<string, unknown>;
@@ -32,7 +35,9 @@ function cleanActor(a: unknown): Actor {
 export function createApp(store: Store, assetsDir: string, webUrl?: string) {
   const app = new Hono();
   const hub = new Hub();
+  const requests = new Requests();
   const world = (): World => ({ rows: (name) => store.rows(name), now: Date.now() });
+  const collections = () => store.collections().map((c) => c.name);
 
   /** What an agent needs to see of a document: structure, values and what is broken. */
   function view(doc: Doc, format: string) {
@@ -189,19 +194,83 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string) {
     return c.json(message, 201);
   });
 
-  /** Long-poll: an agent waits here for the next thing a person says. */
+  /** Long-poll: an agent waits here for the next thing a person says, or asks it to write. */
   app.get('/api/docs/:id/messages/wait', async (c) => {
     const id = c.req.param('id');
     if (!store.getDoc(id)) return c.json({ error: 'no such document' }, 404);
     const after = Number(c.req.query('after') ?? 0);
     const seconds = Math.min(120, Math.max(1, Number(c.req.query('timeout') ?? 25)));
-    const waiting = store.messages(id, after).filter((m) => m.actor.kind === 'human');
-    if (waiting.length) return c.json({ messages: waiting });
-    const actor: Actor = { kind: 'agent', name: c.req.query('agent') || 'Agent' };
-    hub.publish(id, { type: 'presence', actor, state: 'listening', ts: Date.now() });
-    const e = await hub.waitFor(id, (ev) => ev.type === 'message' && ev.message.actor.kind === 'human', seconds * 1000, c.req.raw.signal);
-    hub.publish(id, { type: 'presence', actor, state: e ? 'reading' : 'idle', ts: Date.now() });
-    return c.json({ messages: e && e.type === 'message' ? [e.message] : [] });
+    const stop = hub.listen(id);
+    try {
+      const waiting = store.messages(id, after).filter((m) => m.actor.kind === 'human');
+      const asked = requests.take(id);
+      if (waiting.length || asked.length) return c.json({ messages: waiting, requests: asked });
+      const actor: Actor = { kind: 'agent', name: c.req.query('agent') || 'Agent' };
+      hub.publish(id, { type: 'presence', actor, state: 'listening', ts: Date.now() });
+      const e = await hub.waitFor(id, (ev) => (ev.type === 'message' && ev.message.actor.kind === 'human') || ev.type === 'compose', seconds * 1000, c.req.raw.signal);
+      hub.publish(id, { type: 'presence', actor, state: e ? 'reading' : 'idle', ts: Date.now() });
+      return c.json({ messages: e && e.type === 'message' ? [e.message] : [], requests: requests.take(id) });
+    } finally {
+      stop();
+    }
+  });
+
+  // ── composing: words in, checked code out ──
+
+  app.get('/api/ai', (c) => {
+    const claude = claudeConfig();
+    return c.json({ providers: { claude: !!claude, agent: hub.listening(c.req.query('doc') || undefined), local: true }, model: claude?.model ?? null });
+  });
+
+  app.post('/api/docs/:id/compose', async (c) => {
+    const doc = store.getDoc(c.req.param('id'));
+    if (!doc) return c.json({ error: 'no such document' }, 404);
+    const body = (await c.req.json()) as { prompt?: string; cell?: string; target?: string; current?: string; provider?: string };
+    const prompt = typeof body.prompt === 'string' ? body.prompt.trim().slice(0, 2000) : '';
+    if (!prompt) return c.json({ error: 'say what the cell should do' }, 400);
+    const target = (body.target ?? 'expr') as Target;
+    if (!TARGETS.includes(target)) return c.json({ error: `target is one of ${TARGETS.join(', ')}` }, 400);
+    const provider = body.provider as Provider | undefined;
+    if (provider && !['claude', 'agent', 'local'].includes(provider)) return c.json({ error: 'provider is claude, agent or local' }, 400);
+    const ctx = context(doc, world(), collections(), { cell: body.cell, target, current: typeof body.current === 'string' ? body.current : '' });
+    if (body.cell && !ctx.cell) return c.json({ error: `no cell "${body.cell}"` }, 400);
+    const cell = ctx.cell;
+    const agent = hub.listening(doc.id)
+      ? () => {
+          const { request, answer } = requests.open(doc.id, {
+            prompt, target, current: ctx.current,
+            ...(cell ? { cell: cell.id, ...(cell.name ? { cellName: cell.name } : {}) } : {}),
+          }, AGENT_WAIT, c.req.raw.signal);
+          hub.publish(doc.id, { type: 'compose', request });
+          return answer;
+        }
+      : null;
+    try {
+      return c.json(await compose(ctx, prompt, { provider, claude: claudeConfig(), agent }));
+    } catch (e) {
+      if (e instanceof ComposeError) return c.json({ error: e.message, ...(e.suggestions?.length ? { suggestions: e.suggestions } : {}) }, 422);
+      throw e;
+    }
+  });
+
+  /** An agent's answer to a compose request. Checked like any other; a failure can be resent. */
+  app.post('/api/docs/:id/compose/:rid', async (c) => {
+    const id = c.req.param('id');
+    const doc = store.getDoc(id);
+    const request = doc && requests.get(id, c.req.param('rid'));
+    if (!doc || !request) return c.json({ error: 'no such request; it may have been answered or timed out' }, 404);
+    const body = (await c.req.json()) as { code?: unknown; explanation?: string; actor?: unknown };
+    let expr: Sx;
+    try {
+      const ctx = context(doc, world(), collections(), { cell: request.cell, target: request.target, current: request.current });
+      expr = validate(ctx, body.code, request.target);
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 422);
+    }
+    const explanation = typeof body.explanation === 'string' ? body.explanation.slice(0, 600) : undefined;
+    requests.answer(request.id, { expr, explanation });
+    hub.publish(id, { type: 'presence', actor: { ...cleanActor(body.actor), kind: 'agent' }, state: 'editing', ts: Date.now() });
+    return c.json({ ok: true });
   });
 
   // ── collections ──

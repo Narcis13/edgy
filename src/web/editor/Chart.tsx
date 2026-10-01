@@ -38,6 +38,9 @@ function niceTicks(min: number, max: number, target = 3): number[] {
   return ticks;
 }
 
+/** Below this width a donut's legend sits under it (see kinds.css). */
+const NARROW = 360;
+
 const compact = (n: number) => (Math.abs(n) >= 10_000 ? formatValue(n, 'compact') : formatValue(n));
 
 function useSize<T extends HTMLElement>() {
@@ -100,11 +103,14 @@ export function Chart({ type, value, label, max, format, currency }: Props) {
     const parts = points.filter((p) => p.value > 0);
     const shown = parts.length > 8 ? [...parts.slice(0, 7), { label: 'Other', value: parts.slice(7).reduce((s, p) => s + p.value, 0) }] : parts;
     const total = shown.reduce((s, p) => s + p.value, 0) || 1;
-    const size = Math.max(60, Math.min(h - (label ? 24 : 0), w * 0.45, 220));
+    // Beside its legend the donut takes under half the width; in a narrow cell the legend goes underneath.
+    const size = Math.max(60, Math.min(w < NARROW ? 160 : h - (label ? 24 : 0), w * (w < NARROW ? 0.7 : 0.45), 220));
     const r = size / 2 - 2;
     const stroke = Math.max(10, r * 0.34);
     const c = 2 * Math.PI * (r - stroke / 2);
     let acc = 0;
+    // The figure in the hole shrinks to fit inside it.
+    const centre = hover == null ? fmt(total) : fmt(shown[hover].value);
     return (
       <div className="chart" ref={ref}>
         {label && <div className="chart-title">{label}</div>}
@@ -126,8 +132,9 @@ export function Chart({ type, value, label, max, format, currency }: Props) {
                 return el;
               })}
             </g>
-            <text x={size / 2} y={size / 2} className="donut-total" textAnchor="middle" dominantBaseline="central">
-              {hover == null ? fmt(total) : fmt(shown[hover].value)}
+            <text x={size / 2} y={size / 2} className="donut-total" textAnchor="middle" dominantBaseline="central"
+              style={{ fontSize: Math.min(15, ((r - stroke) * 2 * 0.86) / Math.max(3, centre.length) / 0.6) }}>
+              {centre}
             </text>
           </svg>
           <ul className="legend">

@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  Calendar, ChartArea, ChartColumn, ChartLine, ChartPie, CircleDashed, Gauge, Hash, Image, type LucideIcon, MousePointerClick,
-  Sigma, SlidersHorizontal, Smile, SquareCheck, Star, Table2, TextCursorInput, ToggleLeft, Type, ListFilter, Text,
+  Calendar, CalendarDays, ChartArea, ChartColumn, ChartLine, ChartPie, CircleDashed, Gauge, Hash, Image, List, ListChecks, ListOrdered,
+  type LucideIcon, MousePointerClick, PenTool, SeparatorHorizontal, Sigma, Signature, SlidersHorizontal, Smile, SquareCheck, Star, Table2,
+  TextCursorInput, ToggleLeft, TrendingUp, Type, ListFilter, Text,
 } from 'lucide-react';
+import type { Json } from '../../core/types';
 import { cx, useSession } from './ctx';
 
 export interface KindOption {
@@ -13,6 +15,10 @@ export interface KindOption {
   label: string;
   hint: string;
   icon: LucideIcon;
+  /** Props a new cell starts with. */
+  props?: Record<string, Json>;
+  /** Only a way to start a cell, never what an existing cell is called (it differs from another option by its props alone). */
+  preset?: boolean;
 }
 
 export const KIND_OPTIONS: KindOption[] = [
@@ -35,12 +41,25 @@ export const KIND_OPTIONS: KindOption[] = [
   { kind: 'chart', type: 'area', label: 'Area chart', hint: 'A filled line', icon: ChartArea },
   { kind: 'chart', type: 'donut', label: 'Donut', hint: 'Parts of a whole', icon: ChartPie },
   { kind: 'chart', type: 'meter', label: 'Meter', hint: 'One number against a maximum', icon: Gauge },
-  { kind: 'table', label: 'Table', hint: 'Rows of records', icon: Table2 },
+  { kind: 'stat', label: 'Stat', hint: 'A headline number and how it moved', icon: TrendingUp },
+  { kind: 'table', label: 'Table', hint: 'Rows of records to search and sort', icon: Table2 },
+  { kind: 'list', type: 'check', label: 'Checklist', hint: 'Things to tick off', icon: ListChecks },
+  { kind: 'list', type: 'bullet', label: 'Bulleted list', hint: 'Items people add and edit', icon: List },
+  { kind: 'list', type: 'number', label: 'Numbered list', hint: 'Steps in order', icon: ListOrdered },
+  { kind: 'calendar', label: 'Calendar', hint: 'A month of events; pick a day', icon: CalendarDays },
+  { kind: 'canvas', label: 'Drawing', hint: 'Sketch with a mouse, pen or finger', icon: PenTool },
+  { kind: 'canvas', label: 'Signature', hint: 'A line to sign on', icon: Signature, props: { label: 'Sign here' }, preset: true },
+  { kind: 'break', label: 'Page break', hint: 'Start a new page when printed', icon: SeparatorHorizontal },
   { kind: 'empty', label: 'Empty', hint: 'Clear the cell', icon: CircleDashed },
 ];
 
+/** What a cell holds when its type is left out. */
+const DEFAULT_TYPE: Record<string, string> = { input: 'text', chart: 'bar', list: 'bullet' };
+
 export function kindOption(kind: string, type?: string): KindOption {
-  return KIND_OPTIONS.find((o) => o.kind === kind && (o.type === undefined || o.type === (type ?? o.type))) ?? KIND_OPTIONS[0];
+  const t = type ?? DEFAULT_TYPE[kind];
+  const same = KIND_OPTIONS.filter((o) => !o.preset && o.kind === kind);
+  return same.find((o) => o.type === undefined || o.type === t) ?? same[0] ?? KIND_OPTIONS[0];
 }
 
 export function KindMenu({ cell, current, onClose }: { cell: string; current?: KindOption; onClose: () => void }) {
@@ -57,7 +76,7 @@ export function KindMenu({ cell, current, onClose }: { cell: string; current?: K
     document.addEventListener('pointerdown', onDown, true);
     return () => document.removeEventListener('pointerdown', onDown, true);
   }, [onClose]);
-  const choose = (o: KindOption) => session.setKind(cell, o.kind, o.type);
+  const choose = (o: KindOption) => session.setKind(cell, o.kind, o.type, o.props);
   return (
     <div className="kind-menu" ref={ref} role="dialog" aria-label="Choose what this cell holds">
       <input

@@ -10,6 +10,12 @@ import { read, show } from '../../core/sx';
 import { round4, weight } from '../../core/tree';
 import { uploadPicture } from '../lib/api';
 import { Chart } from './Chart';
+import { BreakView } from '../kinds/Break';
+import { CalendarView } from '../kinds/Calendar';
+import { CanvasView } from '../kinds/Canvas';
+import { ListView } from '../kinds/List';
+import { StatView } from '../kinds/Stat';
+import { TableView } from '../kinds/Table';
 import { CELL_ICONS } from './icons';
 import { SxField } from './fields';
 import { Markdown } from './Markdown';
@@ -25,7 +31,7 @@ export const CellView = memo(function CellView({ cell, dir }: Props) {
   const st = useS((s) => s.computed?.cells[cell.id]);
   const selected = useS((s) => s.selection.includes(cell.id));
   const editing = useS((s) => s.editing === cell.id);
-  const live = useS((s) => s.mode === 'live');
+  const live = useS((s) => s.mode !== 'edit');
   const flash = useS((s) => s.flashes[cell.id]);
   const visible = useS((s) =>
     live && cell.children ? cell.children.map((c) => (s.computed?.cells[c.id]?.hidden ? '0' : '1')).join('') : '',
@@ -39,9 +45,10 @@ export const CellView = memo(function CellView({ cell, dir }: Props) {
     selected && 'is-selected', st?.hidden && 'is-hidden', flash && 'is-flash', editing && 'is-editing', !!st?.error && 'has-error',
   );
 
+  const sizing = dir ? (cell.size === 'hug' ? 'hug' : typeof cell.size === 'string' ? 'fixed' : 'fill') : undefined;
   if (isGroup(cell)) {
     return (
-      <div className={classes} data-cell={cell.id} style={style}>
+      <div className={classes} data-cell={cell.id} data-size={sizing} data-stack={cell.kind === 'row' ? stackOf(cell) : undefined} style={style}>
         {cell.children!.map((ch, i) => {
           if (live && visible[i] === '0') return null;
           const prev = live ? visible.lastIndexOf('1', i - 1) >= 0 : i > 0;
@@ -56,12 +63,18 @@ export const CellView = memo(function CellView({ cell, dir }: Props) {
     );
   }
   return (
-    <div className={classes} data-cell={cell.id} style={style}>
+    <div className={classes} data-cell={cell.id} data-size={sizing} style={style}>
       <Leaf cell={cell} st={st} editing={editing} live={live} />
       {st?.error && cell.kind !== 'text' && <span className="cell-error" title={st.error}>{st.error}</span>}
     </div>
   );
 });
+
+/** How a row behaves on a narrow screen: wrap its cells under each other, or keep them side by side. */
+const stackOf = (cell: Cell): string => {
+  const v = cell.style?.stack;
+  return v === 'never' || v === 'always' ? v : 'auto';
+};
 
 function Leaf({ cell, st, editing, live }: { cell: Cell; st: CellState | undefined; editing: boolean; live: boolean }) {
   switch (cell.kind) {
@@ -83,7 +96,17 @@ function Leaf({ cell, st, editing, live }: { cell: Cell; st: CellState | undefin
     case 'chart':
       return <ChartView cell={cell} st={st} />;
     case 'table':
-      return <TableView st={st} />;
+      return <TableView cell={cell} st={st} />;
+    case 'list':
+      return <ListView cell={cell} st={st} />;
+    case 'calendar':
+      return <CalendarView cell={cell} st={st} />;
+    case 'canvas':
+      return <CanvasView cell={cell} st={st} />;
+    case 'stat':
+      return <StatView cell={cell} st={st} />;
+    case 'break':
+      return <BreakView />;
     default:
       return null;
   }
@@ -195,6 +218,7 @@ function FormulaView({ cell, st, editing }: { cell: Cell; st: CellState | undefi
       <SxField
         value={cell.expr}
         cell={cell.id}
+        prop="expr"
         autoFocus
         preview
         className="inline"
@@ -363,7 +387,7 @@ function ImageView({ cell, st, live }: { cell: Cell; st: CellState | undefined; 
   return <img src={src} alt={(st?.props?.alt as string | undefined) ?? cell.alt ?? ''} style={{ objectFit: (cell.fit as 'cover' | 'contain') ?? 'cover' }} draggable={false} />;
 }
 
-// ── chart and table ──
+// ── chart ──
 
 function ChartView({ cell, st }: { cell: Cell; st: CellState | undefined }) {
   const currency = useS((s) => (typeof s.doc?.meta.currency === 'string' ? s.doc.meta.currency : 'USD'));
@@ -374,40 +398,11 @@ function ChartView({ cell, st }: { cell: Cell; st: CellState | undefined }) {
   );
 }
 
-function TableView({ st }: { st: CellState | undefined }) {
-  const now = useS((s) => s.now);
-  const rows = Array.isArray(st?.value) ? (st.value as unknown[]).filter((r) => r && typeof r === 'object' && !Array.isArray(r)) as Record<string, unknown>[] : [];
-  if (!rows.length) return <span className="hint">No rows yet</span>;
-  const cols = [...new Set(rows.slice(0, 50).flatMap((r) => Object.keys(r)))].filter((k) => k !== 'id');
-  const fmt = (k: string, v: unknown) => (k === 'at' && typeof v === 'number' && v > 1e12 ? ago(v, now) : show(v));
-  return (
-    <div className="table-wrap">
-      <table className="data">
-        <thead><tr>{cols.map((c) => <th key={c}>{c}</th>)}</tr></thead>
-        <tbody>
-          {rows.slice(0, 200).map((r, i) => (
-            <tr key={typeof r.id === 'string' ? r.id : i}>{cols.map((c) => <td key={c} className={typeof r[c] === 'number' ? 'num' : ''}>{fmt(c, r[c])}</td>)}</tr>
-          ))}
-        </tbody>
-      </table>
-      {rows.length > 200 && <p className="hint">Showing 200 of {rows.length}</p>}
-    </div>
-  );
-}
-
-function ago(ts: number, now: number): string {
-  const s = Math.max(0, Math.round((now - ts) / 1000));
-  if (s < 45) return 'just now';
-  if (s < 3600) return `${Math.round(s / 60)} min ago`;
-  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
-  return `${Math.round(s / 86400)} d ago`;
-}
-
 // ── the edge between two cells ──
 
 function Divider({ group, index }: { group: Cell; index: number }) {
   const session = useSession();
-  const live = useS((s) => s.mode === 'live');
+  const live = useS((s) => s.mode !== 'edit');
   const a = group.children![index - 1];
   const b = group.children![index];
 
