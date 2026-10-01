@@ -31,13 +31,16 @@ export function ListView({ cell, st }: { cell: Cell; st: CellState | undefined }
   const items: unknown[] = computed ? (Array.isArray(st?.value) ? st.value : []) : asItems(cell.value, type);
   const { done, total } = progress(items);
   const List = type === 'number' ? 'ol' : 'ul';
+  const showProgress = type === 'check' && total > 0 && cell.progress !== false;
 
   return (
-    <div className={cx('klist', `is-${type}`, computed && 'is-computed')} onKeyDown={ownKeys}>
-      {(label || (type === 'check' && total > 0)) && (
+    <div className={cx('klist', `is-${type}`, computed && 'is-computed')} onKeyDown={ownKeys}
+      data-marker={type === 'bullet' && cell.marker && cell.marker !== 'dot' ? cell.marker : undefined}
+      data-density={cell.density === 'compact' || cell.density === 'roomy' ? cell.density : undefined}>
+      {(label || showProgress) && (
         <div className="klist-head">
           {label && <span className="kind-label">{label}</span>}
-          {type === 'check' && total > 0 && (
+          {showProgress && (
             <span className="klist-progress">
               <span className="klist-bar" aria-hidden><i style={{ width: `${(done / total) * 100}%` }} /></span>
               {done} of {total} done

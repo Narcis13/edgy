@@ -37,6 +37,21 @@
 .klist-mark,
 .klist-check { flex: none; width: 24px; height: 30px; display: grid; place-items: center; color: var(--muted); }
 .klist-mark.dot::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+/* Other bullets, and how tightly items sit. */
+.klist[data-marker] .klist-mark.dot::before { width: auto; height: auto; border-radius: 0; background: none; line-height: 1; }
+.klist[data-marker='dash'] .klist-mark.dot::before { content: '–'; }
+.klist[data-marker='arrow'] .klist-mark.dot::before { content: '→'; font-size: 0.9em; }
+.klist[data-marker='star'] .klist-mark.dot::before { content: '★'; font-size: 0.75em; color: var(--warn); }
+.klist[data-marker='none'] .klist-mark.dot { width: 4px; }
+.klist[data-marker='none'] .klist-mark.dot::before { content: none; }
+.klist[data-density='compact'] .klist-item { min-height: 24px; }
+.klist[data-density='compact'] .klist-mark,
+.klist[data-density='compact'] .klist-check { height: 24px; }
+.klist[data-density='compact'] .klist-text { padding-top: 1px; padding-bottom: 1px; }
+.klist[data-density='roomy'] .klist-items { gap: 4px; }
+.klist[data-density='roomy'] .klist-item { min-height: 38px; }
+.klist[data-density='roomy'] .klist-mark,
+.klist[data-density='roomy'] .klist-check { height: 38px; }
 .klist-mark.num { place-items: center end; padding-right: 5px; width: auto; min-width: 24px; font-size: 0.9em; font-variant-numeric: tabular-nums; }
 .klist-check { position: relative; cursor: pointer; }
 .klist-check input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: inherit; }
@@ -192,6 +207,13 @@ button.kcal-agenda-d:hover { color: var(--accent); background: var(--accent-soft
   position: relative; flex: 1; border-radius: 10px; overflow: hidden;
   background: color-mix(in oklab, var(--sunken) 50%, var(--paper)); box-shadow: inset 0 0 0 1px var(--line);
 }
+/* Ruled, squared or dotted paper to draw on. */
+.kcanvas-surface[data-paper='lines'] { background-image: repeating-linear-gradient(to bottom, transparent 0 27px, var(--line) 27px 28px); }
+.kcanvas-surface[data-paper='grid'] {
+  background-image: linear-gradient(to right, var(--line) 1px, transparent 1px), linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.kcanvas-surface[data-paper='dots'] { background-image: radial-gradient(circle, var(--line-strong) 1.1px, transparent 1.4px); background-size: 18px 18px; }
 .kcanvas-draw { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
 .kcanvas-draw path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .kcanvas-hint { position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); font-size: 13px; font-style: italic; pointer-events: none; }
@@ -251,6 +273,9 @@ button.kcal-agenda-d:hover { color: var(--accent); background: var(--accent-soft
 .kstat-delta { padding: 1px 7px; border-radius: 999px; background: var(--sunken); color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
 .kstat-delta.is-up { background: var(--live-soft); color: var(--live); }
 .kstat-delta.is-down { background: var(--bad-soft); color: var(--bad); }
+/* When a fall is good news (costs, bugs), the colours swap. */
+.kstat-delta.is-up.is-inverted { background: var(--bad-soft); color: var(--bad); }
+.kstat-delta.is-down.is-inverted { background: var(--live-soft); color: var(--live); }
 .kstat-vs { color: var(--faint); font-variant-numeric: tabular-nums; }
 .kstat-spark { display: block; width: 100%; height: 34px; margin-top: 6px; color: var(--accent); overflow: visible; }
 .kstat-spark polyline { stroke-width: 1.75; stroke-linejoin: round; stroke-linecap: round; }

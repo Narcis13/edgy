@@ -19,7 +19,7 @@ import { TableView } from '../kinds/Table';
 import { CELL_ICONS } from './icons';
 import { SxField } from './fields';
 import { Markdown } from './Markdown';
-import { cssOf, flexOf } from './look';
+import { COLOR_TOKENS, color, cssOf, flexOf } from './look';
 import { cx, useS, useSession } from './ctx';
 
 interface Props {
@@ -336,6 +336,7 @@ function ButtonView({ cell, st, editing }: { cell: Cell; st: CellState | undefin
   const session = useSession();
   const label = (st?.props?.label as string | undefined) ?? cell.label ?? '';
   const [text, setText] = useState(label);
+  const [asking, setAsking] = useState(false);
   if (editing) {
     return (
       <input
@@ -352,10 +353,24 @@ function ButtonView({ cell, st, editing }: { cell: Cell; st: CellState | undefin
       />
     );
   }
+  const Icon = cell.icon ? CELL_ICONS[cell.icon] : undefined;
+  if (asking) {
+    // Asked first: the question and two answers take the button's place until one is chosen.
+    return (
+      <div className="btn-confirm" role="group" aria-label={cell.confirm}
+        onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setAsking(false); } }}>
+        <span className="btn-confirm-q">{cell.confirm}</span>
+        <button type="button" className="btn solid small" autoFocus onClick={() => { setAsking(false); void session.run(cell.id); }}>Yes</button>
+        <button type="button" className="btn ghost small" onClick={() => setAsking(false)}>No</button>
+      </div>
+    );
+  }
   return (
-    <button type="button" className={cx('btn', cell.variant ?? 'solid', cell.do == null && 'is-idle')} title={cell.do == null ? 'This button does nothing yet' : undefined}
-      onClick={() => void session.run(cell.id)}>
-      {label || <span className="hint">Button</span>}
+    <button type="button" className={cx('btn', cell.variant ?? 'solid', cell.do == null && 'is-idle', Icon && 'has-icon')} title={cell.do == null ? 'This button does nothing yet' : undefined}
+      onClick={() => (cell.confirm && cell.do != null ? setAsking(true) : void session.run(cell.id))}>
+      {Icon && <Icon size={16} strokeWidth={2} aria-hidden />}
+      {label || (Icon ? null : <span className="hint">Button</span>)}
+      {!label && Icon && <span className="sr-only">{cell.icon}</span>}
     </button>
   );
 }
@@ -392,10 +407,15 @@ function ImageView({ cell, st, live }: { cell: Cell; st: CellState | undefined; 
 function ChartView({ cell, st }: { cell: Cell; st: CellState | undefined }) {
   const currency = useS((s) => (typeof s.doc?.meta.currency === 'string' ? s.doc.meta.currency : 'USD'));
   const max = st?.props?.max ?? cell.max;
-  return (
+  const chart = (
     <Chart type={cell.type ?? 'bar'} value={st?.value} label={(st?.props?.label as string | undefined) ?? cell.label}
       max={typeof max === 'number' ? max : undefined} format={cell.format} currency={currency} />
   );
+  const tint = color(cell.color);
+  if (!tint) return chart;
+  // The series takes the cell's colour; a token's soft shade backs a meter.
+  const soft = COLOR_TOKENS.includes(`${cell.color}-soft` as (typeof COLOR_TOKENS)[number]) ? `var(--${cell.color}-soft)` : `color-mix(in oklab, ${tint} 18%, transparent)`;
+  return <div className="chart-tint" style={{ '--chart-color': tint, '--chart-soft': soft } as React.CSSProperties}>{chart}</div>;
 }
 
 // ── the edge between two cells ──

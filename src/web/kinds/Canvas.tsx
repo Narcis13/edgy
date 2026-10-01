@@ -10,7 +10,8 @@ import { SPACE, type Stroke, addPoint, lowest, smoothPath, toStrokes } from './s
 import { ownKeys, tokenColor, useBox, useSetValue } from './shared';
 import './kinds.css';
 
-const INKS = [['ink', 'Ink'], ['accent', 'Blue'], ['bad', 'Red'], ['live', 'Green']] as const;
+const INKS: [string, string][] = [['ink', 'Ink'], ['accent', 'Blue'], ['bad', 'Red'], ['live', 'Green']];
+const PAPERS = new Set(['lines', 'grid', 'dots']);
 const WIDTHS = { thin: 3.5, thick: 9 };
 const MARGIN = 24;
 const MIN_HEIGHT = 160;
@@ -24,7 +25,10 @@ export function CanvasView({ cell, st }: { cell: Cell; st: CellState | undefined
   const latest = useRef(strokes);
   latest.current = strokes;
   const label = (st?.props?.label as string | undefined) ?? cell.label;
-  const [ink, setInk] = useState<string>('ink');
+  // The pen starts in the cell's colour; a colour that isn't one of the four joins them.
+  const first = typeof cell.color === 'string' && cell.color ? cell.color : 'ink';
+  const inks = INKS.some(([c]) => c === first) ? INKS : [[first, first] as [string, string], ...INKS];
+  const [ink, setInk] = useState<string>(first);
   const [thick, setThick] = useState(false);
   const [drawing, setDrawing] = useState<Stroke | null>(null);
   const pointer = useRef<number | null>(null);
@@ -75,7 +79,7 @@ export function CanvasView({ cell, st }: { cell: Cell; st: CellState | undefined
   const empty = !strokes.length && !drawing;
   return (
     <div className="kcanvas" onKeyDown={ownKeys}>
-      <div className={cx('kcanvas-surface', label && 'has-line')} ref={ref} style={{ minHeight }}>
+      <div className={cx('kcanvas-surface', label && 'has-line')} ref={ref} style={{ minHeight }} data-paper={PAPERS.has(cell.paper ?? '') ? cell.paper : undefined}>
         {label && (
           <div className={cx('kcanvas-line', !empty && 'is-signed')} aria-hidden>
             <span className="kcanvas-x">×</span>
@@ -91,9 +95,9 @@ export function CanvasView({ cell, st }: { cell: Cell; st: CellState | undefined
         </svg>
       </div>
       <div className="kcanvas-tools" role="toolbar" aria-label="Pen">
-        {INKS.map(([c, name]) => (
+        {inks.map(([c, name]) => (
           <button key={c} type="button" className={cx('kcanvas-ink', ink === c && 'is-on')} aria-pressed={ink === c} title={name} aria-label={`${name} ink`}
-            onClick={() => setInk(c)}><i style={{ background: `var(--${c})` }} /></button>
+            onClick={() => setInk(c)}><i style={{ background: tokenColor(c, 'var(--ink)') }} /></button>
         ))}
         <i className="kcanvas-sep" />
         <button type="button" className={cx('kcanvas-size', !thick && 'is-on')} aria-pressed={!thick} title="Thin" aria-label="Thin pen" onClick={() => setThick(false)}><i className="thin" /></button>

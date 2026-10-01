@@ -52,10 +52,10 @@ export function addMonths(iso: string, n: number): string {
   return isoOf(target);
 }
 
-/** The weeks of a month (month 0–11), Monday first, padded with the neighbouring months' days. */
-export function monthGrid(year: number, month: number): Day[][] {
+/** The weeks of a month (month 0–11), Monday first (or Sunday), padded with the neighbouring months' days. */
+export function monthGrid(year: number, month: number, sundayFirst = false): Day[][] {
   const first = new Date(year, month, 1, 12);
-  const lead = (first.getDay() + 6) % 7;
+  const lead = sundayFirst ? first.getDay() : (first.getDay() + 6) % 7;
   const days = new Date(year, month + 1, 0).getDate();
   const count = Math.ceil((lead + days) / 7) * 7;
   const weeks: Day[][] = [];
@@ -68,6 +68,9 @@ export function monthGrid(year: number, month: number): Day[][] {
 }
 
 export const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+/** The names of the days in the order a week starting on Sunday shows them. */
+export const weekdays = (sundayFirst: boolean): string[] => (sundayFirst ? ['Sunday', ...WEEKDAYS.slice(0, 6)] : WEEKDAYS);
 
 export const monthName = (year: number, month: number): string =>
   new Date(year, month, 1, 12).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });

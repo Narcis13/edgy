@@ -10,6 +10,7 @@ import { Printer } from 'lucide-react';
 import type { Doc } from '../../core/types';
 import { CellView } from '../editor/CellView';
 import { useS, useSession } from '../editor/ctx';
+import { docCss } from '../editor/look';
 import { type Box, MM, type PageSpec, type Slice, pageSpec, paginate } from './paginate';
 import { PageSetup } from './PageSetup';
 import './print.css';
@@ -117,7 +118,7 @@ function Page({ doc, spec, slice, n, of, fit, flow }: {
       <section className="page" aria-label={`Page ${n} of ${of}`}
         style={{ width: `${spec.w}mm`, height: `${spec.h}mm`, padding: `${spec.margin}mm`, transform: fit < 1 ? `scale(${fit})` : undefined }}>
         <div className="page-window" style={{ height: slice.end - slice.start }}>
-          <div className="page-flow" ref={flow} style={{ top: -slice.start }}>
+          <div className="page-flow" ref={flow} style={{ ...docCss(doc.meta), top: -slice.start }}>
             <CellView cell={doc.root} dir={null} />
           </div>
         </div>

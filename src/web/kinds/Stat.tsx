@@ -40,7 +40,7 @@ export function StatView({ cell, st }: { cell: Cell; st: CellState | undefined }
         <span className={cx('kstat-value', text === '' && 'is-empty')}>{text === '' ? '—' : text}</span>
         {delta !== undefined && !st?.error && (
           <span className="kstat-change">
-            <span className={cx('kstat-delta', delta && `is-${delta.dir}`)}
+            <span className={cx('kstat-delta', delta && `is-${delta.dir}`, cell.better === 'down' && 'is-inverted')}
               aria-label={delta ? `${delta.dir === 'up' ? 'Up' : delta.dir === 'down' ? 'Down' : 'No change'} ${changeText(delta).replace(/^[▲▼] /, '')}` : 'No earlier value to compare with'}>
               {changeText(delta)}
             </span>

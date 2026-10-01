@@ -163,3 +163,14 @@ test('typed rows and their columns follow a renamed or dropped field', async () 
   assert.equal(dropColumn(['item'], 'item'), null);
   assert.equal(renameColumn(null, 'a', 'b'), null);
 });
+
+test('a month grid can start on Sunday', async () => {
+  const { weekdays } = await import('./month');
+  const oct = monthGrid(2026, 9, true); // 1 October 2026 is a Thursday
+  assert.equal(oct[0][0].iso, '2026-09-27');
+  assert.equal(oct[0][4].iso, '2026-10-01');
+  assert.ok(oct.every((w) => w.length === 7));
+  assert.equal(monthGrid(2026, 2, true)[0][0].iso, '2026-03-01'); // March 2026 starts on a Sunday
+  assert.deepEqual(weekdays(true).slice(0, 2), ['Sunday', 'Monday']);
+  assert.equal(weekdays(false)[0], 'Monday');
+});

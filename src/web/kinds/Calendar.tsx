@@ -7,7 +7,7 @@ import type { Cell } from '../../core/types';
 import type { CellState } from '../../core/engine';
 import { cx } from '../editor/ctx';
 import {
-  type CalEvent, WEEKDAYS, addDays, addMonths, dateOf, eventsFrom, eventsOn, isoOf, monthGrid, monthName, toDay, toEvents,
+  type CalEvent, addDays, addMonths, dateOf, eventsFrom, eventsOn, isoOf, monthGrid, monthName, toDay, toEvents, weekdays,
 } from './month';
 import { ownKeys, tokenColor, useSetValue } from './shared';
 import './kinds.css';
@@ -42,7 +42,8 @@ export function CalendarView({ cell, st }: { cell: Cell; st: CellState | undefin
   }, [focus, month]);
 
   const [y, m] = month.split('-').map(Number);
-  const weeks = monthGrid(y, m - 1);
+  const sunday = cell.week === 'sun';
+  const weeks = monthGrid(y, m - 1, sunday);
   const go = (iso: string, keyboard = false) => {
     moving.current = keyboard;
     setFocus(iso);
@@ -62,7 +63,7 @@ export function CalendarView({ cell, st }: { cell: Cell; st: CellState | undefin
     if (e.key in step) go(addDays(focus, step[e.key]), true);
     else if (e.key === 'PageUp' || e.key === 'PageDown') go(addMonths(focus, e.key === 'PageUp' ? -1 : 1), true);
     else if (e.key === 'Home' || e.key === 'End') {
-      const wd = (dateOf(focus).getDay() + 6) % 7;
+      const wd = sunday ? dateOf(focus).getDay() : (dateOf(focus).getDay() + 6) % 7;
       go(addDays(focus, e.key === 'Home' ? -wd : 6 - wd), true);
     } else return;
     e.preventDefault();
@@ -82,7 +83,7 @@ export function CalendarView({ cell, st }: { cell: Cell; st: CellState | undefin
       </div>
       <div className="kcal-grid" role="grid" aria-label={monthName(y, m - 1)} ref={grid} onKeyDown={onKey}>
         <div className="kcal-row kcal-wd" role="row">
-          {WEEKDAYS.map((d) => <span key={d} role="columnheader" aria-label={d} className="kcal-wdname">{d[0]}</span>)}
+          {weekdays(sunday).map((d) => <span key={d} role="columnheader" aria-label={d} className="kcal-wdname">{d[0]}</span>)}
         </div>
         {weeks.map((w) => (
           <div className="kcal-row" role="row" key={w[0].iso}>

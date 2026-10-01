@@ -14,6 +14,7 @@ import { FormulaBar } from './FormulaBar';
 import { Inspector } from './Inspector';
 import { Overlay } from './Overlay';
 import { SessionContext, cx, useS, useSession } from './ctx';
+import { docCss } from './look';
 import { Logo } from '../pages/Logo';
 import { StudioHost } from '../code/Studio';
 import { Pages } from '../print/Pages';
@@ -243,7 +244,7 @@ function Desk() {
   return (
     <main className={cx('desk', mode)} onPointerDown={onPointerDown} onClick={onClick} onDoubleClick={onDoubleClick} onDragOver={onDragOver} onDragLeave={() => setDropping(null)} onDrop={(e) => void onDrop(e)}>
       <div className="desk-inner" ref={host}>
-        <div className={cx('sheet', dropping && 'is-dropping')} style={{ maxWidth: typeof meta.width === 'number' ? meta.width : 880, minHeight: typeof meta.minHeight === 'number' ? meta.minHeight : 560, '--pad': `${typeof meta.pad === 'number' ? meta.pad : 28}px` } as React.CSSProperties}>
+        <div className={cx('sheet', dropping && 'is-dropping')} style={{ ...docCss(meta), maxWidth: typeof meta.width === 'number' ? meta.width : 880, minHeight: typeof meta.minHeight === 'number' ? meta.minHeight : 560, '--pad': `${typeof meta.pad === 'number' ? meta.pad : 28}px` } as React.CSSProperties}>
           <CellView cell={doc.root} dir={null} />
         </div>
         <Overlay host={host} />
