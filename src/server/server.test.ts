@@ -101,3 +101,21 @@ test('a saved record can be changed in place', async () => {
   assert.equal((await call('PATCH', '/api/data/invoices/rmissing', { fields: { a: 1 } })).status, 404);
   assert.equal((await call('PATCH', `/api/data/invoices/${made.id}`, { fields: [1] })).status, 400);
 });
+
+test('a template seeds its sample records once, and its tables read them', async () => {
+  const { call } = api();
+  const doc = (await call('POST', '/api/docs', { template: 'tables' })).json;
+  const rows = (await call('GET', '/api/data/studio-invoices')).json;
+  assert.equal(rows.length, 10);
+  await call('POST', '/api/docs', { template: 'tables' });
+  assert.equal((await call('GET', '/api/data/studio-invoices')).json.length, 10);
+  const read = (await call('GET', `/api/docs/${doc.id}/read`)).json;
+  assert.deepEqual(read.errors, {});
+  assert.equal(read.values.billed, 42000);
+  assert.equal(read.values.owed, 42000 - 4200 - 7800 - 3800);
+  assert.equal(read.values.picked, 0);
+  // Picking two invoices totals them.
+  const ids = rows.filter((r: any) => r.client === 'Kite Bikes').map((r: any) => r.id);
+  await call('POST', `/api/docs/${doc.id}/ops`, { ops: [['set', 'invoices', 'selected', ids]] });
+  assert.equal((await call('GET', `/api/docs/${doc.id}/read`)).json.values.picked, 5400 + 3800);
+});

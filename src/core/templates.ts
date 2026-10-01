@@ -8,6 +8,8 @@ export interface Template {
   about: string;
   meta?: Record<string, Json>;
   root: Json;
+  /** Sample records the template's cells read, saved into each collection that is still empty. */
+  data?: Record<string, Record<string, Json>[]>;
 }
 
 const label = { fg: 'muted', size: 13 };
@@ -265,4 +267,132 @@ const showcase: Template = {
           '{{(if (empty? signature) "Not signed yet" (str "Signed by " signer))}}']]]],
 };
 
-export const TEMPLATES: Template[] = [showcase, quote, savings, feedback];
+
+// ── data tables and typography ──
+
+const heading: Json = { font: 'fraunces', size: 26, weight: 700, line: 1.2, tracking: -0.01 };
+const note: Json = { fg: 'muted', size: 13 };
+const eyebrow: Json = { size: 11.5, weight: 650, case: 'upper', tracking: 0.08, fg: 'muted' };
+
+const invoice = (client: string, project: string, status: string, due: string, amount: number): Record<string, Json> => ({ client, project, status, due, amount });
+
+const project = (name: string, lead: string, progress: number, onTrack: boolean, rating: number, site: string, hours: number, budget: number): Json =>
+  ({ project: name, lead, progress, onTrack, rating, site, hours, budget });
+
+const tables: Template = {
+  id: 'tables',
+  title: 'Studio billing',
+  about: 'Data tables at work: invoices grouped by status with buttons on every row, projects typed into the table, totals, and a house style of fonts.',
+  meta: { currency: 'EUR', page: 'A4', orientation: 'portrait', margin: 14, footer: 'title', font: 'inter', headFont: 'fraunces' },
+  data: {
+    'studio-invoices': [
+      invoice('Acme Foods', 'Packaging refresh', 'Paid', '2026-10-03', 4200),
+      invoice('Lumen Health', 'Patient app, phase 1', 'Paid', '2026-10-09', 7800),
+      invoice('Harbor & Co', 'Annual report', 'Sent', '2026-10-21', 3150),
+      invoice('Acme Foods', 'Spring campaign', 'Sent', '2026-10-28', 2600),
+      invoice('Northfield School', 'Wayfinding signs', 'Overdue', '2026-09-26', 1900),
+      invoice('Kite Bikes', 'Brand guidelines', 'Overdue', '2026-09-30', 5400),
+      invoice('Lumen Health', 'Patient app, phase 2', 'Draft', '2026-11-14', 9600),
+      invoice('Orbit Coffee', 'Menu boards', 'Sent', '2026-11-02', 1250),
+      invoice('Harbor & Co', 'Website copy', 'Draft', '2026-11-20', 2300),
+      invoice('Kite Bikes', 'Trade show stand', 'Paid', '2026-10-15', 3800),
+    ],
+  },
+  root: ['col', { style: { gap: 10 } },
+    ['row', { size: 'hug' },
+      ['col', { size: 4 },
+        ['text', { style: eyebrow }, 'Northwind Studio · Q4 2026'],
+        ['text', { style: { font: 'fraunces', size: 40, weight: 700, line: 1.06, tracking: -0.02 } }, 'Billing and projects'],
+        ['text', { style: { font: 'source-serif', size: 17, line: 1.55, fg: 'muted' } },
+          'Every invoice and project in one place. Tick invoices to total them, fold the groups, settle one from its row, and type straight into the project table.']],
+      ['icon', { size: 'hug', style: { fg: 'accent', size: 34 } }, 'receipt']],
+    ['row', { size: 'hug', style: { gap: 8 } },
+      ['stat', { name: 'billed', label: 'Billed this quarter', format: 'currency', icon: 'banknote', trend: ['list', 18400, 23900, 31200, '$billed'] }, ['sum', ['column', '$invoices', 'amount']]],
+      ['stat', { name: 'owed', label: 'Still owed', format: 'currency', icon: 'wallet', better: 'down', compare: 26000 },
+        ['sum-by', ['get', '$it', 'amount'], ['filter', ['!=', ['get', '$it', 'status'], 'Paid'], '$invoices']]],
+      ['stat', { name: 'picked', label: '{{(len (selected invoices))}} picked', format: 'currency', icon: 'circle-check' },
+        ['sum-by', ['get', '$it', 'amount'], ['selected', 'invoices']]]],
+    ['text', { size: 'hug', style: heading }, 'Invoices'],
+    ['text', { size: 'hug', style: note }, 'Grouped by status. Tick rows to total them; the buttons on each row change the saved record, draft a reminder, or delete it.'],
+    ['table', {
+      name: 'invoices', label: 'Invoices', group: 'status', select: 'many', stripes: true, header: 'filled',
+      columns: [
+        { key: 'client', label: 'Client', width: 160, bold: true },
+        { key: 'project', label: 'Project', width: 180 },
+        { key: 'status', label: 'Status', show: 'badge', colors: { Paid: 'live', Sent: 'accent', Overdue: 'bad', Draft: 'warn' } },
+        { key: 'due', label: 'Due', format: 'date' },
+        { key: 'amount', label: 'Amount', format: 'currency', align: 'end', total: 'sum' },
+      ],
+      actions: [
+        { label: 'Paid', icon: 'check', variant: 'soft', do: ['update!', 'studio-invoices', ['get', '$row', 'id'], { status: 'Paid' }] },
+        { label: '', icon: 'mail', variant: 'ghost',
+          do: ['set!', 'reminder', ['str', 'Hi ', ['get', '$row', 'client'], ', a reminder that the invoice for ', ['get', '$row', 'project'], ' (', ['fmt', ['get', '$row', 'amount'], 'currency'], ') is due ', ['fmt', ['get', '$row', 'due'], 'date'], '. Thank you!']] },
+        { label: '', icon: 'trash-2', variant: 'ghost', confirm: 'Delete this invoice?', do: ['delete!', 'studio-invoices', ['get', '$row', 'id']] },
+      ],
+    }, ['rows', 'studio-invoices']],
+    ['row', { size: 'hug', style: { gap: 10 } },
+      ['input', { name: 'reminder', type: 'textarea', label: 'Reminder to send', placeholder: 'Press the envelope on a row to draft one', size: 2 }],
+      ['col', { style: { bg: 'sunken', radius: 12, pad: 14, gap: 4 } },
+        ['text', { style: eyebrow }, 'Picked'],
+        ['text', { style: { font: 'fraunces', size: 30, weight: 700, line: 1.1 } }, '{{picked | currency}}'],
+        ['text', { style: note }, '{{(len (selected invoices))}} of {{(len invoices)}} invoices. Other cells read them with (selected invoices).']]],
+    ['break'],
+    ['text', { size: 'hug', style: heading }, 'Projects'],
+    ['text', { size: 'hug', style: note }, 'Typed into the table itself: in Edit, double-click a cell to change it. Grouped by who leads the work.'],
+    ['table', {
+      name: 'projects', label: 'Projects', group: 'lead', borders: 'grid', density: 'compact',
+      columns: [
+        { key: 'project', label: 'Project', width: 170, bold: true },
+        { key: 'progress', label: 'Progress', show: 'progress', width: 130 },
+        { key: 'onTrack', label: 'On track', show: 'check', align: 'center' },
+        { key: 'rating', label: 'Client rating', show: 'stars' },
+        { key: 'site', label: 'Site', show: 'link' },
+        { key: 'hours', label: 'Hours', format: 'int', align: 'end', total: 'sum' },
+        { key: 'budget', label: 'Budget', format: 'currency', align: 'end', total: 'sum', color: 'accent' },
+        { key: 'lead', label: 'Lead' },
+      ],
+      value: [
+        project('Packaging refresh', 'Mira', 1, true, 5, 'https://acme.example', 120, 4200),
+        project('Patient app', 'Jonas', 0.55, true, 4, 'https://lumen.example', 340, 17400),
+        project('Annual report', 'Mira', 0.8, true, 4, 'https://harbor.example', 96, 3150),
+        project('Wayfinding signs', 'Ana', 0.35, false, 3, 'https://northfield.example', 64, 1900),
+        project('Brand guidelines', 'Ana', 0.9, true, 5, 'https://kite.example', 150, 5400),
+        project('Menu boards', 'Jonas', 0.2, false, 3, 'https://orbit.example', 22, 1250),
+      ],
+    }],
+    ['row', { size: 'hug', style: { gap: 10 } },
+      ['table', {
+        label: 'Day rates', borders: 'outer', density: 'roomy', header: 'strong', search: false,
+        columns: [{ key: 'role', label: 'Role' }, { key: 'rate', label: 'Per day', format: 'currency', align: 'end' }],
+        value: [{ role: 'Design lead', rate: 820 }, { role: 'Designer', rate: 640 }, { role: 'Developer', rate: 700 }, { role: 'Writer', rate: 560 }],
+      }],
+      ['chart', { type: 'bar', color: 'agent', label: 'Hours by project', size: 1.4 },
+        ['map', { label: ['get', '$it', 'project'], value: ['get', '$it', 'hours'] }, '$projects']]],
+    ['calendar', { size: 'hug', label: 'Due dates', week: 'sun', value: '2026-10-21' },
+      ['map', { date: ['get', '$it', 'due'], title: ['get', '$it', 'client'], color: ['cond', ['=', ['get', '$it', 'status'], 'Paid'], 'live', ['=', ['get', '$it', 'status'], 'Overdue'], 'bad', 'accent'] }, '$invoices']],
+    ['break'],
+    ['text', { size: 'hug', style: heading }, 'House style'],
+    ['text', { size: 'hug', style: note }, 'The same fonts, sizes and spacing the studio uses on paper. Each one is a text style in the panel on the right.'],
+    ['row', { size: 'hug', style: { gap: 16 } },
+      ['col', { style: { gap: 10 } },
+        ['text', { style: eyebrow }, 'Label · Inter, caps, wide spacing'],
+        ['text', { style: { font: 'playfair', size: 34, weight: 700, line: 1.1 } }, 'Display · Playfair'],
+        ['text', { style: { font: 'lora', italic: true, size: 19, line: 1.5, border: 'l', bcolor: 'accent', bwidth: 3, pad: '4 0 4 16' } },
+          'Good design is as little design as possible. A quote set in Lora.'],
+        ['text', { style: { font: 'source-serif', size: 16, line: 1.7, para: 14, align: 'justify' } },
+          'Body text in Source Serif, justified, with generous line height.\n\nParagraphs sit fourteen pixels apart, set by paragraph spacing rather than empty lines.']],
+      ['col', { style: { gap: 10 } },
+        ['text', { style: { font: 'fraunces', size: 48, weight: 800, tracking: -0.03, line: 1, fg: 'accent' } }, '{{billed | compact}}'],
+        ['text', { style: { font: 'grotesk', size: 18, weight: 600, decor: 'underline' } }, 'Space Grotesk, underlined'],
+        ['text', { style: { font: 'jetbrains', size: 13, bg: 'sunken', radius: 10, pad: '10 14', shadow: 'sm' } }, 'INV-2026-041 · JetBrains Mono'],
+        ['list', { type: 'bullet', marker: 'arrow', density: 'compact', label: 'Next quarter' }, 'Raise day rates by 5%', 'Hire a second developer', 'Move invoices to the 1st of the month']]],
+    ['row', { size: 'hug', style: { gap: 10 } },
+      ['list', { name: 'yearEnd', type: 'check', label: 'Before year end', density: 'roomy' },
+        { text: 'Chase the overdue invoices', done: true }, 'Send the Q4 statements', 'Archive finished projects'],
+      ['col', { size: 1.3 },
+        ['canvas', { name: 'approval', label: 'Approved by', paper: 'lines', color: 'accent' }],
+        ['text', { size: 'hug', style: { font: 'caveat', size: 24, fg: ['if', ['empty?', '$approval'], 'faint', 'accent'] } },
+          '{{(if (empty? approval) "Waiting for a signature" "Thanks — approved!")}}']]]],
+};
+
+export const TEMPLATES: Template[] = [showcase, tables, quote, savings, feedback];

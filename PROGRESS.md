@@ -8,7 +8,7 @@ demo document that shows all of it, verified end to end with no console errors.
 
 Started 2026-10-01 on branch `main` at `5d03fa9`.
 
-**Next:** M1 — core model: table props, `selected`, `update!`, row-scoped actions, style keys, fonts registry, guide, tests.
+**Next:** wait for the table-renderer and inspector agents; then integrate, verify every feature in the browser (M5), and finish the showcase evidence (M6).
 
 ## Contract (Done means)
 
@@ -37,10 +37,10 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 
 ## Milestones
 
-1. [ ] **Core model**: table props (`value` rows, `selected`, `group`, `select`, `actions`, `borders`, `stripes`, `density`, `header`, `search`, extended `columns`), `selected` + `update!` + row-scoped actions, PATCH record route, new style keys, font registry, per-kind props (paper, pen, marker, progress, week, color, better, confirm), guide, tests (D2, D5, D7, D13, D15)
+1. [x] **Core model**: table props (`value` rows, `selected`, `group`, `select`, `actions`, `borders`, `stripes`, `density`, `header`, `search`, extended `columns`), `selected` + `update!` + row-scoped actions, PATCH record route, new style keys, font registry, per-kind props (paper, pen, marker, progress, week, color, better, confirm), guide, tests (D2, D5, D7, D13, D15)
 2. [ ] **Data table renderer**: groups, selection, resize, looks, actions, column formatting, totals, typed-row editing, cards, print (D1–D7, D14)
 3. [ ] **Inspector overhaul**: sectioned panel, per-kind designers, table designer, style designer with font picker, text presets, spacing (D8, D11, D12)
-4. [ ] **Fonts and kind options**: font packages, document typography, new style keys in CSS, canvas/list/calendar/chart/stat/button options rendered (D9, D10, D11)
+4. [x] **Fonts and kind options**: font packages, document typography, new style keys in CSS, canvas/list/calendar/chart/stat/button options rendered (D9, D10, D11)
 5. [ ] **Integration**: end-to-end runs of every feature in the browser, fixes (D1–D12)
 6. [ ] **Showcase**: template `tables` ("Data tables") + evidence in `docs/showcase/data-tables/` (G3, D14)
 7. [ ] **Final audit**: code review, clean build, empty data, all gates, full sweep, every contract item checked
@@ -64,7 +64,13 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 
 - `TMPDIR` must be short for tsx's IPC pipe: `ln -sfn <scratchpad> /tmp/eg` and use `TMPDIR=/tmp/eg` (the scratchpad path overflows the Unix socket path limit and every test fails with EINVAL).
 - In the editor, select a cell with `window.edgy.select(id)` rather than clicking (cdp clicks hit the sheet overlay).
+- Ports: lead 8791, table agent 8793, inspector agent 8794. Gates per agent with `LOGS=/tmp/eg/gates-<who>`.
 
 ## Log
 
 - 2026-10-01: baseline: 61 tests pass, typecheck clean, build clean, sweep of showcase 0 problems (home, data, edit, live, page, phone, pdf 4 pages).
+- 2026-10-01: M1 core done (aeed131): table props, `selected`, `update!` + PATCH, row-scoped actions, style keys, font registry, guide. 67 tests.
+- 2026-10-01: serve.sh/gates.sh build into their own folders (EDGY_DIST) so parallel agents don't collide (341a0e9).
+- 2026-10-01: two agents launched: table renderer (Table.tsx, rows.ts, table.css; port 8793) and inspector (Inspector.tsx, editor/inspector/; port 8794).
+- 2026-10-01: M4 done (c010722): 9 fonts, new style keys in CSS (look.test.ts), doc typography, canvas paper/pen, list marker/density/progress, calendar week, chart colour, stat better, button icon + confirm. Verified in the browser: a typography test doc at 1440 and dark; button confirm → Yes set x=1 (GET /read).
+- 2026-10-01: showcase template `tables` ("Studio billing") with seeded `studio-invoices` records (templates can seed empty collections); server test covers seeding and (selected invoices).
