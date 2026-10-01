@@ -9,6 +9,8 @@ cd "$(git rev-parse --show-toplevel)" || exit 1
 cmd="${1:-start}"; port="${2:-8791}"; data="${3:-${TMPDIR:-/tmp}/goal-loop-data}"
 pidfile="${TMPDIR:-/tmp}/goal-loop-serve-$port.pid"
 log="${TMPDIR:-/tmp}/goal-loop-serve-$port.log"
+# Each server gets its own build, so a rebuild for one port never pulls files from under another.
+dist="${TMPDIR:-/tmp}/goal-loop-dist-$port"
 
 stop() {
   [ -f "$pidfile" ] && kill "$(cat "$pidfile")" 2>/dev/null
@@ -21,8 +23,8 @@ stop() {
 start() {
   stop
   mkdir -p "$data"
-  npm run --silent build >"$log" 2>&1 || { echo "build failed, see $log"; exit 1; }
-  NODE_ENV=production EDGY_PORT="$port" EDGY_DATA="$data" \
+  npx vite build --outDir "$dist" --emptyOutDir >"$log" 2>&1 || { echo "build failed, see $log"; exit 1; }
+  NODE_ENV=production EDGY_PORT="$port" EDGY_DATA="$data" EDGY_DIST="$dist" \
     nohup node --disable-warning=ExperimentalWarning --import tsx src/server/index.ts >>"$log" 2>&1 &
   echo $! >"$pidfile"
   for _ in $(seq 1 60); do

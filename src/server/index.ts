@@ -1,7 +1,7 @@
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
 import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { createApp } from './app';
 import { Store } from './store';
 
@@ -9,7 +9,9 @@ const port = Number(process.env.EDGY_PORT ?? 8787);
 const hostname = process.env.HOST ?? '127.0.0.1';
 const dataDir = process.env.EDGY_DATA ?? join(process.cwd(), 'data');
 
-const built = existsSync('dist/index.html') && process.env.NODE_ENV === 'production';
+// The built app; EDGY_DIST points elsewhere so several builds can be served side by side.
+const dist = relative(process.cwd(), process.env.EDGY_DIST ?? 'dist') || '.';
+const built = existsSync(join(dist, 'index.html')) && process.env.NODE_ENV === 'production';
 // In development the app is served by Vite; tell agents where people should look.
 const webUrl = process.env.EDGY_WEB_URL ?? (built ? undefined : 'http://localhost:5173');
 
@@ -18,8 +20,8 @@ const { app } = createApp(store, join(dataDir, 'assets'), webUrl);
 
 // After `npm run build`, this one process serves the app too.
 if (built) {
-  app.use('/*', serveStatic({ root: './dist' }));
-  app.get('*', (c) => c.html(readFileSync('dist/index.html', 'utf8')));
+  app.use('/*', serveStatic({ root: dist }));
+  app.get('*', (c) => c.html(readFileSync(join(dist, 'index.html'), 'utf8')));
 }
 
 serve({ fetch: app.fetch, port, hostname }, (info) => {

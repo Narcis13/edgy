@@ -19,7 +19,8 @@ gate() {
 }
 gate typecheck npm run --silent typecheck
 gate test npm test --silent
-gate build npm run --silent build
+# Built into the log folder, so it never touches dist/ or a running server's build.
+gate build npx vite build --outDir "$LOGS/dist" --emptyOutDir
 # Node's test runner prints a summary; surface the counts so PROGRESS.md can quote them.
 grep -E '^(#|ℹ) (tests|pass|fail)' "$LOGS/test.log" | tr '\n' ' '; echo
 # Vite warns about oversized chunks without failing; treat it as a finding, not a pass.
