@@ -592,7 +592,12 @@ export class Session {
       case 'image': cell = ['image', keep]; break;
       case 'icon': cell = ['icon', keep, 'sparkles']; break;
       case 'chart': cell = ['chart', { ...keep, type: type ?? 'bar' }, same && c.expr !== undefined ? c.expr : ['list', 3, 5, 4, 8, 6]]; break;
-      case 'table': cell = ['table', keep, same && c.expr !== undefined ? c.expr : ['list', { item: 'Tea', price: 3 }, { item: 'Cake', price: 5 }]]; break;
+      case 'table':
+        // A new table holds a few typed rows people can edit in place; one that already had data keeps it.
+        cell = same
+          ? ['table', { ...own('label', 'columns', 'value', 'group', 'select', 'actions', 'borders', 'stripes', 'density', 'header', 'search'), ...keep }, ...(c.expr !== undefined ? [c.expr] : [])]
+          : ['table', { ...keep, value: [{ item: 'Tea', price: 3, qty: 2 }, { item: 'Cake', price: 5, qty: 1 }, { item: 'Juice', price: 4, qty: 3 }] }];
+        break;
       case 'list': {
         // A list changing type keeps its items, reshaped; a new one starts with a few to show how it works.
         const t = type ?? 'bullet';

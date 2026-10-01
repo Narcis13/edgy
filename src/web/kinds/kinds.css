@@ -275,67 +275,6 @@ button.kcal-agenda-d:hover { color: var(--accent); background: var(--accent-soft
   font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; font-weight: 600;
 }
 
-/* ─────────── table ─────────── */
-
-.ktable { display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 0; }
-.ktable-bar {
-  position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 2px 0 4px; background: var(--paper);
-}
-.ktable-title { color: var(--ink); font-size: 13.5px; font-weight: 650; }
-.ktable-count { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.ktable-search {
-  margin-left: auto; flex: 0 1 220px; min-width: 120px; height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 4px 0 9px;
-  border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--faint); cursor: text;
-}
-.ktable-search:focus-within { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; color: var(--muted); }
-.ktable-search svg { flex: none; }
-.ktable-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; outline: none; color: var(--ink); font-size: 13px; appearance: none; }
-.ktable-search input::-webkit-search-cancel-button { display: none; }
-.ktable-search input::placeholder { color: var(--faint); }
-.ktable-clear { flex: none; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: var(--sunken); color: var(--muted); display: grid; place-items: center; }
-.ktable-clear:hover { color: var(--ink); background: var(--line); }
-.ktable-sort {
-  height: 30px; max-width: 46%; padding: 0 26px 0 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font-size: 12.5px; appearance: none;
-  background-color: var(--paper);
-  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
-  background-position: calc(100% - 14px) 55%, calc(100% - 9px) 55%; background-size: 5px 5px; background-repeat: no-repeat;
-}
-.ktable-note { margin: 2px 0; color: var(--faint); font-size: 13px; font-style: italic; }
-.ktable-note .link-btn { font-style: normal; margin-left: 4px; }
-
-.ktable-scroll { width: 100%; overflow-x: auto; }
-.ktable-grid th { padding: 0; }
-.ktable-grid th button {
-  display: inline-flex; align-items: center; gap: 4px; width: 100%; padding: 5px 8px; border: 0; background: none; color: inherit; font: inherit; text-align: inherit;
-}
-.ktable-grid th.num { text-align: right; }
-.ktable-grid th.num button { justify-content: flex-end; }
-.ktable-grid th button svg { flex: none; opacity: 0; color: var(--faint); transition: opacity 120ms; }
-.ktable-grid th button:hover,
-.ktable-grid th.is-sorted { color: var(--ink); }
-.ktable-grid th button:hover svg,
-.ktable-grid th button:focus-visible svg { opacity: 1; }
-.ktable-grid th.is-sorted svg { opacity: 1; color: var(--accent); }
-.ktable-grid th button:focus-visible { outline-offset: -2px; }
-.ktable-grid td { overflow-wrap: anywhere; }
-.ktable-grid tbody tr:hover td { background: color-mix(in oklab, var(--sunken) 60%, transparent); }
-.ktable mark { background: var(--warn-soft); color: inherit; border-radius: 3px; box-shadow: 0 0 0 1px var(--warn-soft); }
-
-.ktable-cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.ktable-card { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
-.ktable-card-title { font-weight: 600; overflow-wrap: anywhere; line-height: 1.35; }
-.ktable-card dl { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 3px 12px; margin: 6px 0 0; font-size: 13px; }
-.ktable-card dl > div { display: contents; }
-.ktable-card dt { color: var(--muted); overflow-wrap: anywhere; }
-.ktable-card dd { margin: 0; overflow-wrap: anywhere; min-width: 0; }
-.ktable-card dd.num { font-variant-numeric: tabular-nums; }
-.ktable.is-cards .ktable-search { order: 1; margin-left: 0; flex: 1 1 140px; height: 34px; }
-.ktable.is-cards .ktable-sort { order: 2; height: 34px; }
-.ktable.is-cards .ktable-clear { width: 26px; height: 26px; }
-
-.ktable-more { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; color: var(--faint); font-size: 12.5px; padding-top: 2px; }
-.ktable-more .btn { padding: 4px 12px; font-size: 12.5px; }
-
 /* ─────────── existing kinds in narrow cells ─────────── */
 
 /* A donut's legend goes under it rather than squeezing beside it. */

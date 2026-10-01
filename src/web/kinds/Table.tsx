@@ -10,6 +10,7 @@ import { cx, useS } from '../editor/ctx';
 import { type Column, type Rec, type Sort, ago, filterRows, marks, nextSort, records, resolveColumns, rowCount, sortRows } from './rows';
 import { ownKeys, useBox, useCurrency } from './shared';
 import './kinds.css';
+import './table.css';
 
 const PAGE = 200;
 const CARDS_AT = 560;

@@ -1,34 +1,51 @@
 // Rows for the table cell: which columns, in what order, searched and sorted.
 
 import type { Json } from '../../core/types';
+import { type Rec, isRecord, records } from '../../core/table';
 
-export type Rec = Record<string, unknown>;
+export { type Rec, records };
 
+/** A column as the table draws it: the `columns` prop's record with defaults filled in. */
 export interface Column {
   key: string;
   label: string;
   format?: string;
+  /** Pixels; unset, the column takes what its content needs. */
+  width?: number;
+  align?: 'start' | 'center' | 'end';
+  /** text, badge, progress, check, link, stars. */
+  show?: string;
+  /** A badge's colour for each value: {"Paid": "live"}. */
+  colors?: Record<string, string>;
+  /** A colour token for the whole column. */
+  color?: string;
+  bold?: boolean;
+  wrap?: boolean;
+  /** sum, avg, count, min, max: shown in the totals row and under each group. */
+  total?: string;
 }
 
 export type Sort = { key: string; dir: 'asc' | 'desc' } | null;
 
-const isRecord = (v: unknown): v is Rec => typeof v === 'object' && v !== null && !Array.isArray(v);
-
-export const records = (v: unknown): Rec[] => (Array.isArray(v) ? v.filter(isRecord) : []);
-
 /** The fields the first rows have, in the order they appear; id is left out. */
 export const detectKeys = (rows: Rec[]): string[] => [...new Set(rows.slice(0, 50).flatMap((r) => Object.keys(r)))].filter((k) => k !== 'id');
 
+const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
+
 function columnOf(spec: unknown): Column | null {
   if (typeof spec === 'string' && spec) return { key: spec, label: spec };
-  if (isRecord(spec) && typeof spec.key === 'string' && spec.key) {
-    return {
-      key: spec.key,
-      label: typeof spec.label === 'string' && spec.label ? spec.label : spec.key,
-      ...(typeof spec.format === 'string' && spec.format ? { format: spec.format } : {}),
-    };
-  }
-  return null;
+  if (!isRecord(spec) || typeof spec.key !== 'string' || !spec.key) return null;
+  const c: Column = { key: spec.key, label: str(spec.label) ?? spec.key };
+  if (str(spec.format)) c.format = spec.format as string;
+  if (typeof spec.width === 'number' && spec.width > 0) c.width = Math.round(spec.width);
+  if (spec.align === 'start' || spec.align === 'center' || spec.align === 'end') c.align = spec.align;
+  if (str(spec.show)) c.show = spec.show as string;
+  if (isRecord(spec.colors)) c.colors = Object.fromEntries(Object.entries(spec.colors).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
+  if (str(spec.color)) c.color = spec.color as string;
+  if (spec.bold === true) c.bold = true;
+  if (spec.wrap === true) c.wrap = true;
+  if (str(spec.total)) c.total = spec.total as string;
+  return c;
 }
 
 /** The `columns` prop when it names any, otherwise every field the rows have. */
@@ -137,4 +154,31 @@ export function columnsProp(rows: Rec[], choices: ColumnChoice[]): Json {
   const plain = shown.every((c) => typeof c.spec === 'string');
   if (plain && shown.length === keys.length && shown.every((c, i) => c.key === keys[i])) return null;
   return shown.map((c) => c.spec);
+}
+
+/**
+ * The `columns` prop after changing one column's settings (null removes a
+ * setting). Columns written as plain names become records only when they
+ * need to, and the prop is first filled in from the rows when it was unset.
+ */
+export function patchColumn(rows: Rec[], columns: unknown, key: string, patch: Record<string, Json>): Json {
+  const specs: Json[] = Array.isArray(columns) && columns.some((c) => columnOf(c)) ? (columns as Json[]) : detectKeys(rows);
+  let found = false;
+  const out = specs.map((s) => {
+    const k = typeof s === 'string' ? s : isRecord(s) ? s.key : undefined;
+    if (k !== key) return s;
+    found = true;
+    const rec: Record<string, Json> = typeof s === 'string' ? { key: s } : { ...(s as Record<string, Json>) };
+    for (const [f, v] of Object.entries(patch)) {
+      if (v === null || v === '' || v === false) delete rec[f];
+      else rec[f] = v;
+    }
+    return Object.keys(rec).length === 1 ? key : rec;
+  });
+  if (!found) {
+    const rec: Record<string, Json> = { key };
+    for (const [f, v] of Object.entries(patch)) if (v !== null && v !== '' && v !== false) rec[f] = v;
+    out.push(Object.keys(rec).length === 1 ? key : rec);
+  }
+  return out;
 }
