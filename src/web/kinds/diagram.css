@@ -1,0 +1,78 @@
+/* ─────────── diagram ─────────── */
+
+/* Like the other kinds, the cell takes its width from the layout, never from a wide drawing. */
+.leaf.kind-diagram { container-type: inline-size; }
+
+.kdiagram { position: relative; display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 0; outline: none; }
+/* A drawing wider than the cell scrolls inside it, never the page. */
+.kdiagram-scroll { width: 100%; min-width: 0; overflow-x: auto; overflow-y: hidden; }
+.kdiagram-stage { position: relative; margin: 0 auto; border-radius: 10px; }
+.kdiagram-svg { display: block; width: 100%; height: 100%; margin: 0 auto; overflow: visible; user-select: none; -webkit-user-select: none; }
+.kdiagram-scroll > .kdiagram-svg { max-width: none; }
+.kdiagram-svg text { font-family: inherit; white-space: pre; }
+
+/* While it's being drawn on: a dotted ground, and the page doesn't scroll under a finger. */
+.kdiagram.is-edit .kdiagram-stage { box-shadow: inset 0 0 0 1px var(--line); }
+.kdiagram.is-active .kdiagram-stage {
+  background-color: color-mix(in oklab, var(--sunken) 35%, var(--paper));
+  background-image: radial-gradient(circle, var(--line-strong) 1px, transparent 1.3px); background-size: 20px 20px;
+}
+.kdiagram.is-active .kdiagram-svg { touch-action: none; }
+.kdiagram-stage[data-tool='select'] .kdiagram-svg { cursor: default; }
+.kdiagram-stage[data-tool='select'] .kd-el { cursor: move; }
+.kdiagram-stage[data-tool='text'] .kdiagram-svg { cursor: text; }
+.kdiagram-stage:is([data-tool='rect'], [data-tool='ellipse'], [data-tool='diamond'], [data-tool='arrow'], [data-tool='line']) .kdiagram-svg { cursor: crosshair; }
+.kdiagram.is-live .kd-el { cursor: pointer; }
+
+.kd-chrome { pointer-events: none; }
+.kd-picked { fill: none; stroke: var(--accent); }
+line.kd-picked { stroke-opacity: 0.22; stroke-linecap: round; }
+.kd-handle { fill: var(--paper); stroke: var(--accent); }
+.kd-target { fill: var(--accent); fill-opacity: 0.08; stroke: var(--accent); stroke-opacity: 0.7; }
+.kd-marquee { fill: var(--accent); fill-opacity: 0.07; stroke: var(--accent); stroke-dasharray: 4 3; }
+
+.kdiagram-hint {
+  position: absolute; inset: 0; display: grid; place-items: center; padding: 0 16px; text-align: center;
+  color: var(--faint); font-size: 13px; font-style: italic; pointer-events: none;
+}
+
+/* The field a label is written in, over the element. */
+.kdiagram-writer {
+  position: absolute; z-index: 1; margin: 0; padding: 0; border: 0; border-radius: 3px; resize: none; overflow: hidden;
+  background: transparent; font: inherit; line-height: 1.3; text-align: center; outline: 1.5px dashed color-mix(in oklab, var(--accent) 60%, transparent);
+  outline-offset: 3px; caret-color: var(--accent);
+}
+.kdiagram-writer.is-label { background: var(--paper); }
+.kdiagram-writer.is-free { text-align: left; white-space: pre; }
+
+/* ── the toolbar ── */
+
+.kdiagram-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.kd-group { display: flex; flex-wrap: wrap; gap: 1px; padding: 2px; border-radius: 10px; background: var(--raised); box-shadow: 0 0 0 1px var(--line); }
+.kd-btn {
+  position: relative; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: none; color: var(--muted);
+  display: grid; place-items: center;
+}
+.kd-btn:hover:not(:disabled) { background: var(--sunken); color: var(--ink); }
+.kd-btn:disabled { opacity: 0.35; cursor: default; }
+.kd-btn.is-on,
+.kd-btn.is-on:hover { background: var(--accent-soft); color: var(--accent); }
+/* The colour a paint button sets, as a dot in its corner. */
+.kd-paint i {
+  position: absolute; right: 4px; bottom: 4px; width: 9px; height: 9px; border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--raised), inset 0 0 0 1px var(--line-strong);
+}
+.kd-swatches { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: 10px; background: var(--raised); box-shadow: 0 0 0 1px var(--line); width: max-content; max-width: 100%; }
+.kd-swatch { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: none; display: grid; place-items: center; }
+.kd-swatch:hover { background: var(--sunken); }
+.kd-swatch i { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--line-strong); }
+.kd-swatch.is-on i { box-shadow: 0 0 0 2px var(--raised), 0 0 0 3.5px var(--accent); }
+/* No fill: a struck-through circle. */
+.kd-swatch.is-none i,
+.kd-paint i.is-none { background: linear-gradient(to top right, transparent 45%, var(--bad) 45% 55%, transparent 55%) !important; }
+
+/* Fingers get bigger targets. */
+@media (hover: none) {
+  .kd-btn,
+  .kd-swatch { width: 38px; height: 38px; }
+}

@@ -8,8 +8,8 @@ import { toNotation } from './notation';
 import { outline } from './outline';
 import { read } from './sx';
 import {
-  type DiagramEl, anchorPoint, boxOf, centre, connectorEnds, duplicateElements, elementsOf, eraseElements, hitTest,
-  insideBox, moveElements, prepareDiagram, resizeBox, wrapText,
+  type DiagramEl, anchorPoint, boxAt, boxBetween, boxOf, centre, connectorEnds, duplicateElements, elementsOf, elementsWithin, eraseElements,
+  extent, fitText, hitTest, insideBox, labelBox, moveElements, newId, parallelOffset, pickAt, prepareDiagram, resizeBox, textLines, wrapText,
 } from './diagram';
 
 const world = { rows: () => [] as unknown[], now: Date.UTC(2026, 8, 30) };
@@ -152,4 +152,68 @@ test('diagram: hit testing, duplicating and erasing several at once', () => {
   assert.deepEqual([lone.x1, lone.y1], [128, 74]);
   assert.deepEqual(eraseElements(els, ['a']).map((e) => e.id), ['b']);
   assert.deepEqual(wrapText('Send the customer a reminder', 100, 15), ['Send the', 'customer a', 'reminder']);
+});
+
+test('diagram: what the editor picks, wraps and measures', () => {
+  const els: DiagramEl[] = [
+    { id: 'a', type: 'rect', x: 0, y: 0, w: 100, h: 60 },
+    { id: 'b', type: 'ellipse', x: 200, y: 0, w: 100, h: 60, text: 'Ship it' },
+    { id: 'e1', type: 'arrow', from: 'a', to: 'b', text: 'yes' },
+    { id: 't', type: 'text', x: 0, y: 200, text: 'Note' },
+  ];
+  assert.equal(newId(els), 'e2');
+  assert.deepEqual(boxBetween({ x: 50, y: 10 }, { x: 10, y: 40 }), { x: 10, y: 10, w: 40, h: 30 });
+  // A shape is picked before the arrow drawn under it; near an arrow, the arrow.
+  assert.equal(pickAt(els, { x: 98, y: 30 })?.id, 'a');
+  assert.equal(pickAt(els, { x: 150, y: 34 }, 6)?.id, 'e1');
+  assert.equal(pickAt(els, { x: 150, y: 90 }, 6), null);
+  // Near a shape counts when there is room to miss it; `skip` leaves one out.
+  assert.equal(boxAt(els, { x: 105, y: 30 }), null);
+  assert.equal(boxAt(els, { x: 105, y: 30 }, 8)?.id, 'a');
+  assert.equal(boxAt(els, { x: 50, y: 30 }, 0, 'a'), null);
+  // A marquee takes only what lies wholly inside it; the arrow comes along when both its ends do.
+  assert.deepEqual(elementsWithin(els, { x: -10, y: -10, w: 120, h: 80 }), ['a']);
+  assert.deepEqual(elementsWithin(els, { x: -10, y: -10, w: 330, h: 80 }), ['a', 'b', 'e1']);
+  // Text in a narrow shape wraps; free text keeps its lines until it has a width.
+  assert.deepEqual(textLines({ id: 'd', type: 'diamond', w: 120, h: 80 }, 'Is it paid yet?'), ['Is it', 'paid', 'yet?']);
+  assert.deepEqual(textLines(els[3], 'One line that runs on\nand a second'), ['One line that runs on', 'and a second']);
+  const narrow = fitText({ id: 't', type: 'text', x: 0, y: 0, w: 80, text: 'One line that runs on' });
+  assert.ok(textLines(narrow, narrow.text!).length > 1 && narrow.h! > 40, 'a narrow text grows taller');
+  // The label sits on the arrow's middle, and the whole drawing's box takes it in.
+  const label = labelBox(els[2], new Map(els.map((e) => [e.id, e])), 'yes')!;
+  near(label.x + label.w / 2, 150, 1);
+  near(label.y + label.h / 2, 30, 1);
+  const upright: DiagramEl[] = [{ id: 'l', type: 'line', x1: 0, y1: 0, x2: 0, y2: 100, text: 'a label wider than the line' }];
+  const all = extent(upright)!;
+  assert.equal(all.x < -50 && all.x + all.w > 50 && all.h === 100, true, 'the label widens the box');
+});
+
+test('diagram: connectors joining the same two boxes run side by side', () => {
+  const boxes: DiagramEl[] = [
+    { id: 'a', type: 'rect', x: 0, y: 0, w: 100, h: 60 },
+    { id: 'b', type: 'diamond', x: 300, y: 0, w: 120, h: 60 },
+  ];
+  const ends = (list: DiagramEl[], id: string) => connectorEnds(list.find((e) => e.id === id)!, new Map(list.map((e) => [e.id, e])), 0)!;
+  // Alone, an arrow runs centre to centre as before.
+  const one = [...boxes, { id: 'l1', type: 'arrow' as const, from: 'a', to: 'b' }];
+  assert.equal(parallelOffset(one[2], one), 0);
+  assert.deepEqual(ends(one, 'l1'), { x1: 100, y1: 30, x2: 300, y2: 30 });
+  // There and back: one runs above, the other below, 28 apart, each end still on an outline.
+  const both: DiagramEl[] = [...one, { id: 'l2', type: 'arrow', from: 'b', to: 'a', text: 'retry' }];
+  const [go, back] = [ends(both, 'l1'), ends(both, 'l2')];
+  near(go.y1, 16, 0.2); near(go.y2, 16, 0.2);
+  near(back.y1, 44, 0.2); near(back.y2, 44, 0.2);
+  near(go.x1, 100, 1e-6); near(back.x2, 100, 1e-6);
+  for (const [p, el] of [[{ x: go.x2, y: go.y2 }, boxes[1]], [{ x: back.x1, y: back.y1 }, boxes[1]]] as const) {
+    assert.equal(insideBox(el, p, 0.5) && !insideBox(el, p, -0.5), true, 'the end sits on the diamond');
+  }
+  // Their labels part too, and the order in the list decides the sides.
+  const map = new Map(both.map((e) => [e.id, e]));
+  const [lg, lr] = [labelBox(both[2], map, 'go')!, labelBox(both[3], map, 'retry')!];
+  assert.equal(lg.y + lg.h <= go.y1 && lr.y >= back.y1, true, 'each label sits on its own side, clear of its line');
+  // Alone, a label sits on the middle of its line.
+  near(labelBox(one[2], new Map(one.map((e) => [e.id, e])), 'go')!.y + 10.5, 30, 0.6);
+  const twice: DiagramEl[] = [...boxes, { id: 'p', type: 'line', from: 'a', to: 'b' }, { id: 'q', type: 'line', from: 'a', to: 'b' }, { id: 'r', type: 'line', from: 'a', to: 'b' }];
+  assert.deepEqual(twice.slice(2).map((e) => parallelOffset(e, twice)), [-28, 0, 28]);
+  near(ends(twice, 'q').y1, 30, 1e-6);
 });

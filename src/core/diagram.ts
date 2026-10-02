@@ -153,9 +153,61 @@ export function connectorEnds(e: DiagramEl, els: Map<string, DiagramEl>, gap = 4
   const pA: Pt | null = boxA ? centre(boxA) : num(e.x1) && num(e.y1) ? { x: e.x1, y: e.y1 } : null;
   const pB: Pt | null = boxB ? centre(boxB) : num(e.x2) && num(e.y2) ? { x: e.x2, y: e.y2 } : null;
   if (!pA || !pB) return null;
+  const off = boxA && boxB ? parallelOffset(e, els.values()) : 0;
+  if (off) {
+    // One of several joining the same two boxes: run beside the others, not on top of them.
+    const [p, q] = e.from! < e.to! ? [pA, pB] : [pB, pA];
+    const len = Math.hypot(q.x - p.x, q.y - p.y);
+    if (len) {
+      const n = { x: (-(q.y - p.y) / len) * off, y: ((q.x - p.x) / len) * off };
+      const sA = { x: pA.x + n.x, y: pA.y + n.y };
+      const sB = { x: pB.x + n.x, y: pB.y + n.y };
+      const s = exitPoint(a!, sA, sB, gap);
+      const t = exitPoint(b!, sB, sA, gap);
+      return { x1: r1(s.x), y1: r1(s.y), x2: r1(t.x), y2: r1(t.y) };
+    }
+  }
   const s = boxA ? anchorPoint(a!.type, boxA, pB, gap) : pA;
   const t = boxB ? anchorPoint(b!.type, boxB, pA, gap) : pB;
   return { x1: r1(s.x), y1: r1(s.y), x2: r1(t.x), y2: r1(t.y) };
+}
+
+/** How far apart connectors joining the same two boxes run. */
+export const PARALLEL_GAP = 28;
+
+/**
+ * How far a connector is pushed sideways so it doesn't sit on another that
+ * joins the same two boxes (either way round): 0 when it is the only one.
+ * The order in the list decides who goes which side, so it stays put. The
+ * side is measured from the box with the smaller id, so a→b and b→a part.
+ */
+export function parallelOffset(e: DiagramEl, els: Iterable<DiagramEl>): number {
+  if (!isConnector(e) || !e.from || !e.to || e.from === e.to) return 0;
+  const pair = (x: DiagramEl) => [x.from, x.to].sort().join('\u0000');
+  const key = pair(e);
+  const same: string[] = [];
+  for (const x of els) if (isConnector(x) && x.from && x.to && pair(x) === key) same.push(x.id);
+  if (same.length < 2) return 0;
+  return (same.indexOf(e.id) - (same.length - 1) / 2) * PARALLEL_GAP;
+}
+
+/**
+ * Where a line from `start` (inside a box) towards `toward` leaves the box,
+ * pushed out by `gap`. When the start isn't inside or the target is, it falls
+ * back to the line from the box's centre.
+ */
+function exitPoint(e: DiagramEl, start: Pt, toward: Pt, gap: number): Pt {
+  if (!insideBox(e, start) || insideBox(e, toward)) return anchorPoint(e.type, boxOf(e), toward, gap);
+  const len = Math.hypot(toward.x - start.x, toward.y - start.y);
+  const ux = (toward.x - start.x) / len;
+  const uy = (toward.y - start.y) / len;
+  let lo = 0, hi = len;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (insideBox(e, { x: start.x + ux * mid, y: start.y + uy * mid })) lo = mid;
+    else hi = mid;
+  }
+  return { x: start.x + ux * (lo + gap), y: start.y + uy * (lo + gap) };
 }
 
 /** Whether a point is on a box element (inside it). */
@@ -444,6 +496,124 @@ export function resizeBox(b: Box, handle: string, dx: number, dy: number, min = 
   if (handle.includes('w')) { const nw = Math.max(min, w - dx); x += w - nw; w = nw; }
   if (handle.includes('n')) { const nh = Math.max(min, h - dy); y += h - nh; h = nh; }
   return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
+}
+
+// ───────────────────────────── for the editor ─────────────────────────────
+
+/** How wide a connector's label may grow before it wraps. */
+export const LABEL_WIDTH = 160;
+
+/** An id no element has yet: e1, e2, … */
+export function newId(els: DiagramEl[]): string {
+  const used = new Set(els.map((e) => e.id));
+  let n = 1;
+  while (used.has('e' + n)) n++;
+  return 'e' + n;
+}
+
+/** The box between two opposite corners, whichever way it was dragged. */
+export const boxBetween = (a: Pt, b: Pt): Box => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) });
+
+/** The topmost shape or text under a point (or within `pad` of it); `skip` leaves one out. */
+export function boxAt(els: DiagramEl[], p: Pt, pad = 0, skip?: string): DiagramEl | null {
+  for (let i = els.length - 1; i >= 0; i--) {
+    const e = els[i];
+    if (isBox(e) && e.id !== skip && insideBox(e, p, pad)) return e;
+  }
+  return null;
+}
+
+/**
+ * What a click picks. Shapes and text are drawn over arrows and lines, so
+ * they come first; then the connector nearest the point within `tolerance`.
+ */
+export function pickAt(els: DiagramEl[], p: Pt, tolerance = 6): DiagramEl | null {
+  const box = boxAt(els, p);
+  if (box) return box;
+  const byId = new Map(els.map((e) => [e.id, e]));
+  let best: DiagramEl | null = null;
+  let bestD = tolerance;
+  for (const e of els) {
+    if (!isConnector(e)) continue;
+    const ends = connectorEnds(e, byId);
+    const d = ends ? distToSegment(p, { x: ends.x1, y: ends.y1 }, { x: ends.x2, y: ends.y2 }) : Infinity;
+    if (d <= bestD) { best = e; bestD = d; }
+  }
+  return best;
+}
+
+/** The ids of the elements lying wholly inside a box, as a marquee picks them. */
+export function elementsWithin(els: DiagramEl[], box: Box): string[] {
+  const byId = new Map(els.map((e) => [e.id, e]));
+  return els.filter((e) => {
+    const b = boxOf(e, byId);
+    return b.x >= box.x && b.y >= box.y && b.x + b.w <= box.x + box.w && b.y + b.h <= box.y + box.h;
+  }).map((e) => e.id);
+}
+
+/** How wide a box's text may run: a diamond and an ellipse have less room than their boxes. */
+export function textRoom(e: DiagramEl, b: Box): number {
+  if (e.type === 'diamond') return b.w * 0.56;
+  if (e.type === 'ellipse') return b.w * 0.74;
+  if (e.type === 'text') return b.w - 12;
+  return b.w - 16;
+}
+
+/**
+ * The lines an element's text is drawn on. Text in a shape wraps to fit it;
+ * free text keeps its own lines unless it was given a width; a label wraps at
+ * LABEL_WIDTH.
+ */
+export function textLines(e: DiagramEl, text: string): string[] {
+  if (!text) return [];
+  const size = fontOf(e);
+  if (isConnector(e)) return wrapText(text, LABEL_WIDTH, size);
+  if (e.type === 'text' && !(num(e.w) && e.w > 0)) return text.split('\n');
+  return wrapText(text, textRoom(e, boxOf(e)), size);
+}
+
+/** Free text given a width grows or shrinks in height to hold its wrapped lines; without one it measures itself. */
+export function fitText(e: DiagramEl): DiagramEl {
+  if (e.type !== 'text' || !(num(e.w) && e.w > 0)) return e;
+  const lines = Math.max(1, textLines(e, e.text ?? '').length);
+  return { ...e, h: Math.ceil(lines * fontOf(e) * LINE_HEIGHT + 8) };
+}
+
+/** The box a connector's label takes, centred on the connector's middle. */
+export function labelBox(e: DiagramEl, els: Map<string, DiagramEl>, text: string): Box | null {
+  const ends = text ? connectorEnds(e, els) : null;
+  if (!ends) return null;
+  const size = fontOf(e);
+  const lines = textLines(e, text);
+  const w = Math.ceil(Math.max(...lines.map((l) => l.length), 1) * size * CHAR + 10);
+  const h = Math.ceil(lines.length * size * LINE_HEIGHT + 4);
+  let cx = (ends.x1 + ends.x2) / 2, cy = (ends.y1 + ends.y2) / 2;
+  const off = parallelOffset(e, els.values());
+  const len = Math.hypot(ends.x2 - ends.x1, ends.y2 - ends.y1);
+  if (off && len) {
+    // Beside another connector the label moves out to its own side, clear of the line, so the two don't cover each other.
+    const flip = e.from! < e.to! ? 1 : -1;
+    const nx = (-(ends.y2 - ends.y1) / len) * flip, ny = ((ends.x2 - ends.x1) / len) * flip;
+    const push = Math.sign(off) * (Math.abs(nx) * w / 2 + Math.abs(ny) * h / 2 + 2);
+    cx += nx * push;
+    cy += ny * push;
+  }
+  return { x: cx - w / 2, y: cy - h / 2, w, h };
+}
+
+/** The box around everything drawn, connector labels included; `texts` are labels as shown. */
+export function extent(els: DiagramEl[], texts: Record<string, string> = {}): Box | null {
+  const all = bounds(els);
+  if (!all) return null;
+  const byId = new Map(els.map((e) => [e.id, e]));
+  let x0 = all.x, y0 = all.y, x1 = all.x + all.w, y1 = all.y + all.h;
+  for (const e of els) {
+    const b = isConnector(e) ? labelBox(e, byId, texts[e.id] ?? e.text ?? '') : null;
+    if (!b) continue;
+    x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y);
+    x1 = Math.max(x1, b.x + b.w); y1 = Math.max(y1, b.y + b.h);
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
 /** Counts for the outline: "5 shapes, 4 arrows". */
