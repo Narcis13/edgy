@@ -15,7 +15,7 @@ export const GROUP_KINDS = ['row', 'col', 'tabs', 'accordion', 'collapsible', 'p
 export type GroupKind = (typeof GROUP_KINDS)[number];
 export const LEAF_KINDS = [
   'empty', 'text', 'formula', 'input', 'button', 'image', 'icon', 'chart', 'table', 'list', 'calendar', 'canvas', 'stat', 'break',
-  'diagram', 'data',
+  'diagram', 'data', 'timer', 'fetch',
 ] as const;
 export type LeafKind = (typeof LEAF_KINDS)[number];
 export type Kind = GroupKind | LeafKind;
@@ -99,6 +99,19 @@ export interface Cell {
   title?: string;
   /** accordion: true lets any number of sections be open; unset, one at a time. */
   multiple?: boolean;
+  /**
+   * What happens when an event reaches this cell: event name → an action, run
+   * like a button's `do` with the event's data bound (see core/events.ts).
+   */
+  on?: Record<string, Sx>;
+  /** timer: seconds (or "30s", "2m", "1h") between ticks; fetch: between refreshes. */
+  every?: Json;
+  /** timer: seconds (or "30s", "2m") before its one tick. */
+  after?: Json;
+  /** fetch: the address of the JSON, http(s) or a path on this server; may carry {{templates}}. */
+  url?: string;
+  /** fetch: request headers; a value "secret:NAME" is filled in by the server. */
+  headers?: Json;
 }
 
 export interface DocMeta {
@@ -114,6 +127,10 @@ export interface DocMeta {
   margin?: number;
   /** What each printed page shows at its foot: "none", "number" or "title". */
   footer?: string;
+  /** The document's own handlers: event name → action (open, close, custom events). */
+  on?: Record<string, Sx>;
+  /** Custom actions, name → (fn (params…) body…), called like a built-in from any action. */
+  actions?: Record<string, Sx>;
   [k: string]: Json | undefined;
 }
 

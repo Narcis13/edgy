@@ -49,6 +49,12 @@ export const FUNCTIONS: FnDoc[] = [
   { group: 'Actions', name: 'update!', use: '(update! "orders" (get row "id") {status "paid"})', does: 'Change some fields of a saved record. In a table\'s row action, row is that row\'s record.' },
   { group: 'Actions', name: 'dup! remove!', use: '(dup! (child lines -1))', does: 'Copy or remove a cell, e.g. add a row. (child group n) picks the nth cell of a row or column; -1 is the last.' },
   { group: 'Actions', name: 'do', use: '(do a b c)', does: 'Several actions in order. Reads see the document as it was before the action.' },
+  { group: 'Actions', name: 'show! hide!', use: '(show! thanks)', does: 'Show or hide a cell (sets its hidden prop; show! removes a hidden rule).' },
+  { group: 'Actions', name: 'emit!', use: '(emit! "saved" {total total})', does: 'Send a custom event with a payload to every cell, and the document, that has a handler for it.' },
+  { group: 'Actions', name: 'start! stop!', use: '(stop! poll)', does: 'Start a timer (again, from now) or stop it.' },
+  { group: 'Actions', name: 'refresh!', use: '(refresh! rate)', does: 'Fetch a fetch cell’s address again.' },
+  { group: 'Actions', name: 'a custom action', use: '(greet "Ann")', does: 'Call an action the document defines (see Events), like a built-in.' },
+  { group: 'Cells', name: 'status error-of', use: '(status rate)', does: 'How a fetch cell stands: "idle", "loading", "ready" or "failed"; and why it failed, or nil.' },
 ];
 
 export const GUIDE = `# Edgy: documents made of cells
@@ -94,6 +100,8 @@ Kinds and their body:
 - break: a page break when the document is printed. Put it between the cells of the top-level column.
 - image: a URL. Props: fit (cover, contain), alt.
 - icon: a Lucide icon name in kebab-case, e.g. "sparkles".
+- timer: ticks while the document is open in Live: ["timer", {"name": "poll", "every": 30, "on": {"tick": action}}]. Props: every (seconds, or "30s", "2m", "1h") or after (one tick after that long), on. Its value is true while running; (stop! poll) stops it, (start! poll) starts it again from now. Takes no room; never printed.
+- fetch: JSON from an address, fetched by the server: ["fetch", {"name": "rate", "every": 60, "on": {"load": action, "fail": action}}, "https://example.com/rate.json"]. Body: the url (http/https, or a path on this server such as /api/data/orders; may carry {{templates}}). Props: every (refresh interval, at least 5 s), headers ({"Authorization": "secret:RATES_KEY"}: the server fills in its EDGY_SECRET_RATES_KEY, so no secret is ever in the document), label. Its value is the parsed answer, so (get rate "usd") reads a field; (status rate) and (error-of rate) tell how it stands. In Live it shows one line: loading, when it last updated with a refresh button, or what failed with Retry. Fetched when the document opens in Live, every interval, and on (refresh! rate).
 - empty: nothing yet.
 
 Props on any cell:
@@ -101,6 +109,7 @@ Props on any cell:
 - name: lets other cells refer to it. Letters, digits, - and _.
 - size: within its row/col, a weight (default 1), "hug" (as small as its content), or a fixed "120px".
 - hidden: true, or an expression; the cell disappears while it is true.
+- on: what the cell does when an event reaches it: {"click": action, "change": action, "saved": action}. See Events.
 - style: bg, fg, pad (px, or "top right bottom left" like "8 16 8 16"), gap (rows/cols), align (start, center, end, justify), valign (start, center, end), font (${FONTS.map((f) => f.id).join(', ')}), size (px), weight (100–900), italic, line (line height, e.g. 1.4), tracking (letter spacing in em, e.g. 0.05), case (upper, lower, title), decor (underline, strike), para (px between paragraphs), shadow (sm, md, lg), bcolor and bwidth (the border's color token and px), border ("all", or sides like "b", "tb", or "none"), radius, stack (rows only: "auto" wraps the cells under each other on a narrow screen, the default; "never" keeps them side by side, for table-like lines; "always"). Colors are tokens that adapt to light and dark: ink, muted, faint, paper, sunken, line, accent, accent-soft, agent, agent-soft, live, live-soft, warn, warn-soft, bad, bad-soft, or any CSS color. A style value may be an expression, e.g. {"fg": ["if", ["<", "$balance", 0], "bad", "ink"]}.
 
 ## Expressions
@@ -117,6 +126,33 @@ ${['Math', 'Logic', 'Lists', 'Records', 'Text', 'Dates', 'Cells', 'Actions']
   .map((g) => `${g}\n` + FUNCTIONS.filter((f) => f.group === g).map((f) => `  ${f.name} — ${f.use} — ${f.does}`).join('\n'))
   .join('\n')}
 
+## Events
+
+A cell's on prop, and the document's on (set with ["meta", "on.open", action]), map an event name to an action: the same kind of expression as a button's do, so set!, insert!, emit! and the rest work. While it runs, the event's data is bound by name (value, was, row, …) and as the record event (event.name, event.target); a bound name hides a cell of the same name, which (ref name) still reads.
+
+Events cells raise:
+- change (any cell with a value: inputs, lists, tables, calendars, canvases, data, formulas, tabs, accordions, collapsibles, timers, fetches): value, was. It follows the value, whoever changed it: a person, a button, a handler or an agent. A list also binds item and index (the item ticked, added or edited); a formula raises it when what it reads changes.
+- click, dblclick (text, image, icon, stat, chart, formula, table, list, calendar, diagram; button: click runs do, then on.click): target (the cell's name or id); a table row binds row and index, a list item item and index, a diagram shape element. When a cell handles dblclick, a single click waits 250 ms and a double-click runs only dblclick; without a dblclick handler, click runs at once.
+- pick (table): rows (the picked records), value (their keys), was.
+- open, close (accordion: title, value; collapsible: value).
+- tick (timer): count (ticks since it started), at.
+- load (fetch): data and value (the answer). fail (fetch): message, status.
+The document raises open (once each time someone opens it in Live) and close (when they leave it; best effort when a tab is closed).
+
+Custom events: (emit! "saved" {total total}) reaches every cell and the document with an on.saved handler, which see payload (what was sent) and from (the cell that emitted).
+
+Custom actions, defined once for the document and called from any action like a built-in: ["meta", "actions.greet", ["fn", ["who"], ["set!", "hello", ["str", "Hi ", "$who"]]]], then (greet "Ann"). Calling a name that is neither built in, an action nor a cell holding a function shows an error in the cell (and in the outline) before anything runs.
+
+Where things run: events fire only while someone uses the document in Live (never in Edit, never on paper). A person's clicks and changes run in that person's browser, and one gesture with everything its handlers changed undoes in one step. open and close run once per person who opens it. Timers, fetches and their handlers, and changes made by agents, run once on the server while anyone has it open in Live, so nothing runs twice. A handler that sets itself off stops after 8 levels with an error.
+
+Examples:
+  ["input", {"name": "agree", "type": "checkbox", "on": {"change": ["set!", "status", ["if", "$value", "Agreed", "Not yet"]]}}]
+  ["list", {"name": "todo", "type": "check", "on": {"change": ["when", ["every", ["get", "$it", "done"], "$value"], ["insert!", "done", {"items": "$value"}], ["show!", "thanks"]]}}, "Book", "Pack"]
+  ["table", {"name": "people", "value": […], "on": {"click": ["set!", "chosen", ["get", "$row", "name"]]}}]
+  ["timer", {"name": "every-minute", "every": 60, "on": {"tick": ["refresh!", "rate"]}}]
+  ["fetch", {"name": "rate", "on": {"load": ["set!", "warn", [">", ["get", "$data", "rate"], 5]], "fail": ["set!", "problem", "$message"]}}, "/api/demo/rate"]
+  ["meta", "on.open", ["set!", "visits", ["+", "$visits", 1]]]
+
 ## Ops
 
   ["split", cell, "row"|"col", {"before"?: true, "ratio"?: 0.5, "cell"?: notation}]  divide; the new cell is empty unless given
@@ -126,7 +162,7 @@ ${['Math', 'Logic', 'Lists', 'Records', 'Text', 'Dates', 'Cells', 'Actions']
   ["swap", a, b]              exchange two cells
   ["move", cell, ref, "before"|"after"]
   ["put", cell, notation]     give a cell new content, keeping its id, name and size. The fastest way to build: put a whole row/col tree into one cell.
-  ["set", cell, prop, value]  one property: "value", "text", "expr", "name", "size", "style.bg", … (null removes)
+  ["set", cell, prop, value]  one property: "value", "text", "expr", "name", "size", "style.bg", "on.click", … (null removes)
   ["style", cell, {…}]        several style properties at once
   ["draw", diagram, element, …]   add elements to a diagram, or change those whose id exists (a field set to null is removed); new boxes without x/y are placed below the box an arrow comes from
   ["erase", diagram, id, …]   remove diagram elements and the arrows attached to them
@@ -134,6 +170,8 @@ ${['Math', 'Logic', 'Lists', 'Records', 'Text', 'Dates', 'Cells', 'Actions']
                               page: "A4" (default), "A5", "Letter", "Legal"; orientation: "portrait" or "landscape";
                               margin: millimetres (default 16); footer: "number", "title" or "none" — used by the printed pages;
                               font and headFont: the document's text and heading fonts (font ids as in style); fontSize: base px (15)
+  ["meta", "on.open"|"on.<event>", action]   one of the document's handlers (null removes)
+  ["meta", "actions.<name>", ["fn", [params…], body…]]   define (or with null remove) a custom action
   ["do", op, op, …]           all or nothing
 
 cell is an id or a name. Ops in one call are applied atomically.

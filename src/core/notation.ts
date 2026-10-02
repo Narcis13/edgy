@@ -19,6 +19,7 @@
 import { type Cell, type Json, type Kind, GROUP_KINDS, LEAF_KINDS, NAME_RE, RESERVED_NAMES, holdsPanels, isGroup } from './types';
 import { validSize } from './tree';
 import { DiagramError, prepareDiagram } from './diagram';
+import { EVENT_NAME_RE, durationMs } from './duration';
 
 export class NotationError extends Error {}
 
@@ -29,6 +30,7 @@ const PROPS = [
   'min', 'max', 'step', 'options', 'do', 'variant', 'src', 'fit', 'alt', 'icon', 'compare', 'trend', 'columns',
   'selected', 'select', 'group', 'actions', 'borders', 'stripes', 'density', 'header', 'search',
   'paper', 'color', 'marker', 'progress', 'week', 'better', 'confirm', 'title', 'multiple',
+  'on', 'every', 'after', 'url', 'headers',
 ] as const;
 export const SETTABLE = new Set<string>(PROPS);
 
@@ -39,7 +41,7 @@ export const STYLE_KEYS = new Set([
 
 const BODY: Partial<Record<Kind, keyof Cell>> = {
   text: 'text', formula: 'expr', chart: 'expr', table: 'expr', button: 'label', image: 'src', icon: 'icon',
-  calendar: 'expr', stat: 'expr', data: 'value',
+  calendar: 'expr', stat: 'expr', data: 'value', fetch: 'url',
 };
 
 const isObject = (v: unknown): v is Record<string, Json> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -67,6 +69,39 @@ export function checkStyle(style: unknown): Record<string, Json> {
     if (!STYLE_KEYS.has(k)) throw new NotationError(`unknown style "${k}"; known: ${[...STYLE_KEYS].join(', ')}`);
   }
   return style;
+}
+
+/** An event's name, as written in `on` and in emit!. */
+export function checkEventName(name: unknown): string {
+  if (typeof name !== 'string' || !EVENT_NAME_RE.test(name)) {
+    throw new NotationError(`"${name}" is not an event name: start with a letter, then letters, digits, - or _`);
+  }
+  return name;
+}
+
+/** Handlers: {"click": action, "change": action}. A null action is left out. */
+export function checkOn(on: unknown): Record<string, Json> {
+  if (!isObject(on)) throw new NotationError('on must be an object of event names and actions, like {"click": ["set!", "n", 1]}');
+  const out: Record<string, Json> = {};
+  for (const [k, v] of Object.entries(on)) {
+    checkEventName(k);
+    if (v != null) out[k] = v;
+  }
+  return out;
+}
+
+/** A timer's or a fetch's every/after: seconds, or "30s", "2m", "1h". */
+export function checkDuration(prop: string, v: unknown): Json {
+  if (durationMs(v) === null) throw new NotationError(`${prop} is a time in seconds, like 30, or "500ms", "30s", "2m", "1h"; got ${JSON.stringify(v)}`);
+  return v as Json;
+}
+
+/** A fetch's headers: {"Accept": "application/json", "Authorization": "secret:RATES_KEY"}. */
+export function checkHeaders(v: unknown): Record<string, Json> {
+  if (!isObject(v) || Object.values(v).some((x) => typeof x !== 'string')) {
+    throw new NotationError('headers are an object of texts, like {"Authorization": "secret:RATES_KEY"}');
+  }
+  return v;
 }
 
 /** Turn notation (or a raw cell object) into a cell, assigning ids where missing. */
@@ -109,6 +144,13 @@ export function build(n: Json, ctx: BuildCtx): Cell {
       if (v !== 1) cell.size = v;
     } else if (k === 'style') {
       if (Object.keys(checkStyle(v)).length) cell.style = v as Record<string, Json>;
+    } else if (k === 'on') {
+      const on = checkOn(v);
+      if (Object.keys(on).length) cell.on = on;
+    } else if (k === 'every' || k === 'after') {
+      cell[k] = checkDuration(k, v);
+    } else if (k === 'headers') {
+      cell.headers = checkHeaders(v);
     } else (cell as unknown as Record<string, Json>)[k] = v;
   }
 

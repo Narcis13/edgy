@@ -21,7 +21,21 @@ export type Effect =
   | { type: 'insert'; collection: string; record: Record<string, Json> }
   | { type: 'delete'; collection: string; id: string }
   | { type: 'update'; collection: string; id: string; fields: Record<string, Json> }
-  | { type: 'clear'; collection: string };
+  | { type: 'clear'; collection: string }
+  /** A custom event, sent to every cell (and the document) with a handler for it. */
+  | { type: 'emit'; name: string; data: Json }
+  /** Fetch a fetch cell's address again. */
+  | { type: 'refresh'; cell: string };
+
+/** Where a fetch cell stands: nothing asked yet, on its way, arrived, or failed. */
+export interface FetchState {
+  state: 'idle' | 'loading' | 'ready' | 'failed';
+  /** The parsed answer of the last fetch that worked. */
+  data?: Json;
+  error?: string;
+  /** When the state last changed (ms). */
+  at?: number;
+}
 
 /** What the language needs from the document it runs in. */
 export interface Host {
@@ -35,7 +49,11 @@ export interface Host {
   selected?(name: string): unknown[];
   now(): number;
   /** Resolves a cell for `set!` and friends. Only present while running an action. */
-  place?(name: string): { id: string; value: unknown };
+  place?(name: string): { id: string; value: unknown; kind?: string };
+  /** A custom action defined on the document: its (fn (params…) body…). */
+  action?(name: string): Sx | undefined;
+  /** How a fetch cell's request stands. */
+  fetchState?(name: string): FetchState;
   effect?(e: Effect): void;
   currency?: string;
 }
@@ -52,7 +70,10 @@ type Node =
   | { t: 'map'; v: Node[] };
 
 const NUM_RE = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
-const PLACE_FORMS = new Set(['set!', 'toggle!', 'dup!', 'remove!', 'ref', 'child', 'selected']);
+/** Forms whose first argument names a cell rather than reading its value. */
+export const PLACE_FORMS = new Set([
+  'set!', 'toggle!', 'dup!', 'remove!', 'ref', 'child', 'selected', 'start!', 'stop!', 'refresh!', 'show!', 'hide!', 'status', 'error-of',
+]);
 
 type Token = { t: string | { str: string }; pos: number };
 
@@ -583,6 +604,47 @@ const BUILTINS: Record<string, Builtin> = {
     I.host.effect!({ type: 'clear', collection: String(a[0]) });
     return null;
   },
+
+  // events
+  'emit!': (a, I) => {
+    needEffects(I, 'emit!');
+    const name = String(a[0] ?? '');
+    if (!/^[A-Za-z][\w-]*$/.test(name)) throw new SxError('emit! needs the name of an event: (emit! "saved" {total total})');
+    I.host.effect!({ type: 'emit', name, data: (a[1] ?? null) as Json });
+    return null;
+  },
+  'start!': (a, I) => {
+    needEffects(I, 'start!');
+    const t = I.host.place!(String(a[0]));
+    if (t.kind !== 'timer') throw new SxError(`start! needs a timer, and "${a[0]}" is not one`);
+    // The time it started, so starting a running timer again starts it over.
+    I.host.effect!({ type: 'op', op: ['set', t.id, 'value', I.host.now()] });
+    return true;
+  },
+  'stop!': (a, I) => {
+    needEffects(I, 'stop!');
+    const t = I.host.place!(String(a[0]));
+    if (t.kind !== 'timer') throw new SxError(`stop! needs a timer, and "${a[0]}" is not one`);
+    I.host.effect!({ type: 'op', op: ['set', t.id, 'value', false] });
+    return false;
+  },
+  'refresh!': (a, I) => {
+    needEffects(I, 'refresh!');
+    const f = I.host.place!(String(a[0]));
+    if (f.kind !== 'fetch') throw new SxError(`refresh! needs a fetch cell, and "${a[0]}" is not one`);
+    I.host.effect!({ type: 'refresh', cell: f.id });
+    return null;
+  },
+  'show!': (a, I) => {
+    needEffects(I, 'show!');
+    I.host.effect!({ type: 'op', op: ['set', I.host.place!(String(a[0])).id, 'hidden', null] });
+    return null;
+  },
+  'hide!': (a, I) => {
+    needEffects(I, 'hide!');
+    I.host.effect!({ type: 'op', op: ['set', I.host.place!(String(a[0])).id, 'hidden', true] });
+    return null;
+  },
 };
 
 const ALIASES: Record<string, string> = { mod: '%', pow: '^', 'has?': 'includes?', pluck: 'column', coalesce: 'default', concat: 'concat', average: 'avg', length: 'len' };
@@ -590,7 +652,7 @@ const ALIASES: Record<string, string> = { mod: '%', pow: '^', 'has?': 'includes?
 export const isBuiltin = (name: string) => name in BUILTINS || name in ALIASES || SPECIAL.has(name);
 export const builtinNames = () => [...Object.keys(BUILTINS), ...SPECIAL].sort();
 
-const SPECIAL = new Set(['if', 'cond', 'and', 'or', 'when', 'let', 'fn', 'do', 'quote', 'map', 'filter', 'find', 'some', 'every', 'count-if', 'sort-by', 'sum-by', 'reduce', 'selected']);
+const SPECIAL = new Set(['if', 'cond', 'and', 'or', 'when', 'let', 'fn', 'do', 'quote', 'map', 'filter', 'find', 'some', 'every', 'count-if', 'sort-by', 'sum-by', 'reduce', 'selected', 'status', 'error-of']);
 
 export class Interp {
   private steps = 0;
@@ -714,6 +776,14 @@ export class Interp {
           if (typeof x[1] !== 'string') throw new SxError('selected needs the name of a table: (selected orders)');
           return this.host.selected(x[1].replace(/^\$/, ''));
         }
+        case 'status':
+        case 'error-of': {
+          // Names the fetch cell, like selected: (status rate) is "loading", "ready", "failed" or "idle".
+          if (!this.host.fetchState) throw new SxError(`${name} needs a document`);
+          if (typeof x[1] !== 'string') throw new SxError(`${name} needs the name of a fetch cell: (${name} rate)`);
+          const st = this.host.fetchState(x[1].replace(/^\$/, ''));
+          return name === 'status' ? st.state : st.error ?? null;
+        }
         case 'reduce': {
           const f = this.fnArg(x[1], scope, ['acc', 'it', 'i']);
           return toList(this.ev(x[3] ?? null, scope)).reduce((acc, v, i) => f(acc, v, i), this.ev(x[2] ?? null, scope));
@@ -721,11 +791,16 @@ export class Interp {
       }
       const b = BUILTINS[name];
       if (b) return b(x.slice(1).map((a) => this.ev(a, scope)), this);
-      // Not built in: a function held by a variable or by a cell.
+      // Not built in: a function held by a variable, a custom action of the document, or a cell.
       let f: unknown;
       const local = scope.find(head);
+      const custom = local ? undefined : this.host.action?.(head);
       if (local) f = local.v;
-      else {
+      else if (custom !== undefined) {
+        // Made here, in no scope but its own, so its set! and emit! act in whatever runs it.
+        f = this.ev(custom, new Scope({}));
+        if (typeof f !== 'function') throw new SxError(`the action ${head} is not written as (fn (…) …)`);
+      } else {
         try { f = this.host.ref(head); } catch { throw new SxError(`unknown function ${head}`); }
       }
       if (typeof f !== 'function') throw new SxError(`${head} is not a function`);
@@ -737,6 +812,38 @@ export class Interp {
     }
     return (f as Fn)(...x.slice(1).map((a) => this.ev(a, scope)));
   }
+}
+
+/**
+ * The functions an expression calls that are neither built in, bound by let or
+ * fn, nor known to `known` (custom actions, cells holding functions), so a
+ * mistake can be shown before anything runs.
+ */
+export function unknownCalls(x: Sx, known: (name: string) => boolean, bound: Iterable<string> = []): string[] {
+  const out = new Set<string>();
+  const visit = (x: Sx, scope: Set<string>): void => {
+    if (x === null || typeof x !== 'object') return;
+    if (!Array.isArray(x)) return Object.values(x).forEach((v) => visit(v, scope));
+    if (!x.length) return;
+    const [head, ...args] = x;
+    if (typeof head !== 'string' || head.startsWith('$')) return x.forEach((a) => visit(a, scope));
+    if (head === 'quote') return;
+    if (head === 'let' || head === 'fn') {
+      const inner = new Set(scope);
+      const b = args[0];
+      if (head === 'let' && Array.isArray(b)) {
+        for (let i = 0; i + 1 < b.length; i += 2) {
+          visit(b[i + 1], inner);
+          inner.add(String(b[i]).replace(/^\$/, ''));
+        }
+      } else if (head === 'fn') for (const p of Array.isArray(b) ? b : [b]) inner.add(String(p).replace(/^\$/, ''));
+      return args.slice(1).forEach((a) => visit(a, inner));
+    }
+    if (!isBuiltin(head) && !scope.has(head) && !known(head)) out.add(head);
+    (PLACE_FORMS.has(head) ? args.slice(1) : args).forEach((a) => visit(a, scope));
+  };
+  visit(x, new Set(bound));
+  return [...out];
 }
 
 // ───────────────────────────── templates ─────────────────────────────

@@ -3,7 +3,8 @@
 
 import type { Cell, Doc } from './types';
 import { isGroup } from './types';
-import { type Computed, plainValue } from './engine';
+import { type Computed, actionProblems, plainValue } from './engine';
+import { durationMs, sayDuration } from './duration';
 import { print } from './sx';
 import { openSections, openTab } from './containers';
 import { describeDiagram, elementsOf } from './diagram';
@@ -37,18 +38,45 @@ function line(cell: Cell, computed?: Computed): string {
     case 'panel': parts.push(JSON.stringify(cell.title ?? '')); break;
     case 'diagram': parts.push(describeDiagram(elementsOf(cell.value))); break;
     case 'data': parts.push('(never shown) = ' + lit(cell.value ?? null)); break;
+    case 'timer': {
+      const every = durationMs(cell.every);
+      const after = durationMs(cell.after);
+      parts.push(every ? `every ${sayDuration(every)}` : after ? `once, after ${sayDuration(after)}` : 'no time set', cell.value === false ? 'stopped' : 'running');
+      break;
+    }
+    case 'fetch': {
+      const f = st?.props?.fetch as { state?: string; error?: string } | undefined;
+      const every = durationMs(cell.every);
+      parts.push(clip(cell.url ?? ''), ...(every ? [`every ${sayDuration(every)}`] : []), f?.state === 'failed' ? `failed: ${f.error ?? '?'}` : f?.state ?? 'idle');
+      if (f?.state === 'ready') parts.push('→ ' + lit(st?.value));
+      break;
+    }
     case 'input': parts.push('= ' + lit(cell.value ?? null)); break;
     case 'button': parts.push(JSON.stringify(cell.label ?? ''), 'do ' + clip(print(cell.do ?? null, 10_000), 90)); break;
     case 'image': parts.push(clip(cell.src ?? '')); break;
     case 'icon': parts.push(cell.icon ?? ''); break;
   }
-  if (st?.error && !isGroup(cell)) parts.push('→ ! ' + st.error);
+  if (cell.on && typeof cell.on === 'object') {
+    for (const [name, action] of Object.entries(cell.on)) parts.push(`on ${name} ${clip(print(action ?? null, 10_000), 80)}`);
+  }
+  if (st?.error && (!isGroup(cell) || cell.on)) parts.push('→ ! ' + st.error);
   else if (st && (cell.kind === 'formula' || cell.kind === 'stat' || (cell.kind === 'list' && cell.expr !== undefined) || (cell.kind === 'text' && (cell.text ?? '').includes('{{')))) parts.push('→ ' + lit(st.value));
   return parts.join(' ');
 }
 
 export function outline(doc: Doc, computed?: Computed): string {
   const out: string[] = [`"${doc.meta.title}" — doc ${doc.id}, version ${doc.v}`];
+  // The document's own handlers and custom actions, before its cells.
+  const on = doc.meta.on;
+  if (on && typeof on === 'object') for (const [name, action] of Object.entries(on)) out.push(`document on ${name} ${clip(print(action ?? null, 10_000), 90)}`);
+  const actions = doc.meta.actions;
+  if (actions && typeof actions === 'object') {
+    for (const [name, fn] of Object.entries(actions)) {
+      const params = Array.isArray(fn) && Array.isArray(fn[1]) ? fn[1].join(' ') : '';
+      out.push(`action ${name} (${params}) ${clip(print(Array.isArray(fn) ? (fn.length === 3 ? fn[2] : ['do', ...fn.slice(2)]) : null, 10_000), 90)}`);
+    }
+  }
+  for (const p of actionProblems(doc, null)) out.push('document → ! ' + p);
   const visit = (cell: Cell, prefix: string, tee: string) => {
     out.push(prefix + tee + line(cell, computed));
     const kids = cell.children ?? [];

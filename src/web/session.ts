@@ -677,7 +677,7 @@ export class Session {
       const ops = effects.filter((e) => e.type === 'op').map((e) => (e as { op: Op }).op);
       if (ops.length) this.dispatch(ops);
       for (const e of effects) {
-        const path = e.type === 'op' ? '' : `/api/data/${encodeURIComponent(e.collection)}`;
+        const path = "collection" in e ? `/api/data/${encodeURIComponent(e.collection)}` : "";
         if (e.type === 'insert') await api('POST', path, { record: e.record, source: { doc: this.id, cell: id } });
         if (e.type === 'delete') await api('DELETE', `${path}/${encodeURIComponent(e.id)}`);
         if (e.type === 'update') await api('PATCH', `${path}/${encodeURIComponent(e.id)}`, { fields: e.fields });

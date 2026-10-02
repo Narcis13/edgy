@@ -89,7 +89,7 @@ export function validSize(s: unknown): s is Size {
  * dissolved. Tabs, accordions, collapsibles and panels never are: they are
  * what the person made, even with a single cell inside.
  */
-export const isPlain = (c: Cell) => (c.kind === 'row' || c.kind === 'col') && !c.name && !c.style && c.hidden == null;
+export const isPlain = (c: Cell) => (c.kind === 'row' || c.kind === 'col') && !c.name && !c.style && c.hidden == null && c.on == null;
 
 /**
  * Keep the tree tidy: a row or col with no children becomes an empty cell, a

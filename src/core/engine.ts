@@ -6,7 +6,7 @@ import { isContainer, isGroup } from './types';
 import { containerValue } from './containers';
 import { elementsOf } from './diagram';
 import { type Index, indexTree, walk } from './tree';
-import { type Effect, type Host, Interp, SxError, deepEqual, formatValue, hasTemplate, parseTemplate, truthy } from './sx';
+import { type Effect, type FetchState, type Host, Interp, SxError, deepEqual, formatValue, hasTemplate, parseTemplate, truthy, unknownCalls } from './sx';
 import { pickRows } from './table';
 
 export interface CellState {
@@ -32,6 +32,55 @@ export interface Computed {
 export interface World {
   rows(collection: string): unknown[];
   now: number;
+  /** Where each fetch cell's request stands, by cell id (kept by the server, not the document). */
+  fetched?(cell: string): FetchState | undefined;
+}
+
+/** A custom action of the document: its (fn …), or undefined. */
+export function customAction(doc: Doc, name: string): Sx | undefined {
+  const a = doc.meta.actions;
+  if (!a || typeof a !== 'object' || Array.isArray(a) || !Object.hasOwn(a, name)) return undefined;
+  const x = (a as Record<string, Sx>)[name];
+  return Array.isArray(x) && x[0] === 'fn' ? x : undefined;
+}
+
+/** The actions a cell (or, with null, the document) holds: its do, its handlers, its row actions, its custom actions. */
+export function actionsOf(doc: Doc, cell: Cell | null): { where: string; action: Sx }[] {
+  const out: { where: string; action: Sx }[] = [];
+  const on = cell ? cell.on : doc.meta.on;
+  if (cell?.do != null) out.push({ where: 'its action', action: cell.do });
+  if (on && typeof on === 'object' && !Array.isArray(on)) {
+    for (const [k, v] of Object.entries(on)) if (v != null) out.push({ where: `on ${k}`, action: v as Sx });
+  }
+  if (cell && Array.isArray(cell.actions)) {
+    for (const a of cell.actions) {
+      const r = a as Record<string, Sx> | null;
+      if (r && typeof r === 'object' && r.do != null) out.push({ where: `row action ${JSON.stringify(r.label ?? '')}`, action: r.do });
+    }
+  }
+  if (!cell && doc.meta.actions && typeof doc.meta.actions === 'object') {
+    for (const [k, v] of Object.entries(doc.meta.actions)) out.push({ where: `action ${k}`, action: v as Sx });
+  }
+  return out;
+}
+
+/**
+ * Calls to names that exist nowhere (not built in, not a custom action, not a
+ * cell, not a variable), found before anything runs: "on click: no action or
+ * function called \"greet\"".
+ */
+export function actionProblems(doc: Doc, cell: Cell | null): string[] {
+  const idx = indexTree(doc.root);
+  const known = (n: string) => customAction(doc, n) !== undefined || idx.byName.has(n) || idx.byId.has(n);
+  const out: string[] = [];
+  for (const { where, action } of actionsOf(doc, cell)) {
+    if (!cell && where.startsWith('action ') && !(Array.isArray(action) && action[0] === 'fn')) {
+      out.push(`${where}: write it as (fn (…) …)`);
+      continue;
+    }
+    for (const n of unknownCalls(action, known)) out.push(`${where}: no action or function called "${n}"`);
+  }
+  return out;
 }
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -86,7 +135,13 @@ class Evaluator {
         const cell = self.find(name);
         let value: unknown = null;
         try { value = self.valueOf(cell); } catch { /* an unreadable target can still be set */ }
-        return { id: cell.id, value };
+        return { id: cell.id, value, kind: cell.kind };
+      },
+      action: (name) => customAction(doc, name),
+      fetchState: (name) => {
+        const cell = self.find(name);
+        if (cell.kind !== 'fetch') throw new SxError(`"${name}" is not a fetch cell`);
+        return self.world.fetched?.(cell.id) ?? { state: 'idle' };
       },
       effect: (e) => {
         if (!self.effects) throw new SxError('this only works in an action, such as a button');
@@ -187,6 +242,10 @@ class Evaluator {
       case 'diagram': return elementsOf(cell.value);
       // A data cell holds a value for the document's own use; readers never see it.
       case 'data': return cell.value ?? null;
+      // A timer is worth whether it runs: unset or a start time is running, false is stopped.
+      case 'timer': return cell.value !== false;
+      // A fetch cell is worth the answer it last got, kept outside the document.
+      case 'fetch': return this.world.fetched?.(cell.id)?.data ?? null;
       case 'input': {
         const v = cell.value ?? null;
         const t = cell.type ?? 'text';
@@ -220,7 +279,7 @@ class Evaluator {
       else st.hidden = truthy(cell.hidden);
     }
     const props: Record<string, unknown> = {};
-    for (const k of ['label', 'placeholder', 'src', 'alt', 'title'] as const) {
+    for (const k of ['label', 'placeholder', 'src', 'alt', 'title', 'url'] as const) {
       const v = cell[k];
       if (typeof v === 'string' && hasTemplate(v)) guard(() => { props[k] = this.template(cell, v); });
     }
@@ -236,6 +295,11 @@ class Evaluator {
         if (typeof el.text === 'string' && hasTemplate(el.text)) guard(() => { texts[el.id] = this.template(cell, el.text!); });
       }
       if (Object.keys(texts).length) props.texts = texts;
+    }
+    if (cell.kind === 'fetch') props.fetch = this.world.fetched?.(cell.id) ?? { state: 'idle' };
+    if (cell.on !== undefined || cell.do !== undefined || cell.actions !== undefined) {
+      const problems = actionProblems(this.doc, cell);
+      if (problems.length) st.error ??= problems[0];
     }
     if (Object.keys(props).length) st.props = props;
     const reads = this.reads.get(cell.id);

@@ -13,18 +13,20 @@
 //   ["style", cell, {bg: …}]                                 several style properties
 //   ["draw", diagram, element, …]                            add or change diagram elements
 //   ["erase", diagram, elementId, …]                         remove diagram elements
-//   ["meta", key, value]                                     document settings
+//   ["meta", key, value]                                     document settings ("on.open", "actions.greet": one handler or action)
 //   ["do", op, op, …]                                        all or nothing
 //
 // `cell` is an id or a name. Applying returns the op with every new id filled
 // in (so replaying it is deterministic) and the op that undoes it.
 
-import { type Cell, type Doc, type Json, type Op, type Sx, flowOf, holdsPanels, isGroup } from './types';
+import { type Cell, type Doc, type Json, type Op, type Sx, NAME_RE, flowOf, holdsPanels, isGroup } from './types';
 import {
   cloneTree, indexTree, isPlain, leaves, normalize, pathTo, resolve, rewrite, round4, validSize, weight, withSize,
 } from './tree';
-import { type BuildCtx, NotationError, SETTABLE, build, checkName, checkStyle, toNotation } from './notation';
-import { mapTemplate } from './sx';
+import {
+  type BuildCtx, NotationError, SETTABLE, build, checkDuration, checkEventName, checkHeaders, checkName, checkOn, checkStyle, toNotation,
+} from './notation';
+import { PLACE_FORMS, isBuiltin, mapTemplate } from './sx';
 import { freeTitle, renamedValue } from './containers';
 import { DiagramError, elementsOf, eraseElements, prepareDiagram, upsertElements } from './diagram';
 
@@ -48,6 +50,8 @@ interface Result {
   op: Op;
   touched: string[];
   inverse?: Op;
+  /** A cell was renamed: references in the document's own handlers and actions follow. */
+  rename?: { from: string; to: string };
   /** Without an exact inverse: undo by restoring the nearest surviving ancestor among these (deepest first). */
   anchors?: Cell[];
 }
@@ -343,8 +347,6 @@ function fillIds(c: Cell, ctx: BuildCtx): Cell {
   return id === c.id && !children ? c : { ...c, id, ...(children ? { children } : {}) };
 }
 
-const PLACE_FORMS = new Set(['set!', 'toggle!', 'dup!', 'remove!', 'ref', 'child', 'selected']);
-
 function renameSx(x: Sx, from: string, to: string): Sx {
   if (typeof x === 'string') return x === '$' + from ? '$' + to : x;
   if (Array.isArray(x)) {
@@ -370,7 +372,7 @@ function renameSx(x: Sx, from: string, to: string): Sx {
   return x;
 }
 
-const SX_PROPS = ['expr', 'do', 'hidden', 'options', 'min', 'max', 'step', 'style', 'compare', 'trend', 'actions'] as const;
+const SX_PROPS = ['expr', 'do', 'hidden', 'options', 'min', 'max', 'step', 'style', 'compare', 'trend', 'actions', 'on'] as const;
 const TEXT_PROPS = ['text', 'label', 'placeholder', 'src', 'alt', 'title'] as const;
 
 /** Point every reference to `from` at `to`, in formulas, actions, styles and templates. */
@@ -434,10 +436,12 @@ function set(w: Work, op: Op): Result {
   const path = op[2].split('.');
   const value = (op[3] ?? null) as Json;
   if (!SETTABLE.has(path[0])) throw new OpError(`"${path[0]}" can't be set; settable: ${[...SETTABLE].join(', ')}. Use put to change the kind.`);
-  if (path.length > 2 || (path.length === 2 && path[0] !== 'style')) throw new OpError('only style has nested properties, like "style.bg"');
+  if (path.length > 2 || (path.length === 2 && path[0] !== 'style' && path[0] !== 'on')) {
+    throw new OpError('only style and on have nested properties, like "style.bg" or "on.click"');
+  }
   const old = path.length === 1
     ? ((target as unknown as Record<string, Json>)[path[0]] ?? null)
-    : (target.style?.[path[1]] ?? null);
+    : (((target as unknown as Record<string, Record<string, Json> | undefined>)[path[0]])?.[path[1]] ?? null);
 
   let root = w.root;
   if (path[0] === 'name') {
@@ -457,6 +461,15 @@ function set(w: Work, op: Op): Result {
     throw new OpError('text must be a string');
   } else if (path[0] === 'title' && value !== null && typeof value !== 'string') {
     throw new OpError('a title is text');
+  } else if (path[0] === 'on') {
+    if (path.length === 2) checkEventName(path[1]);
+    else if (value !== null) checkOn(value);
+  } else if ((path[0] === 'every' || path[0] === 'after') && value !== null) {
+    checkDuration(path[0], value);
+  } else if (path[0] === 'headers' && value !== null) {
+    checkHeaders(value);
+  } else if (path[0] === 'url' && value !== null && typeof value !== 'string') {
+    throw new OpError('a url is text');
   }
   let stored = path[0] === 'size' && value === 1 ? null : value;
   if (path[0] === 'value' && target.kind === 'diagram' && value !== null) stored = diagramValue(value);
@@ -470,7 +483,8 @@ function set(w: Work, op: Op): Result {
       return { root, op: ['set', target.id, op[2], value], touched: [target.id, parent!.id], anchors: ancestors(w.root, target.id) };
     }
   }
-  return { root, op: ['set', target.id, op[2], value], touched: [target.id], inverse: ['set', target.id, op[2], old] };
+  const rename = path[0] === 'name' ? { from: target.name ?? target.id, to: (value as string | null) ?? target.id } : undefined;
+  return { root, op: ['set', target.id, op[2], value], touched: [target.id], inverse: ['set', target.id, op[2], old], ...(rename ? { rename } : {}) };
 }
 
 function style(w: Work, op: Op): Result {
@@ -616,24 +630,14 @@ export function applyOp(doc: Doc, op: Op): Applied {
       }
       return { doc: cur, op: ['do', ...done], inverse: ['do', ...undo], touched: [...new Set(touched)] };
     }
-    if (op[0] === 'meta') {
-      const key = op[1];
-      if (typeof key !== 'string') throw new OpError('meta needs a key: ["meta", "title", "Budget"]');
-      const value = (op[2] ?? null) as Json;
-      const old = (doc.meta[key] ?? null) as Json;
-      const meta = { ...doc.meta };
-      if (value === null) delete meta[key];
-      else meta[key] = value;
-      if (typeof meta.title !== 'string') meta.title = 'Untitled';
-      return { doc: { ...doc, meta }, op: ['meta', key, value], inverse: ['meta', key, old], touched: [] };
-    }
+    if (op[0] === 'meta') return meta(doc, op);
     const w = workOn(doc);
     const r = run(w, op);
     const root = normalize(r.root);
     checkPanels(root);
     const live = indexTree(root).byId;
     return {
-      doc: { ...doc, root, nextId: w.next() },
+      doc: { ...doc, root, nextId: w.next(), ...(r.rename ? { meta: renameInMeta(doc.meta, r.rename.from, r.rename.to) } : {}) },
       op: r.op,
       inverse: r.inverse && (r.inverse[0] !== 'replace' || live.has(r.inverse[1] as string)) ? r.inverse : undoVia(doc.root, root, r.anchors ?? []),
       touched: r.touched.filter((id) => live.has(id)),
@@ -642,6 +646,61 @@ export function applyOp(doc: Doc, op: Op): Applied {
     if (e instanceof NotationError) throw new OpError(e.message);
     throw e;
   }
+}
+
+// ───────────────────────────── the document's settings ─────────────────────────────
+
+const isAction = (x: Json): boolean => Array.isArray(x) && x[0] === 'fn' && x.length >= 3;
+
+function checkAction(name: string, value: Json): void {
+  if (!NAME_RE.test(name)) throw new OpError(`"${name}" is not a usable action name: start with a letter, then letters, digits, - or _`);
+  if (isBuiltin(name)) throw new OpError(`"${name}" is a built-in function; give the action a name of its own`);
+  if (value !== null && !isAction(value)) throw new OpError('an action is written as a function: ["fn", ["who"], ["set!", "hello", "$who"]], i.e. (fn (who) (set! hello who))');
+}
+
+/** ["meta", key, value]: one setting; "on.open" and "actions.greet" reach one handler or one action. */
+function meta(doc: Doc, op: Op): Applied {
+  const key = op[1];
+  if (typeof key !== 'string') throw new OpError('meta needs a key: ["meta", "title", "Budget"]');
+  const value = (op[2] ?? null) as Json;
+  const path = key.split('.');
+  const m = { ...doc.meta } as Record<string, Json | undefined>;
+  let old: Json;
+  if (path.length === 2 && (path[0] === 'on' || path[0] === 'actions')) {
+    const [group, name] = path;
+    if (group === 'on') checkEventName(name);
+    else checkAction(name, value);
+    const inner = { ...((isObject(m[group]) ? m[group] : {}) as Record<string, Json>) };
+    old = inner[name] ?? null;
+    if (value === null) delete inner[name];
+    else inner[name] = value;
+    if (Object.keys(inner).length) m[group] = inner;
+    else delete m[group];
+  } else {
+    if (path.length > 1) throw new OpError('only on and actions have parts, like "on.open" or "actions.greet"');
+    if (key === 'on' && value !== null) checkOn(value);
+    if (key === 'actions' && value !== null) {
+      if (!isObject(value)) throw new OpError('actions is an object of names and functions');
+      for (const [k, v] of Object.entries(value)) checkAction(k, v);
+    }
+    old = (m[key] ?? null) as Json;
+    if (value === null) delete m[key];
+    else m[key] = value;
+  }
+  if (typeof m.title !== 'string') m.title = 'Untitled';
+  return { doc: { ...doc, meta: m as Doc['meta'] }, op: ['meta', key, value], inverse: ['meta', key, old], touched: [] };
+}
+
+/** The document's handlers and actions follow a renamed cell. */
+function renameInMeta(m: Doc['meta'], from: string, to: string): Doc['meta'] {
+  let next = m;
+  for (const k of ['on', 'actions'] as const) {
+    const v = m[k];
+    if (v === undefined) continue;
+    const r = renameSx(v as Sx, from, to);
+    if (r !== v) next = { ...next, [k]: r as Record<string, Sx> };
+  }
+  return next;
 }
 
 export function applyOps(doc: Doc, ops: Op[]): Applied {
