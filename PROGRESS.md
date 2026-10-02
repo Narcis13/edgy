@@ -75,6 +75,9 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 - tsx's test runner makes an IPC socket under TMPDIR; the scratchpad path can exceed macOS's ~104-char socket limit (EADDRINUSE). If the test gate fails that way, run `npm test` with the default TMPDIR.
 - Ask AI (offline): opening an accordion section needs its title; "next tab" stops at the ends; with several diagrams and none named, the one around the edited cell (else the first) is used.
 
+- Diagram, known rough edges (not in the contract): tested with synthetic pointer events only (pointer capture is try/caught for them); selecting the cell shows its toolbar above the drawing and pushes it down ~44px (88px on a phone); label wrapping while typing can differ slightly from the drawn wrap; no pan or zoom; no toolbar toggle for dashed lines.
+- A failing `assert.ok(expr)` without a message can hang the tsx test runner at 100% CPU; give asserts a message.
+
 ## Log
 
 - 2026-10-02: baseline: 99 tests pass, typecheck clean, build passes after `npm install` (font packages had gone missing from node_modules).
