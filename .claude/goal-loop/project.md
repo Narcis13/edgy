@@ -38,7 +38,14 @@ $P/serve.sh stop 8791
 - Never verify against `data/edgy.db`, and never stop the user's dev server (5173 for web, 8787 for API).
   Use port 8791, or 8792 and up for a second instance.
 - `serve.sh` builds first, so run it again after code changes. It's a production build, with no hot reload.
-- URLs: `/` (home), `/data` (collections), `/d/<id>?view=edit|live|page`. On a phone the editor opens in Live by default.
+- URLs: `/` (home, the library), `/data` (collections), `/d/<id>?view=edit|live|page`, `/deck/<id>` and `/deck/<id>/play#<n>`,
+  `/s/<token>` (a share link: Live only). On a phone the editor opens in Live by default.
+- `serve.sh` and `npm run build` also build the offline bundle (`vite.offline.config.ts`) that exports are made from;
+  `GET /api/docs/<id>/export` answers 503 without it. In development the server builds it on the first export.
+- Fill a server with many documents: `node scripts/seed-library.mjs <url> 300`; the showcase library: `node docs/showcase/library/seed.mjs <url>`
+  (prints ids as shell assignments). Share tokens, decks and pins are set over HTTP (see the guide's Library section).
+- The schema version is SQLite's `user_version` (now 3); `Store` migrates older files in place on open. `docs/showcase/library/migration.sh`
+  checks a database made by commit 40b398d. On Windows, Git Bash's `kill` may not reach a node started with nohup in a subshell: stop by port.
 - Create documents over HTTP, which is reproducible and scriptable:
   - `POST /api/docs` with body `{"template":"showcase"}`, `{"title":…,"root":<notation>}` or `{}`. The response has `id`.
   - `POST /api/docs/<id>/ops` with body `{"actor":{"kind":"agent","name":"Claude"},"ops":[["set","qty","value",5]]}`.
@@ -72,6 +79,10 @@ swift $S/montage.swift strip.png 0.5 a.png b.png c.png    # side by side, for ev
 - `--js` runs after load and its value is printed. Use it to click, type and dispatch events, then let the
   screenshot capture the result. Find selectors by reading the components (`src/web/**`).
   Inputs controlled by React need the native value setter followed by an `input` event.
+- `--swipe "x1,y1,x2,y2"` sends a real touch swipe; `--offline` turns the network off (open an export with `file:///…`); every run prints
+  `REQUESTS n`, the requests that went to the network.
+- A background headless tab has no focus: `el.focus()`/`blur()` fire nothing, so fields that save on blur need `FocusEvent('focusin'/'focusout')`
+  dispatched (see the `SETV` helpers in `docs/showcase/library/shoot.sh`).
 - Exit code 3 means there was at least one `CONSOLE` line: a console error or warning, an uncaught exception, a failed
   request, or an HTTP status of 400 or above. The goal requires zero.
 - Viewports to cover: 1440×900 desktop, 390×844 phone. When layout is part of the goal, also check

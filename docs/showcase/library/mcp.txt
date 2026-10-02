@@ -1,0 +1,155 @@
+Tools: edgy_guide, edgy_docs, edgy_organize, edgy_deck, edgy_share, edgy_export, edgy_create, edgy_read, edgy_apply, edgy_eval, edgy_data, edgy_say, edgy_listen, edgy_answer
+
+> edgy_create {"title":"Harbour fees","root":["col",["text","Mooring costs for the summer season"],["input",{"name":"boats","type":"number","value":12}]]}
+  Created 1howrdgy. Open it at http://127.0.0.1:8795/d/1howrdgy
+  
+  "Harbour fees" — doc 1howrdgy, version 1
+  c1 col
+  ├─ c2 text "Mooring costs for the summer season"
+  └─ c3 input:number boats = 12
+  
+  No errors.
+
+> edgy_create {"title":"Crew rota","root":["text","Who sails on which weekend"]}
+  Created v0xgs6ih. Open it at http://127.0.0.1:8795/d/v0xgs6ih
+  
+  "Crew rota" — doc v0xgs6ih, version 1
+  c1 text "Who sails on which weekend"
+  
+  No errors.
+
+> edgy_create {"title":"Regatta day","template":"quote"}
+  Created xdbqsmc8. Open it at http://127.0.0.1:8795/d/xdbqsmc8
+  
+  "Regatta day" — doc xdbqsmc8, version 1
+  c1 col
+  ├─ c2 row [hug]
+  │  ├─ c3 col [2]
+  │  │  ├─ c4 text "Quote"
+  │  │  └─ c5 text "Prepared for **{{(default client \"your client\")}}** on {{date |…" → "Prepared for **Ada Lovelace** on Sep 30, 2026"
+  │  └─ c6 col
+  │     ├─ c7 icon anchor
+  │     └─ c8 text "**Northwind Studio** ⏎ 12 Harbour Lane, Bristol"
+  ├─ c9 row [hug]
+  │  ├─ c10 input:text client [2] = "Ada Lovelace"
+  │  ├─ c11 input:date date = "2026-09-30"
+  │  └─ c12 input:number valid = 30
+  ├─ c13 row [hug]
+  │  ├─ c14 text [3] "Item"
+  │  ├─ c15 text "Qty"
+  │  ├─ c16 text "Unit price"
+  │  └─ c17 text "Amount"
+  ├─ c18 col lines [hug]
+  │  ├─ c19 row [hug]
+  │  │  ├─ c20 input:text [3] = "Brand identity"
+  │  │  ├─ c21 input:number = 1
+  (… 37 more lines)
+
+> edgy_organize {"action":"describe","docs":["1howrdgy"],"description":"What the marina charges per berth, kept for the treasurer"}
+  "Harbour fees" now reads: What the marina charges per berth, kept for the treasurer
+
+> edgy_docs {"query":"treasurer"}
+  1howrdgy  "Harbour fees"  version 2, changed 2026-10-02T16:34:48.676Z  http://127.0.0.1:8795/d/1howrdgy
+      What the marina charges per berth, kept for the treasurer
+      found in the description: What the marina charges per berth, kept for the treasurer
+
+> edgy_docs {"query":"mooring"}
+  1howrdgy  "Harbour fees"  version 2, changed 2026-10-02T16:34:48.676Z  http://127.0.0.1:8795/d/1howrdgy
+      What the marina charges per berth, kept for the treasurer
+      found in the text: Mooring costs for the summer season
+
+> edgy_organize {"action":"pin","docs":["v0xgs6ih","1howrdgy"]}
+  pin: v0xgs6ih, 1howrdgy.
+
+> edgy_organize {"action":"order_pins","docs":["1howrdgy","v0xgs6ih"]}
+  Pinned, in order: 1howrdgy, v0xgs6ih, qb0oqlmu, gourdaiw
+
+> edgy_docs {"filter":"pinned"}
+  Pinned:
+  1howrdgy  "Harbour fees"  version 2, changed 2026-10-02T16:34:48.676Z  http://127.0.0.1:8795/d/1howrdgy  [pinned #1]
+      What the marina charges per berth, kept for the treasurer
+  v0xgs6ih  "Crew rota"  version 1, changed 2026-10-02T16:34:48.598Z  http://127.0.0.1:8795/d/v0xgs6ih  [pinned #2]
+  qb0oqlmu  "Studio billing and ledger"  version 2, changed 2026-10-02T16:30:42.826Z  http://127.0.0.1:8795/d/qb0oqlmu  [pinned #3, in deck "Quarterly review"]
+      Every invoice and project this quarter, grouped by status.
+  gourdaiw  "Harbour & Co. order desk"  version 2, changed 2026-10-02T16:30:42.919Z  http://127.0.0.1:8795/d/gourdaiw  [pinned #4]
+      How an order travels, the week’s orders, and phone orders.
+  
+
+> edgy_organize {"action":"archive","docs":["Crew rota"]}
+  archive: v0xgs6ih.
+
+> edgy_docs {"filter":"archived"}
+  v0xgs6ih  "Crew rota"  version 1, changed 2026-10-02T16:34:48.598Z  http://127.0.0.1:8795/d/v0xgs6ih  [archived]
+
+> edgy_organize {"action":"restore","docs":["v0xgs6ih"]}
+  restore: v0xgs6ih.
+
+> edgy_deck {"action":"create","title":"Season plan","description":"For the club meeting","docs":["1howrdgy","v0xgs6ih","xdbqsmc8"]}
+  deck-0s50lux  "Season plan" — For the club meeting
+    1. 1howrdgy "Harbour fees"
+    2. v0xgs6ih "Crew rota"
+    3. xdbqsmc8 "Regatta day"
+  Play it at http://127.0.0.1:8795/deck/deck-0s50lux/play
+
+> edgy_deck {"action":"reorder","deck":"Season plan","docs":["xdbqsmc8","1howrdgy"]}
+  deck-0s50lux  "Season plan" — For the club meeting
+    1. xdbqsmc8 "Regatta day"
+    2. 1howrdgy "Harbour fees"
+    3. v0xgs6ih "Crew rota"
+  Play it at http://127.0.0.1:8795/deck/deck-0s50lux/play
+
+> edgy_deck {"action":"remove","deck":"deck-0s50lux","docs":["v0xgs6ih"]}
+  deck-0s50lux  "Season plan" — For the club meeting
+    1. xdbqsmc8 "Regatta day"
+    2. 1howrdgy "Harbour fees"
+  Play it at http://127.0.0.1:8795/deck/deck-0s50lux/play
+
+> edgy_docs {"filter":"decks"}
+  deck-0s50lux  deck "Season plan"  2 documents: xdbqsmc8, 1howrdgy
+      For the club meeting
+  deck-zai8fd4  deck "Quarterly review"  3 documents: qb0oqlmu, nvhmsywg, ewlpanre
+      Billing, the offsite budget and the savings plan, for Friday.
+  deck-xf7k81d  deck "Harbour & Co. pitch"  3 documents: beyxrrqt, tfoz3sll, 0laxhcju
+
+> edgy_share {"doc":"1howrdgy","action":"on","access":"view"}
+  Anyone with this link can view: http://127.0.0.1:8795/s/LWeXeLkAy5Hasa3s8x5SgIGQUXDhZbCfE9sDcNCDEHQ
+
+> edgy_share {"doc":"1howrdgy","action":"list"}
+  view: http://127.0.0.1:8795/s/LWeXeLkAy5Hasa3s8x5SgIGQUXDhZbCfE9sDcNCDEHQ
+
+> edgy_share {"doc":"1howrdgy","action":"off"}
+  Turned off: view.
+
+> edgy_export {"deck":"Season plan","file":"C:\\Users\\User1\\AppData\\Local\\Temp\\claude\\C--dev-edgy\\7ccf8d70-468f-4e29-bc88-f147ed19f6ac\\scratchpad\\library-shots\\season-plan.html"}
+  Saved C:\Users\User1\AppData\Local\Temp\claude\C--dev-edgy\7ccf8d70-468f-4e29-bc88-f147ed19f6ac\scratchpad\library-shots\season-plan.html (1037 KB). It opens in any browser, offline.
+
+The exported deck: C:\Users\User1\AppData\Local\Temp\claude\C--dev-edgy\7ccf8d70-468f-4e29-bc88-f147ed19f6ac\scratchpad\library-shots\season-plan.html, 1061939 bytes
+
+> edgy_guide {}
+  # Edgy: documents made of cells
+  
+  A document is one cell. Splitting a cell turns it into a row (side by side) or a col (stacked) of cells, and so on, so a document is a tree. Every change is an op; every formula and action is an s-expression written as a JSON array. A person may be editing the same document live, so make small, legible changes and check the result.
+  
+  ## Cells, as notation
+  
+  A cell is written [kind, props?, ...body]:
+  
+    ["col",
+      ["text", {"style": {"size": 28, "weight": 650}}, "Quote for {{client}}"],
+      ["row",
+        ["input", {"name": "qty", "type": "number", "value": 2, "label": "Quantity"}],
+        ["input", {"name": "price", "type": "number", "value": 40, "label": "Unit price"}],
+        ["formula", {"name": "total", "format": "currency"}, ["*", "$qty", "$price"]]]]
+  
+  Kinds and their body:
+  - row, col: child cells. A bare string child is a text cell.
+  - tabs: panels behind a tab bar, one shown at a time: ["tabs", {"name": "view", "value": "Details"}, ["panel", {"title": "Overview"}, …cells], ["panel", {"title": "Details"}, …cells]]. Its value is the open tab's title, so other cells read it, (= view "Details"), and a button opens one, (set! view "Details"). Unset, the first tab is open. On paper every panel prints, in order, under its title.
+  - accordion: sections that fold, the same panels as tabs: ["accordion", {"name": "faq"}, ["panel", {"title": "Shipping"}, …], …]. Props: multiple (true lets any number be open; unset, opening one closes the other). Its value is the list of open titles, e.g. ["Shipping"]; set it with a list, one title, or [] to close all: (set! faq "Returns"). (includes? faq "Shipping") tells whether one is open. Prints unfolded.
+  - panel: a titled section, only directly inside tabs or an accordion. Prop: title (unique within its container; it is the key the container's value uses). Body: its cells, stacked like a col. Splitting a panel adds a panel beside it; dup copies it as a new tab; move reorders panels; the last panel can't be removed (remove the tabs instead).
+  - collapsible: a heading that folds the cells under it: ["collapsible", {"name": "more", "title": "More details", "value": false}, …cells]. Its value is true while open (the default) and false while folded, so (toggle! more) folds and unfolds it and (if more …) reads it. Prints unfolded.
+    Inside any of these, cells split, merge, move and duplicate as in a col; the last cell of a panel leaves an empty cell behind.
+  - data: a value for the document's own use, never shown to readers and taking no space (in Edit it is a small chip): ["data", {"name": "step"}, 1], ["data", {"name": "regions"}, ["North", "South"]], ["data", {"name": "cfg"}, {"vat": 0.2}]. Formulas read it by name; actions change it: (set! step (+ step 1)). Use it for a wizard's current step, a flag, a lookup list. Unlike hidden, nothing ever shows it.
+  - diagram: shapes, text and arrows, drawn by people (in Edit) or written as data. The body is the elements: ["diagram", {"name": "flow"}, {"id": "a", "type": "rect", "text": "Order placed"}, {"id": "b", "type": "diamond", "text": "Paid?"}, {"type": "arrow", "from": "a", "to": "b", "text": "check"}]. Element fields: id (yours, or e1, e2… given for you), type (rect, ellipse, diamond, text, arrow, line), x y w h (px; leave out x and y and the boxes are laid out top to bottom along the arrows), text (may carry {{templates}}, e.g. "Total {{total | currency}}", shown live), color (a token for outline and text), fill (a token, e.g. "accent-soft"), size (font px), dash (true). Arrows and lines take from/to (element ids: the end stays attached when that shape moves) or x1 y1 / x2 y2 for a free end. Its value is the list of elements, so (count-if (!= (get it "type") "arrow") flow) counts the boxes. Change one element with the draw op instead of rewriting the list.
+  (… 178 more lines)
+
+Every call answered as expected.

@@ -1,17 +1,17 @@
-Migration check, 2026-10-02T15:53Z: a database written by commit 40b398d (schema 1), copied, opened by this version.
+Migration check, 2026-10-02T16:30Z: a database written by commit 40b398d (schema 1), copied, opened by this version.
 
 Before (old code):
-  doc 2knhzkwk: 5d15aa256f51 log 3087f14cdc2a messages cd0d4cc32346 (1 changes)
-  doc cn9cvl8a: 2a8d6d860044 log f2b04e7a8bb5 messages cd0d4cc32346 (2 changes)
-  doc ttcmwsvf: a587bd1b7b9f log c86876c6f562 messages cd0d4cc32346 (1 changes)
-  doc xevhr4yb: d0d6f9ba4f71 log e5446fdd0929 messages 93d09cb5bab0 (3 changes)
-  collection offsite-events: eecc975176de (1 records)
+  doc 8nmdxlyx: f3e11347a0c1 log 335b1ddd7883 messages 15e06863839d (3 changes)
+  doc al1jyudf: 40f00445525f log 2731f1eb92bc messages cd0d4cc32346 (1 changes)
+  doc fhrlo82i: bf438e324f02 log f552baef452e messages cd0d4cc32346 (2 changes)
+  doc lxonaxxm: fbc3f664ed69 log f215b4512b9a messages cd0d4cc32346 (1 changes)
+  collection offsite-events: 22ad93b40c42 (1 records)
 After (new code, same file):
-  doc 2knhzkwk: 5d15aa256f51 log 3087f14cdc2a messages cd0d4cc32346 (1 changes)
-  doc cn9cvl8a: 2a8d6d860044 log f2b04e7a8bb5 messages cd0d4cc32346 (2 changes)
-  doc ttcmwsvf: a587bd1b7b9f log c86876c6f562 messages cd0d4cc32346 (1 changes)
-  doc xevhr4yb: d0d6f9ba4f71 log e5446fdd0929 messages 93d09cb5bab0 (3 changes)
-  collection offsite-events: eecc975176de (1 records)
+  doc 8nmdxlyx: f3e11347a0c1 log 335b1ddd7883 messages 15e06863839d (3 changes)
+  doc al1jyudf: 40f00445525f log 2731f1eb92bc messages cd0d4cc32346 (1 changes)
+  doc fhrlo82i: bf438e324f02 log f552baef452e messages cd0d4cc32346 (2 changes)
+  doc lxonaxxm: fbc3f664ed69 log f215b4512b9a messages cd0d4cc32346 (1 changes)
+  collection offsite-events: 22ad93b40c42 (1 records)
 
 Identical: every document, its history, its messages and every collection.
 

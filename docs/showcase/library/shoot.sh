@@ -96,7 +96,7 @@ shot "$URL/" "$OUT/select-keyboard.png" --size 1440x900 --wait 2500 \
   --then "({ count: document.querySelector('.lib-selcount')?.textContent, actions: [...document.querySelectorAll('.lib-selbar button')].map((b) => b.textContent.trim()) })"
 shot "$URL/" "$OUT/select-phone.png" --size 390x844 --mobile --wait 2500 --js "(async () => { $LIB
   for (const t of ['Visitor feedback', 'Kick-off notes, Harbour & Co.', 'Quote for Harbour & Co.']) card(t).querySelector('.lc-check').click(); await wait(400);
-  const b = document.querySelector('.lib-selbar').getBoundingClientRect(); const smallest = Math.min(...[...document.querySelectorAll('.lib-selbar button, .lc-check')].map((e) => e.getBoundingClientRect().height));
+  const b = document.querySelector('.lib-selbar').getBoundingClientRect(); const smallest = Math.min(...[...document.querySelectorAll('.lib-selbar button, .lc-pick')].map((e) => e.getBoundingClientRect().height));
   return { bar: [Math.round(b.top), Math.round(b.bottom)], smallestTarget: smallest, overflowX: document.documentElement.scrollWidth > innerWidth }; })()"
 
 say "K1 grouping three documents makes a deck card"
