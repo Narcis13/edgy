@@ -1,13 +1,23 @@
 # edgy: project facts for the goal loop
 
-The tools are in `scripts/`, next to this file. Call them by path:
-`S=.claude/skills/goal-loop/scripts`. Set `TMPDIR` to your scratchpad so logs, data and screenshots stay
-out of the repo.
+```bash
+S=goal-loop/scripts       # the skill's generic tools (also reachable as .claude/skills/goal-loop/scripts)
+P=.claude/goal-loop       # edgy's: this file, gates, screens, serve.sh
+```
+
+Set `TMPDIR` to your scratchpad so logs, data and screenshots stay out of the repo.
+
+## Kind
+
+- **UI:** web. A React app and its API served from one port.
+- **Browser:** both. Headless for the sweep and all committed evidence. Claude in Chrome when a check
+  needs a real window: drawing and dragging in the diagram, and long editing flows done by hand.
+  Phone criteria still get a headless `--mobile` shot, since Chrome only resizes the window.
 
 ## Gates
 
 ```bash
-$S/gates.sh            # typecheck, npm test, production build: one PASS/FAIL line each, exit 1 on any FAIL
+$S/gates.sh            # runs $P/gates: typecheck, npm test, production build; one PASS/FAIL line each
 ```
 
 - `npm test` runs the explicit globs listed in `package.json` (`src/core`, `src/server`, `src/web/print`,
@@ -19,8 +29,8 @@ $S/gates.sh            # typecheck, npm test, production build: one PASS/FAIL li
 ## Running the app for verification
 
 ```bash
-$S/serve.sh fresh 8791 "$TMPDIR/data"    # build, empty data, production server: app and API on one port
-$S/serve.sh stop 8791
+$P/serve.sh fresh 8791 "$TMPDIR/data"    # build, empty data, production server: app and API on one port
+$P/serve.sh stop 8791
 ```
 
 - Never verify against `data/edgy.db`, and never stop the user's dev server (5173 for web, 8787 for API).
@@ -41,20 +51,22 @@ $S/serve.sh stop 8791
 $S/sweep.sh http://127.0.0.1:8791 "$TMPDIR/sweep" <doc-id> [<doc-id> …]
 ```
 
-This shoots home, data, and for each document Edit, Live and Page at 1440×900 (full height); Live
-(one image per screenful) and Page at 390×844 phone emulation; and prints the PDF and renders its pages
-into one PNG (`<id>-pdf.png`). It prints the problems found on each screen and exits non-zero if there
-were any.
+The screens are listed in `$P/screens`: home, data, and for each document Edit, Live and Page at
+1440×900 (full height); Live (one image per screenful) and Page at 390×844 phone emulation; and the
+printed PDF with its pages rendered into one PNG (`<id>-pdf.png`). It prints the problems found on each
+screen and exits non-zero if there were any. Add a line there when a goal adds a screen.
 
 For one screen or an interaction, use `cdp.mjs` directly:
 
 ```bash
-node $S/cdp.mjs shot "<url>" out.png --size 390x844 --mobile [--dark] [--full|--scroll] \
+node $S/cdp.mjs shot "<url>" out.png --size 390x844 --mobile [--dark] [--full|--scroll] --pane ".desk, .home, .records" \
   --js "const i = document.querySelector('.ktable-search input'); …" --wait 3500
 node $S/cdp.mjs pdf "<url>?view=page" out.pdf && swift $S/pdfpng.swift out.pdf out.png
 swift $S/montage.swift strip.png 0.5 a.png b.png c.png    # side by side, for evidence
 ```
 
+- The app scrolls inside `.desk` (documents), `.home` and `.records`, not the page. `--full` and `--scroll`
+  need `--pane ".desk, .home, .records"` (or `CDP_PANE` set to it) when you call `cdp.mjs` directly.
 - `--js` runs after load and its value is printed. Use it to click, type and dispatch events, then let the
   screenshot capture the result. Find selectors by reading the components (`src/web/**`).
   Inputs controlled by React need the native value setter followed by an `input` event.
@@ -62,6 +74,11 @@ swift $S/montage.swift strip.png 0.5 a.png b.png c.png    # side by side, for ev
   request, or an HTTP status of 400 or above. The goal requires zero.
 - Viewports to cover: 1440×900 desktop, 390×844 phone. When layout is part of the goal, also check
   820×1180 tablet and `--dark`.
+- In the editor, `window.edgy` is the live session (`src/web/editor/Editor.tsx`), so `select`,
+  `openMenu`, `state` and `raised` work from `--js` and from Chrome's `javascript_tool`. In Chrome, use
+  it for state checks and the pointer for the drawing.
+- Deleting a document (Home) or a collection's records (Data) asks with a native `window.confirm`. In
+  Chrome, stub it first (`window.confirm = () => true`) or the extension freezes.
 - Print checks: the page count is what you expect, no cell is cut between pages, the footer and page numbers are present, the
   paper is light in dark mode, and editing controls are hidden. Page sizes are A4, A5, Letter and Legal, in portrait or landscape.
 
@@ -85,8 +102,10 @@ src/web       React app: editor/, code/ (code studio), kinds/ (cell types), prin
 - Make the showcase reproducible as a template in `src/core/templates.ts` (see `showcase`, "Team offsite")
   and add it to `TEMPLATES`. Extend the existing showcase or add a new one when the goal is separate from it.
 - Committed evidence goes in `docs/showcase/<slug>/`: the key screenshots (desktop, phone, page view, the
-  interaction that matters), the printed PDF, and an `INDEX.md` that maps each contract item to its files.
+  interaction that matters), the printed PDF, an `INDEX.md` that maps each contract item to its files, and
+  a `shoot.sh` that regenerates them from a fresh server (see `docs/showcase/new-elements/shoot.sh`).
   Keep it to the shots that prove something; loop screenshots stay in the scratchpad.
+- Finished PROGRESS.md files move to `docs/progress/<YYYY-MM-DD>-<slug>.md`.
 - When the goal changes how the app is used, update `README.md`: features, keyboard shortcuts, the scripts table.
 
 ## Conventions

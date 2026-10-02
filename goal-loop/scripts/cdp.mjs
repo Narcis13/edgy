@@ -1,10 +1,12 @@
 // Drive headless Chrome over CDP: screenshots, PDFs, console and network errors.
 //
-//   node cdp.mjs shot <url> <out.png> [--size 1440x900] [--mobile] [--dark] [--full | --scroll] [--js "<expr>"] [--wait 3500]
+//   node cdp.mjs shot <url> <out.png> [--size 1440x900] [--mobile] [--dark] [--full | --scroll] [--pane "<css>"] [--js "<expr>"] [--wait 3500]
 //   node cdp.mjs pdf  <url> <out.pdf> [--dark] [--js "<expr>"] [--wait 3500]
 //
-// --full    one image of the whole document (grows the viewport to the app's scrolling pane)
-// --scroll  one image per screenful of the app's scrolling pane: out-0.png, out-1.png, …
+// --full    one image of the whole document (grows the viewport to the scrolling pane)
+// --scroll  one image per screenful of the scrolling pane: out-0.png, out-1.png, …
+// --pane    the element the app scrolls in, when the page itself doesn't (default $CDP_PANE,
+//           else the page). A list such as ".desk, .home" picks the first that exists.
 // --dark    prefers-color-scheme: dark
 // --js      evaluated after load (awaited); its value is printed as a JS line, then the page settles
 // --press   "<css selector>|Key Key …" after --js: focus that element, then press real keys (trusted
@@ -13,6 +15,7 @@
 //
 // Every console error/warning, uncaught exception, failed request and HTTP status >= 400 is printed
 // as a line starting with "CONSOLE". The exit code is 3 when any was seen, so a sweep can't miss one.
+// Chrome is found in the usual places on macOS and Linux; set CHROME=/path/to/chrome otherwise.
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -23,7 +26,7 @@ const flag = (name) => argv.includes(`--${name}`);
 const opt = (name, fallback) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : fallback; };
 const [cmd, url, out] = argv;
 if (!['shot', 'pdf'].includes(cmd) || !url || !out) {
-  console.error('usage: node cdp.mjs shot|pdf <url> <out> [--size WxH] [--mobile] [--dark] [--full|--scroll] [--js expr] [--wait ms]');
+  console.error('usage: node cdp.mjs shot|pdf <url> <out> [--size WxH] [--mobile] [--dark] [--full|--scroll] [--pane css] [--js expr] [--wait ms]');
   process.exit(1);
 }
 const [w, h] = opt('size', '1440x900').split('x').map(Number);
@@ -35,10 +38,15 @@ const KEYS = {
   Enter: [13, '\r'], Space: [32, ' '], Tab: [9], Escape: [27], ArrowLeft: [37], ArrowUp: [38], ArrowRight: [39], ArrowDown: [40], Home: [36], End: [35],
 };
 const wait = Number(opt('wait', '3500'));
-// The selector of the element the app scrolls in (the page itself does not scroll).
-const PANE = '.desk, .home, .records';
+// The element the app scrolls in, as a JS expression that is null when the page itself scrolls.
+const paneSelector = opt('pane', process.env.CDP_PANE ?? '').trim();
+const PANE = paneSelector ? `document.querySelector(${JSON.stringify(paneSelector)})` : 'null';
 
-const CHROME = process.env.CHROME ?? ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium'].find(existsSync);
+const CHROME = process.env.CHROME ?? [
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  '/Applications/Chromium.app/Contents/MacOS/Chromium',
+  '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser',
+].find(existsSync);
 if (!CHROME) { console.error('Chrome not found; set CHROME=/path/to/chrome'); process.exit(2); }
 const port = 9300 + Math.floor(Math.random() * 500);
 const dir = mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), 'cdp-'));
@@ -113,16 +121,16 @@ if (cmd === 'pdf') {
   if (!r.result) { console.error(JSON.stringify(r.error)); done(1); }
   writeFileSync(out, Buffer.from(r.result.data, 'base64'));
 } else if (flag('scroll')) {
-  const size = (await evaluate(`(() => { const d = document.querySelector('${PANE}'); return d ? [d.scrollHeight, d.clientHeight] : [document.documentElement.scrollHeight, innerHeight]; })()`)).result.value;
+  const size = (await evaluate(`(() => { const d = ${PANE}; return d ? [d.scrollHeight, d.clientHeight] : [document.documentElement.scrollHeight, innerHeight]; })()`)).result.value;
   const [total, view] = size;
   for (let i = 0, y = 0; y < total && i < 15; i++, y += view - 40) {
-    await evaluate(`(() => { const d = document.querySelector('${PANE}'); if (d) d.scrollTop = ${y}; else scrollTo(0, ${y}); })()`);
+    await evaluate(`(() => { const d = ${PANE}; if (d) d.scrollTop = ${y}; else scrollTo(0, ${y}); })()`);
     await sleep(500);
     await png(out.replace(/\.png$/, `-${i}.png`));
   }
 } else {
   if (flag('full')) {
-    const inner = (await evaluate(`(() => { const d = document.querySelector('${PANE}'); return d ? d.scrollHeight + d.getBoundingClientRect().top : document.documentElement.scrollHeight; })()`)).result.value;
+    const inner = (await evaluate(`(() => { const d = ${PANE}; return d ? d.scrollHeight + d.getBoundingClientRect().top : document.documentElement.scrollHeight; })()`)).result.value;
     const height = Math.max(h, Math.ceil(inner || 0));
     if (height > h) { await metrics(height); await sleep(1200); }
   }

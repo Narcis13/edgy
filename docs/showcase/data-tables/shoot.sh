@@ -5,13 +5,15 @@
 # small documents, drives the interactions that matter and saves the screenshots.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-S=.claude/skills/goal-loop/scripts
+S=goal-loop/scripts
+P=.claude/goal-loop
+export CDP_PANE=".desk, .home, .records"   # the app scrolls in these, not the page
 OUT=docs/showcase/data-tables
 WORK="${TMPDIR:-/tmp}/data-tables-shots"
 PORT=8795
 URL="http://127.0.0.1:$PORT"
 mkdir -p "$WORK"
-$S/serve.sh fresh $PORT "$WORK/data" >/dev/null
+$P/serve.sh fresh $PORT "$WORK/data" >/dev/null
 
 new() { curl -s -XPOST "$URL/api/docs" -H 'content-type: application/json' -d "$1" | node -pe 'JSON.parse(require("fs").readFileSync(0)).id'; }
 shot() { node $S/cdp.mjs shot "$@" | grep -v '^OK' || true; }
@@ -84,5 +86,5 @@ shot "$URL/d/$ID?view=live" "$OUT/desktop-dark.png" --size 1440x1100 --dark --js
 node $S/cdp.mjs pdf "$URL/d/$ID?view=page" "$OUT/data-tables.pdf" | grep -v '^OK' || true
 swift $S/pdfpng.swift "$OUT/data-tables.pdf" "$OUT/printed.png"
 
-$S/serve.sh stop $PORT >/dev/null
+$P/serve.sh stop $PORT >/dev/null
 echo "evidence in $OUT"

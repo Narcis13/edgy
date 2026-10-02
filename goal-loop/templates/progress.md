@@ -10,9 +10,9 @@ Started <YYYY-MM-DD> on branch `<branch>` at `<short sha>`.
 
 | # | criterion | verified by | evidence | status |
 |---|---|---|---|---|
-| G1 | Typecheck, all tests and the production build pass | `gates.sh` | Log | open |
-| G2 | Zero console/network problems on every screen at every viewport | `sweep.sh` | Log | open |
-| G3 | A showcase exercising every new feature, verified on desktop, phone and print | sweep + reading the images | `docs/showcase/<slug>/` | open |
+| G1 | Every gate in `.claude/goal-loop/gates` passes (typecheck, lint, tests, build) | `gates.sh` | Log | open |
+| G2 | Zero console/network problems on every screen at every viewport *(UI projects; drop otherwise)* | `sweep.sh`, Chrome console | Log | open |
+| G3 | A reproducible showcase exercising every new feature, verified the way project.md says | sweep / Chrome / running it + reading the evidence | `docs/showcase/<slug>/` | open |
 | D1 | … | … | … | open |
 
 Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
@@ -21,7 +21,7 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 
 1. [ ] **<name>**: <what it delivers> (D1, D2)
 2. [ ] …
-n. [ ] **Final audit**: clean build, empty data, all gates, full sweep, every contract item checked
+n. [ ] **Final audit**: clean build, empty data, all gates, full sweep (UI), every contract item checked
 
 ## Decisions
 
@@ -37,4 +37,4 @@ n. [ ] **Final audit**: clean build, empty data, all gates, full sweep, every co
 
 ## Log
 
-- <YYYY-MM-DD>: baseline: <N> tests pass, typecheck <clean/errors>, sweep <0/N> problems.
+- <YYYY-MM-DD>: baseline: <N> tests pass, gates <all pass / which fail>, sweep <0/N> problems.

@@ -1,6 +1,6 @@
 # Feature prompts
 
-Four briefs for `/goal-loop` (`.claude/skills/goal-loop`). Each has the two parts the skill reads,
+Four briefs for `/goal-loop` (the skill is in `goal-loop/`, edgy's facts for it in `.claude/goal-loop/`). Each has the two parts the skill reads,
 **Feature** and **Done means ALL of**, plus constraints and, where it matters, the choices worth settling
 before the run. Anything left open is decided by the loop and written under **Decisions** in PROGRESS.md.
 
@@ -244,7 +244,7 @@ the access model and the sync design** before writing code; both touch every rou
   Blocked and exactly what is needed.
 - The review before the final audit includes a security pass: authorization on every route, token and key
   handling, CSRF on writes made with the cookie. Findings are fixed, or listed with the reason they were not.
-- `project.md` and the goal-loop scripts (`serve.sh`, `sweep.sh`, the `cdp.mjs` recipes) are updated so
+- `.claude/goal-loop/` (`project.md`, `serve.sh`, `screens`, the `cdp.mjs` recipes) is updated so
   later loops can verify signed-in screens, and the full sweep passes signed in.
 - README covers accounts, sharing, API keys for agents and setting up sync.
 

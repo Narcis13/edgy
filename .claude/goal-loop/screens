@@ -1,0 +1,15 @@
+# edgy's screens, shot by sweep.sh (see the goal-loop skill):
+#   sweep.sh http://127.0.0.1:8791 "$TMPDIR/sweep" <doc-id> [<doc-id> …]
+# The app scrolls inside these panes, not the page.
+@pane .desk, .home, .records
+
+home              /                     desktop --full
+data              /data                 desktop --full
+phone-home        /                     phone
+
+{id}-edit         /d/{id}?view=edit     desktop --full
+{id}-live         /d/{id}?view=live     desktop --full
+{id}-page         /d/{id}?view=page     desktop --full
+{id}-phone        /d/{id}?view=live     phone --scroll
+{id}-phone-page   /d/{id}?view=page     phone
+{id}              /d/{id}?view=page     pdf

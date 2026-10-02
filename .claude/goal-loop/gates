@@ -1,0 +1,10 @@
+# edgy's gates, run by gates.sh (see the goal-loop skill).
+typecheck  npm run --silent typecheck
+test       npm test --silent
+# Built into the log folder, so it never touches dist/ or a running server's build.
+build      npx vite build --outDir "$LOGS/dist" --emptyOutDir
+
+# Node's test runner prints a summary; surface the counts so PROGRESS.md can quote them.
+@summary test ^(#|ℹ) (tests|pass|fail)
+# Vite warns about oversized chunks without failing; treat it as a finding, not a pass.
+@warn build chunks.are.larger chunk size warning, lazy-load the heavy part the way src/web/App.tsx does
