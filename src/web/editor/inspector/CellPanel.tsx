@@ -17,14 +17,15 @@ import { BoxSection, SpacingSection } from './BoxSections';
 import { Chips, Hint, Prop } from './controls';
 import { type Edit, useEdit } from './edit';
 import { Content } from './kinds/Content';
+import { EventsSection } from './EventsSection';
 import { Section } from './Section';
 import { Source } from './Source';
 import { TextSection } from './TextSection';
 
 /** Kinds whose text settings change nothing. */
-const NO_TEXT = new Set(['break', 'image', 'canvas', 'diagram', 'data']);
+const NO_TEXT = new Set(['break', 'image', 'canvas', 'diagram', 'data', 'timer', 'fetch']);
 /** Kinds that take no room on the page, so spacing and a box mean nothing. */
-const NO_BOX = new Set(['break', 'data']);
+const NO_BOX = new Set(['break', 'data', 'timer']);
 
 /** The heading: the kind, and for groups how many they hold. */
 function titleOf(cell: Cell, parent: Cell | null, label: string | undefined): string {
@@ -93,7 +94,8 @@ export function CellPanel({ cell, ids }: { cell: Cell; ids: string[] }) {
             <BoxSection e={e} />
           </>
         )}
-        {!multi && cell.kind !== 'data' && <Visibility e={e} />}
+        {!multi && cell.kind !== 'data' && cell.kind !== 'timer' && <Visibility e={e} />}
+        {!multi && <EventsSection cell={cell} />}
       </div>
 
       {!multi && (st?.reads?.length || feeds?.length) ? (

@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Calendar, CalendarDays, ChartArea, ChartColumn, ChartLine, ChartPie, CircleDashed, Gauge, Hash, Image, List, ListChecks, ListOrdered,
   type LucideIcon, MousePointerClick, PenTool, SeparatorHorizontal, Sigma, Signature, SlidersHorizontal, Smile, SquareCheck, Star, Table2,
-  TextCursorInput, ToggleLeft, TrendingUp, Type, ListFilter, Text, PanelTop, ListCollapse, ChevronsDownUp, Workflow, Variable,
+  TextCursorInput, ToggleLeft, TrendingUp, Type, ListFilter, Text, PanelTop, ListCollapse, ChevronsDownUp, Workflow, Variable, Timer,
+  CloudDownload,
 } from 'lucide-react';
 import type { Json } from '../../core/types';
 import { cx, useSession } from './ctx';
@@ -54,6 +55,8 @@ export const KIND_OPTIONS: KindOption[] = [
   { kind: 'accordion', label: 'Accordion', hint: 'Sections that fold open and shut', icon: ListCollapse },
   { kind: 'collapsible', label: 'Collapsible', hint: 'A heading that folds what is under it', icon: ChevronsDownUp },
   { kind: 'data', label: 'Data (hidden)', hint: 'A value for formulas and buttons; readers never see it', icon: Variable },
+  { kind: 'timer', label: 'Timer', hint: 'Runs its tick handler every so often, in Live', icon: Timer },
+  { kind: 'fetch', label: 'Fetch', hint: 'JSON from a web address, kept fresh', icon: CloudDownload },
   { kind: 'break', label: 'Page break', hint: 'Start a new page when printed', icon: SeparatorHorizontal },
   { kind: 'empty', label: 'Empty', hint: 'Clear the cell', icon: CircleDashed },
 ];

@@ -31,6 +31,8 @@ interface Ctx {
   root: Sx;
   info: DocInfo;
   self?: string;
+  /** Names bound around the whole expression: an event's value, was, row… */
+  vars: { name: string; does: string }[];
   set: (path: Path, v: Sx) => void;
   /** Change the whole expression, from its latest version. */
   update: (fn: (root: Sx) => Sx) => void;
@@ -43,14 +45,17 @@ interface Ctx {
 }
 
 const key = (p: Path) => p.join('/');
+const NO_VARS: { name: string; does: string }[] = [];
 const HEAD_LABEL: Record<string, string> = { '*': '×', '/': '÷', '>=': '≥', '<=': '≤', '!=': '≠', '-': '−' };
 const HEAD_WORD: Record<string, string> = { '*': 'times', '/': 'divided by', '+': 'plus', '-': 'minus', '>': 'is more than', '<': 'is less than', '=': 'equals' };
 
-export function Blocks({ text, onChange, cell, onShowCode, ref }: {
+export function Blocks({ text, onChange, cell, onShowCode, vars = NO_VARS, ref }: {
   text: string;
   onChange: (text: string) => void;
   cell?: string;
   onShowCode?: () => void;
+  /** Names a handler finds bound (value, was, row…), offered next to the cells. */
+  vars?: { name: string; does: string }[];
   ref?: Ref<BlocksHandle>;
 }) {
   const info = useDocInfo();
@@ -70,7 +75,7 @@ export function Blocks({ text, onChange, cell, onShowCode, ref }: {
 
   const commit = (x: Sx) => onChange(x === null ? '' : print(x, 60));
   const ctx: Ctx = {
-    root, info, self: cell,
+    root, info, self: cell, vars,
     set: (path, v) => commit(setAt(rootRef.current, path, v)),
     update: (fn) => commit(fn(rootRef.current)),
     remove: (path) => {
@@ -232,7 +237,9 @@ function CallBlock({ ctx, x, path }: { ctx: Ctx; x: Sx[]; path: Path }) {
   if (head === 'fn') return <FnBlock ctx={ctx} x={x} path={path} />;
   const d = head ? docFor(head) : undefined;
   const own = head && !d ? ctx.info.byName.get(head) : undefined;
-  const color = d ? GROUP_COLOR[d.group] : own ? 'var(--live)' : 'var(--muted)';
+  // A custom action reads like a built-in action, its slots named after its parameters.
+  const action = head && !d && !own ? ctx.info.actions.find((a) => a.name === head) : undefined;
+  const color = d ? GROUP_COLOR[d.group] : own ? 'var(--live)' : action ? GROUP_COLOR.Actions : 'var(--muted)';
   const args = x.slice(1);
   const fixed = fixedSlots(head);
   const canAdd = !fixed || args.length < fixed || head === 'cond';
@@ -254,7 +261,7 @@ function CallBlock({ ctx, x, path }: { ctx: Ctx; x: Sx[]; path: Path }) {
       )}
       <div className="bk-args">
         {args.map((a, i) => (
-          <Slot key={i} ctx={ctx} x={a} path={[...path, i + 1]} label={slotLabel(head, i + 1, x.length)} hint={hintFor(head, i + 1, x.length)}
+          <Slot key={i} ctx={ctx} x={a} path={[...path, i + 1]} label={action ? action.params[i] ?? null : slotLabel(head, i + 1, x.length)} hint={action ? action.params[i] ?? 'value' : hintFor(head, i + 1, x.length)}
             place={!!head && PLACE_HEADS.has(head) && i === 0} />
         ))}
         {canAdd && (
@@ -321,7 +328,9 @@ function FnBlock({ ctx, x, path }: { ctx: Ctx; x: Sx[]; path: Path }) {
           ))}
           <button type="button" className="bk-add" aria-label="Add an input" onClick={(e) => { e.stopPropagation(); setParams([...params, 'abcdxyz'.split('').find((c) => !params.includes(c)) ?? 'v']); }}><Plus size={14} /></button>
         </div>
-        <Slot ctx={ctx} x={x[2] ?? null} path={[...path, 2]} label="gives" hint="result" />
+        {x.length <= 3
+          ? <Slot ctx={ctx} x={x[2] ?? null} path={[...path, 2]} label="gives" hint="result" />
+          : x.slice(2).map((b, i) => <Slot key={i} ctx={ctx} x={b} path={[...path, i + 2]} label={i ? 'then' : 'does'} hint="result" />)}
       </div>
     </div>
   );
@@ -377,13 +386,15 @@ function EmptySlot({ ctx, path, hint, place }: { ctx: Ctx; path: Path; hint: str
 }
 
 function RefChip({ ctx, name, path, place }: { ctx: Ctx; name: string; path: Path; place?: boolean }) {
-  const c = ctx.info.cellOf(name);
-  const local = !c && localsAt(ctx.root, path).includes(name);
+  // An event's name hides a cell of the same name, except where a cell is named (set! status …).
+  const bound = !place && ctx.vars.some((v) => v.name === name);
+  const c = bound ? undefined : ctx.info.cellOf(name);
+  const local = bound || (!c && localsAt(ctx.root, path).includes(name));
   const ci = c && ctx.info.cells.find((x) => x.id === c.id);
   const I = c ? cellIcon(c) : null;
   return (
     <button type="button" className={cx('bk-chip bk-ref', local && 'is-local', !c && !local && 'is-unknown')}
-      title={c ? `${c.name ?? c.id}: ${ci?.preview ?? ''}. Click to choose another cell.` : local ? 'A name given in this expression' : `There is no cell called ${name}`}
+      title={c ? `${c.name ?? c.id}: ${ci?.preview ?? ''}. Click to choose another cell.` : bound ? `From the event: ${ctx.vars.find((v) => v.name === name)?.does}` : local ? 'A name given in this expression' : `There is no cell called ${name}`}
       onClick={(e) => {
         e.stopPropagation();
         ctx.select(path);
@@ -485,12 +496,16 @@ function functionItems(onFn: (name: string) => void): PickItem[] {
   return out;
 }
 
-function cellItems(info: DocInfo, onCell: (name: string) => void, locals: string[] = [], self?: string): PickItem[] {
-  const out: PickItem[] = locals.map((n) => ({
+function cellItems(info: DocInfo, onCell: (name: string) => void, locals: string[] = [], self?: string, vars: { name: string; does: string }[] = []): PickItem[] {
+  const out: PickItem[] = vars.map((v) => ({
+    key: 'var:' + v.name, text: v.name + ' ' + v.does, group: 'From the event', onPick: () => onCell(v.name),
+    icon: <span className="pm-local">x</span>, label: <code>{v.name}</code>, detail: v.does,
+  }));
+  out.push(...locals.map((n) => ({
     key: 'local:' + n, text: n, group: 'Names here', onPick: () => onCell(n),
     icon: <span className="pm-local">x</span>, label: <code>{n}</code>,
     detail: n === 'it' ? 'the item' : n === 'i' ? 'its position' : n === 'acc' ? 'the total so far' : 'a name given here',
-  }));
+  })));
   for (const c of info.cells) {
     if (c.id === self) continue;
     const I = cellIcon(c.cell);
@@ -503,7 +518,9 @@ function BlockMenu({ menu, ctx, put, close }: { menu: Menu; ctx: Ctx; put: (path
   const [sub, setSub] = useState<Menu | null>(null);
   const m = sub ?? menu;
   if (m.kind === 'cell') {
-    const items = cellItems(ctx.info, (n) => { m.onCell(n); close(); }, localsAt(ctx.root, m.at), ctx.self);
+    // Where a cell is named (set! status …), only cells will do.
+    const placing = PLACE_HEADS.has(String(headOf(getAt(ctx.root, m.at.slice(0, -1))))) && m.at.at(-1) === 1;
+    const items = cellItems(ctx.info, (n) => { m.onCell(n); close(); }, placing ? [] : localsAt(ctx.root, m.at), ctx.self, placing ? [] : ctx.vars);
     return (
       <PickMenu key="cell" anchor={m.el} title={m.title} items={items} onClose={close} search placeholder="Search cells"
         footer={!items.length ? <p className="pm-note">No named cells yet. Give a cell a name in the inspector to use it here.</p> : undefined} />

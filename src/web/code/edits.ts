@@ -2,7 +2,7 @@
 // changing it by path. Every function returns new JSON and never mutates.
 
 import type { Cell, Sx } from '../../core/types';
-import { read } from '../../core/sx';
+import { PLACE_FORMS, read } from '../../core/sx';
 import { panelTitles } from '../../core/containers';
 import { formFor, itemsOf } from './docs';
 
@@ -25,7 +25,7 @@ export type Path = (number | string)[];
 export type NodeKind = 'call' | 'ref' | 'text' | 'number' | 'bool' | 'nil' | 'record' | 'list';
 
 /** Calls whose first argument names a cell rather than reading its value. */
-export const PLACE_HEADS = new Set(['set!', 'toggle!', 'dup!', 'remove!', 'ref', 'child']);
+export const PLACE_HEADS = PLACE_FORMS;
 
 export function kindOf(x: Sx | undefined): NodeKind {
   if (x === null || x === undefined) return 'nil';

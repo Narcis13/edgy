@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays, ChevronsDownUp, CircleDashed, Columns3, List, ListCollapse, type LucideIcon, PanelTop, PanelTopOpen, PenLine, Rows3,
-  SeparatorHorizontal, TrendingUp, Type, Variable, Workflow,
+  SeparatorHorizontal, TrendingUp, Type, Variable, Workflow, Timer, CloudDownload,
 } from 'lucide-react';
 import type { Cell, Doc } from '../../core/types';
 import { show } from '../../core/sx';
@@ -16,10 +16,12 @@ import { useS } from '../editor/ctx';
 import { kindOption } from '../editor/KindMenu';
 import type { CellInfo } from './docs';
 import type { Known } from './lexer';
+import { actionsOf } from './handlers';
 
 const OWN_ICONS: Record<string, LucideIcon> = {
   stat: TrendingUp, calendar: CalendarDays, list: List, canvas: PenLine, break: SeparatorHorizontal, text: Type, empty: CircleDashed,
   tabs: PanelTop, accordion: ListCollapse, collapsible: ChevronsDownUp, panel: PanelTopOpen, diagram: Workflow, data: Variable,
+  timer: Timer, fetch: CloudDownload,
 };
 
 /** The icon the kind menu uses for a cell, with fallbacks for kinds it may not list. */
@@ -34,6 +36,7 @@ export const KIND_NAMES: Record<string, string> = {
   row: 'Row', col: 'Column', empty: 'Empty', text: 'Text', formula: 'Formula', input: 'Input', button: 'Button', image: 'Picture',
   icon: 'Icon', chart: 'Chart', table: 'Table', list: 'List', calendar: 'Calendar', canvas: 'Drawing', stat: 'Stat', break: 'Page break',
   tabs: 'Tabs', accordion: 'Accordion', collapsible: 'Collapsible', panel: 'Panel', diagram: 'Diagram', data: 'Data',
+  timer: 'Timer', fetch: 'Fetch',
 };
 
 const clip = (s: string, n = 40) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
@@ -56,6 +59,8 @@ export interface DocInfo {
   byName: Map<string, Cell>;
   /** A cell by name or id. */
   cellOf: (name: string) => Cell | undefined;
+  /** The document's custom actions, called like functions. */
+  actions: { name: string; params: string[] }[];
   known: Known;
 }
 
@@ -76,9 +81,10 @@ export function useDocInfo(): DocInfo {
         cells.push({ name: c.name, id: c.id, isFn: typeof st?.value === 'function', preview: preview(c, computed, doc), cell: c });
       });
     }
-    const fns = new Set(cells.filter((c) => c.isFn).map((c) => c.name));
+    const actions = doc ? actionsOf(doc).map(({ name, params }) => ({ name, params })) : [];
+    const fns = new Set([...cells.filter((c) => c.isFn).map((c) => c.name), ...actions.map((a) => a.name)]);
     const known: Known = (name) => (fns.has(name) ? 'fn' : byName.has(name) || ids.has(name) ? 'cell' : null);
-    return { doc, cells, byName, known, cellOf: (name: string) => byName.get(name) ?? ids.get(name) };
+    return { doc, cells, byName, known, actions, cellOf: (name: string) => byName.get(name) ?? ids.get(name) };
   }, [doc, computed]);
 }
 

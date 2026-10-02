@@ -2,7 +2,8 @@
 // person's own agent, or a built-in composer) answers with checked code.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Cpu, CornerDownLeft, Loader2, RotateCcw, Sparkles, TextCursorInput, Wand2 } from 'lucide-react';
+import { Bot, Check, Cpu, CornerDownLeft, Loader2, RotateCcw, Sparkles, TextCursorInput, Wand2 } from 'lucide-react';
+import type { Op } from '../../core/types';
 import { ApiError, api } from '../lib/api';
 import { cx, useSession } from '../editor/ctx';
 import { renderCode } from './Highlight';
@@ -21,21 +22,38 @@ interface Answer {
   preview?: { value?: unknown; display?: string; error?: string };
   provider?: string;
   notes?: string | string[];
+  /** An events answer: the ops to apply, and each change in words with its code. */
+  ops?: Op[];
+  changes?: { cell: string | null; label: string; code: string }[];
 }
 
 type State =
   | { s: 'idle' }
   | { s: 'busy'; prompt: string }
-  | { s: 'done'; prompt: string; answer: Answer }
+  | { s: 'done'; prompt: string; answer: Answer; applied?: boolean }
   | { s: 'failed'; prompt: string; error: string; suggestions: string[] };
 
 const PROVIDER_NAME: Record<string, string> = { claude: 'Claude', agent: 'Your agent', local: 'Built-in' };
 
 /** Example requests for the property being written, using the document's real names. */
-function examples(prop: string, names: { numbers: string[]; any: string[] }): string[] {
+function examples(prop: string, names: { numbers: string[]; any: string[] }, self?: string): string[] {
   const [a = 'price', b = 'qty'] = names.numbers.length >= 2 ? names.numbers : [...names.numbers, ...names.any.filter((n) => !names.numbers.includes(n))];
   const any = names.any[0] ?? a;
+  if (prop.startsWith('on.')) {
+    const ev = prop.slice(3);
+    if (ev === 'change') return [`Copy the new value into ${any}`, 'Save the new value to "log" with the time', `Show ${any} when it is true`];
+    if (ev === 'click' || ev === 'dblclick') return [`Add one to ${a}`, `Hide ${any}`, 'Send "picked" with the target'];
+    if (ev === 'tick') return [`Add one to ${a}`, `Stop when ${a} is over 10`];
+    if (ev === 'load') return [`Put the field "rate" of data into ${any}`];
+    if (ev === 'fail') return [`Put the message into ${any}`];
+    if (ev === 'open') return [`Add one to ${a}`, `Set ${any} to today`];
+    return [`Set ${any} to the payload`, `Add one to ${a}`];
+  }
   switch (prop) {
+    case 'events': return self
+      ? [`When ${self} changes, copy it into ${any}`, `When ${self} is clicked, add one to ${a}`]
+      : [`When the document opens, add one to ${a}`, `Every 30 seconds, add one to ${a}`];
+    case 'action': return [`Add an amount to ${a}`, 'Save who and when to "log"'];
     case 'do': return [`Add one to ${a}`, `Save ${a} and ${b} to "orders"`, `Set ${a} to 0`];
     case 'hidden': return [`When ${any} is empty`, `When ${a} is 0`, `When ${a} is over 100`];
     case 'options': return ['Small, medium and large', `The names from the "people" collection`];
@@ -45,18 +63,26 @@ function examples(prop: string, names: { numbers: string[]; any: string[] }): st
   }
 }
 
-export function AskPanel({ cell, prop, draft, onUse, onInsert, autoFocus }: {
-  cell: string;
+export function AskPanel({ cell, prop, draft, onUse, onInsert, autoFocus, targets, onApplied }: {
+  /** The cell the code is for; left out for the document's own handlers and actions. */
+  cell?: string;
+  /** What to write: a prop ("expr", "do", "on.change"), "events" (handlers and actions from one sentence) or "action". */
   prop: string;
   draft: string;
   autoFocus?: boolean;
   onUse: (code: string) => void;
   onInsert: (code: string) => void;
+  /** Other things it can write, offered as a switch over the box. */
+  targets?: { value: string; label: string }[];
+  /** An events answer's ops were applied. */
+  onApplied?: () => void;
 }) {
   const session = useSession();
   const info = useDocInfo();
   const [prompt, setPrompt] = useState('');
   const [state, setState] = useState<State>({ s: 'idle' });
+  const [target, setTarget] = useState(prop);
+  useEffect(() => setTarget(prop), [prop]);
   const [ai, setAi] = useState<Providers | null>(null);
   const alive = useRef(true);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -81,14 +107,15 @@ export function AskPanel({ cell, prop, draft, onUse, onInsert, autoFocus }: {
     const numbers = [...own.filter((c) => numeric(c) && c.cell.kind !== 'input'), ...own.filter((c) => numeric(c) && c.cell.kind === 'input')].map((c) => c.name);
     return { numbers, any: own.map((c) => c.name) };
   }, [info.cells, cell]);
-  const chips = examples(prop, names);
+  const self = cell !== undefined ? info.cellOf(cell)?.name : undefined;
+  const chips = examples(target, names, self);
 
   const ask = async (text = prompt) => {
     const p = text.trim();
     if (!p || state.s === 'busy') return;
     setState({ s: 'busy', prompt: p });
     try {
-      const answer = await compose(session.id, { prompt: p, cell, target: prop, current: draft });
+      const answer = await compose(session.id, { prompt: p, ...(cell !== undefined ? { cell } : {}), target, current: target === 'events' ? '' : draft });
       if (alive.current) setState({ s: 'done', prompt: p, answer });
     } catch (e) {
       if (!alive.current) return;
@@ -104,11 +131,25 @@ export function AskPanel({ cell, prop, draft, onUse, onInsert, autoFocus }: {
   const answer = state.s === 'done' ? state.answer : null;
   const notes = answer?.notes ? (Array.isArray(answer.notes) ? answer.notes : [answer.notes]) : [];
   const ProviderIcon = provider === 'agent' ? Bot : provider === 'claude' ? Sparkles : Cpu;
+  const applyOps = () => {
+    if (state.s !== 'done' || !answer?.ops?.length) return;
+    if (!session.dispatch(answer.ops)) return;
+    setState({ ...state, applied: true });
+    onApplied?.();
+  };
 
   return (
     <div className="ask">
+      {targets && targets.length > 1 && (
+        <div className="seg ask-targets" role="group" aria-label="What to write">
+          {targets.map((t) => (
+            <button key={t.value} type="button" className={cx(t.value === target && 'is-on')} aria-pressed={t.value === target}
+              onClick={() => { setTarget(t.value); if (state.s !== 'busy') setState({ s: 'idle' }); }}>{t.label}</button>
+          ))}
+        </div>
+      )}
       <div className="ask-head">
-        <label htmlFor="ask-prompt">Describe what this should do</label>
+        <label htmlFor="ask-prompt">{target === 'events' ? 'Describe what should happen, and when' : 'Describe what this should do'}</label>
         {provider && (
           <span className={cx('ask-badge', `is-${provider}`)} title={provider === 'claude' && ai?.model ? `Answered by ${ai.model}` : provider === 'agent' ? 'An agent is listening in this document and will answer' : 'Answered by Edgy’s built-in composer, without AI'}>
             <ProviderIcon size={12} /> {PROVIDER_NAME[provider]}
@@ -162,10 +203,36 @@ export function AskPanel({ cell, prop, draft, onUse, onInsert, autoFocus }: {
             )}
           </div>
         )}
-        {answer && (
+        {answer && answer.ops && answer.changes && (
           <div className="ask-answer">
             <div className="ask-answer-head">
-              <span>Proposed {prop === 'do' ? 'action' : 'code'}</span>
+              <span>Proposed {answer.changes.length === 1 ? 'change' : `changes (${answer.changes.length})`}</span>
+              {answer.provider && <small>by {PROVIDER_NAME[answer.provider] ?? answer.provider}</small>}
+            </div>
+            <ul className="ask-changes">
+              {answer.changes.map((ch, i) => (
+                <li key={i}>
+                  <span className="ask-change-label">{ch.label}</span>
+                  <CodeView code={ch.code} known={info.known} />
+                </li>
+              ))}
+            </ul>
+            {answer.explanation && <p className="ask-explain">{answer.explanation}</p>}
+            {notes.map((n, i) => <p key={i} className="ask-note">{n}</p>)}
+            <div className="ask-actions">
+              {state.s === 'done' && state.applied ? (
+                <span className="ask-applied" role="status"><Check size={14} /> Applied. Undo puts it back as it was.</span>
+              ) : (
+                <button type="button" className="btn solid" onClick={applyOps} disabled={!answer.ops.length}><CornerDownLeft size={14} /> Apply {answer.changes.length === 1 ? 'it' : 'all'}</button>
+              )}
+              <button type="button" className="btn ghost" onClick={() => void ask(state.s === 'done' ? state.prompt : prompt)}><RotateCcw size={14} /> Try again</button>
+            </div>
+          </div>
+        )}
+        {answer && !(answer.ops && answer.changes) && (
+          <div className="ask-answer">
+            <div className="ask-answer-head">
+              <span>Proposed {target === 'do' || target.startsWith('on.') ? 'action' : target === 'action' ? 'function' : 'code'}</span>
               {answer.provider && <small>by {PROVIDER_NAME[answer.provider] ?? answer.provider}</small>}
             </div>
             <CodeView code={answer.code} known={info.known} />
@@ -198,7 +265,7 @@ class ComposeFailed extends ApiError {
 }
 
 /** Like the api helper, but keeps the suggestions a 422 answer carries. */
-async function compose(doc: string, body: { prompt: string; cell: string; target: string; current: string }): Promise<Answer> {
+async function compose(doc: string, body: { prompt: string; cell?: string; target: string; current: string }): Promise<Answer> {
   const res = await fetch(`/api/docs/${encodeURIComponent(doc)}/compose`, {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
   });

@@ -53,6 +53,8 @@ export interface CodeEditorProps {
   preview?: boolean;
   /** Small buttons in the corner of the box. */
   actions?: ReactNode;
+  /** Names bound around the code, like an event's value in a handler: coloured, completed and explained as local names. */
+  locals?: { name: string; does: string }[];
   ref?: Ref<CodeEditorHandle>;
 }
 
@@ -69,8 +71,9 @@ function userParams(cell: Cell | undefined): string[] | null {
 export function CodeEditor(props: CodeEditorProps) {
   const {
     value, onChange, cell, label, placeholder, className, autoFocus, commitKey = 'mod', onCommit, onCancel, onExpand,
-    signature: sigMode = 'float', messages = true, error, preview, actions, ref,
+    signature: sigMode = 'float', messages = true, error, preview, actions, ref, locals,
   } = props;
+  const localNames = useMemo(() => locals?.map((l) => l.name), [locals]);
   const session = useSession();
   const info = useDocInfo();
   const collections = useCollections();
@@ -88,7 +91,7 @@ export function CodeEditor(props: CodeEditorProps) {
   const [settled, setSettled] = useState(true);
   const [hover, setHover] = useState<{ tok: number; rect: DOMRect } | null>(null);
 
-  const toks = useMemo(() => lex(value, info.known), [value, info.known]);
+  const toks = useMemo(() => lex(value, info.known, localNames), [value, info.known, localNames]);
   const parseError = useMemo(() => {
     try {
       read(value);
@@ -147,7 +150,7 @@ export function CodeEditor(props: CodeEditorProps) {
   };
 
   const refresh = (text: string, at: number, force = false) => {
-    const c = complete(text, at, info.cells, collections, cell, force, info.known);
+    const c = complete(text, at, info.cells, collections, cell, force, info.known, locals);
     setComp(c);
     setActive(0);
   };
@@ -340,7 +343,7 @@ export function CodeEditor(props: CodeEditorProps) {
 
   // ── what to show around the code ──
 
-  const spot = focused && sigMode !== 'none' ? spotAt(value, caret, info.known) : null;
+  const spot = focused && sigMode !== 'none' ? spotAt(value, caret, info.known, localNames) : null;
   const sig = useMemo(() => {
     const call = spot?.call;
     if (!call?.head) return null;
@@ -447,7 +450,7 @@ export function CodeEditor(props: CodeEditorProps) {
         />,
         document.body,
       )}
-      {hover && !comp && createPortal(<HoverCard tok={toks[hover.tok]} rect={hover.rect} info={info} />, document.body)}
+      {hover && !comp && createPortal(<HoverCard tok={toks[hover.tok]} rect={hover.rect} info={info} locals={locals} />, document.body)}
     </div>
   );
 }
@@ -524,7 +527,7 @@ function ItemIcon({ item, info }: { item: Item; info: ReturnType<typeof useDocIn
 }
 
 /** What a name means, shown while the mouse rests on it. */
-function HoverCard({ tok, rect, info }: { tok: Tok | undefined; rect: DOMRect; info: ReturnType<typeof useDocInfo> }) {
+function HoverCard({ tok, rect, info, locals }: { tok: Tok | undefined; rect: DOMRect; info: ReturnType<typeof useDocInfo>; locals?: { name: string; does: string }[] }) {
   if (!tok) return null;
   const name = tok.text.replace(/^\$/, '');
   const pos = place(rect, 320, 120, 6);
@@ -533,6 +536,16 @@ function HoverCard({ tok, rect, info }: { tok: Tok | undefined; rect: DOMRect; i
   if (tok.kind === 'ref' || tok.kind === 'fn') {
     const c = info.cellOf(name);
     const ci = info.cells.find((x) => x.name === name || x.id === name);
+    const action = !c ? info.actions.find((a) => a.name === name) : undefined;
+    if (action) {
+      return (
+        <div className="cf-float cf-card" style={style} role="tooltip">
+          <div className="cf-card-head"><b>{name}</b><small>action</small></div>
+          <code className="cf-card-code">({[name, ...action.params].join(' ')})</code>
+          <div className="cf-card-does">One of this document’s own actions.</div>
+        </div>
+      );
+    }
     if (!c) return null;
     const I = cellIcon(c);
     const params = userParams(c);
@@ -545,7 +558,8 @@ function HoverCard({ tok, rect, info }: { tok: Tok | undefined; rect: DOMRect; i
     );
   } else if (tok.kind === 'local') {
     const what: Record<string, string> = { it: 'The item being looked at.', i: 'The position of the item, from 0.', acc: 'The total so far.' };
-    body = <><div className="cf-card-head"><b>{name}</b><small>local name</small></div><div className="cf-card-does">{what[name] ?? 'A name given inside this expression.'}</div></>;
+    const bound = locals?.find((l) => l.name === name);
+    body = <><div className="cf-card-head"><b>{name}</b><small>{bound ? 'from the event' : 'local name'}</small></div><div className="cf-card-does">{bound ? bound.does.charAt(0).toUpperCase() + bound.does.slice(1) + '.' : what[name] ?? 'A name given inside this expression.'}</div></>;
   } else {
     const s = signature(name);
     const d = docFor(name);

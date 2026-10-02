@@ -328,3 +328,37 @@
 
 /* In the dark the tray and a raised chip share a colour; lift the chosen one. */
 :root[data-theme='dark'] .ins-chip.is-on { background: color-mix(in srgb, var(--raised) 84%, var(--ink)); }
+
+/* ── events: one line per handler, opening the studio ── */
+
+.ins-ev-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ins-ev {
+  width: 100%; display: grid; grid-template-columns: 16px minmax(0, 1fr) 14px; align-items: center; gap: 8px; padding: 7px 8px;
+  border: 1px solid var(--line); border-radius: 9px; background: var(--raised); color: var(--ink); text-align: left; min-height: 40px;
+}
+.ins-ev:hover { border-color: var(--accent); }
+.ins-ev-ico { color: var(--accent); }
+.ins-ev-main { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.ins-ev-name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ins-ev-code { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ins-ev-go { color: var(--faint); }
+.ins-ev-add { align-self: flex-start; }
+
+/* ── a fetch's last answer ── */
+
+.ins-fetch {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 10px; border-radius: 9px; background: var(--sunken);
+  color: var(--muted); font-size: 12.5px;
+}
+.ins-fetch.is-ready { color: var(--ink); }
+.ins-fetch.is-ready > svg { color: var(--live); }
+.ins-fetch.is-failed { background: var(--bad-soft); color: var(--ink); }
+.ins-fetch.is-failed > svg { color: var(--bad); }
+.ins-fetch-text { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+.ins-spin { animation: ins-spin 0.9s linear infinite; }
+@keyframes ins-spin { to { transform: rotate(360deg); } }
+
+@media (pointer: coarse) {
+  .ins-ev { min-height: 44px; }
+  .ins-ev-add, .ins-fetch .btn { min-height: 40px; }
+}

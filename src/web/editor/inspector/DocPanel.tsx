@@ -8,6 +8,7 @@ import { PageSetup } from '../../print/PageSetup';
 import { FontPicker, Prop } from './controls';
 import { num } from './edit';
 import { Section } from './Section';
+import { EventsSection } from './EventsSection';
 
 export function DocPanel() {
   const session = useSession();
@@ -52,6 +53,7 @@ export function DocPanel() {
             <span className="ins-unit">px</span>
           </Prop>
         </Section>
+        <EventsSection cell={null} />
         <Section name="doc-print" title="Printing" open>
           <PageSetup />
           <button className="btn soft" onClick={() => session.setMode('page')}>See the pages</button>

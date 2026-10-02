@@ -11,6 +11,7 @@ import { CollapsiblePanel } from './CollapsiblePanel';
 import { DataPanel } from './DataPanel';
 import { DiagramPanel } from './DiagramPanel';
 import { EmptyPanel } from './EmptyPanel';
+import { FetchPanel } from './FetchPanel';
 import { FormulaPanel } from './FormulaPanel';
 import { GroupPanel } from './GroupPanel';
 import { IconPanel } from './IconPanel';
@@ -22,12 +23,13 @@ import { StatPanel } from './StatPanel';
 import { TablePanel } from './TablePanel';
 import { TabsPanel } from './TabsPanel';
 import { TextPanel } from './TextPanel';
+import { TimerPanel } from './TimerPanel';
 import type { KindProps } from './types';
 
 const PANELS: Record<string, (p: KindProps) => ReactNode> = {
   empty: EmptyPanel, text: TextPanel, formula: FormulaPanel, input: InputPanel, button: ButtonPanel, image: ImagePanel, icon: IconPanel,
   chart: ChartPanel, table: TablePanel, list: ListPanel, calendar: CalendarPanel, canvas: CanvasPanel, stat: StatPanel, break: BreakPanel,
-  diagram: DiagramPanel, data: DataPanel,
+  diagram: DiagramPanel, data: DataPanel, timer: TimerPanel, fetch: FetchPanel,
   row: GroupPanel, col: GroupPanel, tabs: TabsPanel, accordion: AccordionPanel, collapsible: CollapsiblePanel, panel: PanelPanel,
 };
 

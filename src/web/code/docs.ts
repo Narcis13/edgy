@@ -223,8 +223,12 @@ const fnItems = () => (FN_ITEMS ??= builtinNames().filter((n) => /^[a-z]/.test(n
  * What can be typed at the offset. Without `force`, only while a word is being
  * typed (or a collection name inside (rows "…")).
  */
-export function complete(src: string, offset: number, cells: CellInfo[], collections: string[], self?: string, force = false, known?: Known): Completion | null {
-  const spot = spotAt(src, offset, known);
+export function complete(
+  src: string, offset: number, cells: CellInfo[], collections: string[], self?: string, force = false, known?: Known,
+  /** Names bound around the code (an event's value), with what each holds. */
+  locals: { name: string; does: string }[] = [],
+): Completion | null {
+  const spot = spotAt(src, offset, known, locals.map((l) => l.name));
   if (spot.comment) return null;
   if (spot.string) {
     const call = spot.call;
@@ -244,7 +248,7 @@ export function complete(src: string, offset: number, cells: CellInfo[], collect
   const atHead = afterParen && (spot.call?.arg ?? 0) <= 0;
   const q = typed.toLowerCase();
   const pool: Item[] = [
-    ...spot.locals.map((n): Item => ({ label: n, kind: 'local', detail: n === 'it' ? 'the item' : n === 'i' ? 'its index' : n === 'acc' ? 'the total so far' : 'local name' })),
+    ...spot.locals.map((n): Item => ({ label: n, kind: 'local', detail: n === 'it' ? 'the item' : n === 'i' ? 'its index' : n === 'acc' ? 'the total so far' : locals.find((l) => l.name === n)?.does ?? 'local name' })),
     ...cells.filter((c) => c.id !== self).map((c): Item => ({ label: c.name, kind: c.isFn ? 'fn-cell' : 'cell', detail: c.preview, id: c.id })),
     ...fnItems(),
   ];

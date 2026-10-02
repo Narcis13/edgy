@@ -3,10 +3,19 @@
 import { useSyncExternalStore } from 'react';
 import type { Cell } from '../../core/types';
 
-export type StudioTab = 'code' | 'blocks' | 'ask' | 'functions' | 'cells';
+export type StudioTab = 'code' | 'blocks' | 'ask' | 'functions' | 'cells' | 'events';
+
+/** The studio opened on the document itself (its handlers and custom actions), not a cell. */
+export const DOC = '@doc';
 
 export interface StudioOpen {
+  /** A cell's id, or DOC. */
   cell: string;
+  /**
+   * A code prop ("expr", "do"), a handler ("on.change"), a custom action
+   * ("actions.greet"), or the Events part with nothing chosen yet: "on" (add a
+   * handler) or "actions" (define an action).
+   */
   prop: string;
   /** Text to start from instead of what the cell holds (an uncommitted draft). */
   text?: string;
@@ -41,6 +50,11 @@ export function openStudio(o: { cell: string; prop: string; text?: string; tab?:
   emit();
 }
 
+/** Open the studio's Events part: on a handler, an action, or (with neither) where a handler is added. `cell` null is the document. */
+export function openEvents(o: { cell: string | null; event?: string; action?: string }): void {
+  openStudio({ cell: o.cell ?? DOC, prop: o.action !== undefined ? `actions.${o.action}` : o.event ? `on.${o.event}` : 'on', tab: 'events' });
+}
+
 export function closeStudio(): void {
   if (!current) return;
   current = null;
@@ -67,7 +81,7 @@ export function codeProps(cell: Cell): string[] {
     case 'stat': return ['expr', 'compare', 'trend', 'hidden'];
     case 'button': return ['do', 'hidden'];
     case 'input': return cell.type === 'select' ? ['options', 'hidden'] : ['hidden'];
-    case 'empty': return [];
+    case 'empty': case 'timer': return [];
     // Containers, panels, data and diagrams hold no code of their own; they can still hide.
     default: return ['hidden'];
   }

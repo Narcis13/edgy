@@ -10,7 +10,7 @@ and a trace in Activity; Ask AI writes handlers, events and actions from a sente
 
 Started 2026-10-02 on branch `main` at `5c8de68`. Brief: given inline to `/goal-loop` (events brief).
 
-**Next:** M4 studio + designer (agent) and M5 Ask AI (agent) in parallel; contracts in Notes. Then integrate, verify D11/D12 in the browser.
+**Next:** M6 showcase evidence: write `docs/showcase/events/shoot.sh` (fresh server 8796: Market stall at desktop/phone/tablet/dark/page, fetch loading + error states, lab run, timer run, D11 via d11.js, Ask AI run, guide excerpt), INDEX.md. Then M7 final audit (fresh reviewer agent first).
 
 ## Contract (Done means)
 
@@ -42,7 +42,7 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 1. [x] **Core model**: types, notation, ops (`on.*` on cells, `meta` paths `on.*` and `actions.*`), language, engine (timer, fetch), dispatcher + loop guard, outline, guide, tests (D2–D8 core, D13 part, D14, D15)
 2. [x] **Server**: Live viewers per document, the runner (timers, fetch proxy with limits, server-run handlers, agent-caused changes), endpoints, demo fixtures, trace over SSE, tests with a fake clock (D4, D5, D14)
 3. [x] **Browser**: gestures through the dispatcher (one undo step), pointer events and the click gate, open/close, fetch state, timer/fetch cells in Edit/Live/Page, Activity trace (D1–D10)
-4. [ ] **Studio and designer**: Events part for a cell and the document, presets + Blocks, fire by hand, custom actions; inspector section, `/` menu, minimap, icons (D11)
+4. [x] **Studio and designer**: Events part for a cell and the document, presets + Blocks, fire by hand, custom actions; inspector section, `/` menu, minimap, icons (D11)
 5. [x] **Ask AI**: an `events` target on the offline composer, Claude (mocked) and the agent path (D12)
 6. [ ] **Showcase**: template + evidence in `docs/showcase/events/` (G3)
 7. [ ] **Final audit**: review, clean build, empty data, all gates, full sweep, every contract item checked
@@ -82,3 +82,4 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 - 2026-10-02: M2 server: `Runner` (viewers per document, timers on an injectable clock, fetch through the server with SSRF/size/time limits and `secret:` headers, server-run handlers saved as actor "Events", agent changes react while someone is in Live, trace and fetch states over SSE), `/api/demo/*` fixtures. 144 → 152 tests.
 - 2026-10-02: M3 browser: session runs Live gestures through `react` (one dispatch, one undo step), buttons and row actions via `run`, pointer events with a click gate (`editor/pointer.ts`, 250 ms only when dblclick is handled), open/close (pagehide + keepalive), fetch states and server traces over SSE, mode told to the server; timer/fetch chips in Edit, a fetch line in Live, nothing on paper; Activity lists events with their cell and ops. Checked headless on 8791 (lab doc): open runs once in Live and not in Edit; checkbox tick/untick; click vs dblclick on text; image click; table row click/dblclick; emit to two listeners; custom action with two argument sets; missing action error; loop guard and still responsive; stop!; timer 3 ticks in 7 s and nothing after going Home. Sweep of 6 templates + lab: 0 problems. 152 → 155 tests.
 - 2026-10-02: M5 Ask AI (agent): targets `on.<event>`, `action` and `events` (ops + changes, applied to a copy and checked: ops apply, handlers checked with event names bound, no unknown calls) on offline, Claude (mocked fetch) and agent paths; 13 sentences across every family applied and fired in tests. Lead fixed `(when c a b)` running only `a` (it now runs every body, like do) and made the core template test apply meta. Showcase template `events` (Market stall), README Events section. 168 tests. Live Claude not checked (no key).
+- 2026-10-02: M4 studio (agent): Events part for a cell and the document (`@doc`): events with their handlers, add from presets with cells picked from lists, Blocks/Code, remove, Try it (session.test) with what ran, custom actions; Ask AI with "This handler" / "Anything, in words"; inspector Events sections, Timer and Fetch panels, / menu, minimap; event names offered as variables. D11 run (clicks only) passed at 1440×900, 390×844 mobile and dark; lead read the three screenshots. Lead added timer/fetch to the formula bar and kind labels. 168 tests.

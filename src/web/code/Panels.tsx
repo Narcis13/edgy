@@ -54,15 +54,37 @@ export function FunctionsPanel({ onInsert }: { onInsert: (name: string) => void 
   );
 }
 
-export function CellsPanel({ onInsert, self }: { onInsert: (name: string) => void; self?: string }) {
+export function CellsPanel({ onInsert, self, vars = [], varsTitle = 'From the event' }: {
+  onInsert: (name: string) => void;
+  self?: string;
+  /** Names the code finds bound (an event's value, an action's inputs), listed before the cells. */
+  vars?: { name: string; does: string }[];
+  varsTitle?: string;
+}) {
   const info = useDocInfo();
   const [q, setQ] = useState('');
   const t = q.trim().toLowerCase();
   const cells = info.cells.filter((c) => !t || c.name.toLowerCase().includes(t) || c.preview.toLowerCase().includes(t));
+  const bound = vars.filter((v) => !t || v.name.toLowerCase().includes(t) || v.does.toLowerCase().includes(t));
   return (
     <div className="sp">
       <SearchBox value={q} onChange={setQ} label="Search cells" />
       <div className="sp-scroll">
+        {!!bound.length && (
+          <section className="sp-vars" aria-label={varsTitle}>
+            <h4>{varsTitle}</h4>
+            {bound.map((v) => (
+              <button key={v.name} type="button" className="sp-cell sp-var" onClick={() => onInsert(v.name)} title={`Insert ${v.name}`}>
+                <span className="sp-cell-ico is-var">x</span>
+                <span className="sp-cell-main">
+                  <span className="sp-cell-name">{v.name}</span>
+                  <small className="sp-cell-kind">{v.does}</small>
+                </span>
+              </button>
+            ))}
+            {!!cells.length && <h4>Cells</h4>}
+          </section>
+        )}
         {cells.map((c) => {
           const I = cellIcon(c.cell);
           return (

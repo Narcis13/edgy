@@ -2,7 +2,7 @@
 // throws: half-typed code still gets colours, a matching bracket, the call the
 // caret is in and the local names that are in scope there.
 
-import { isBuiltin } from '../../core/sx';
+import { PLACE_FORMS, isBuiltin } from '../../core/sx';
 
 export type TokKind =
   | 'open' | 'close' | 'string' | 'number' | 'literal' | 'comment'
@@ -35,7 +35,6 @@ export const SPECIAL_FORMS = new Set([
 ]);
 /** Calls whose first argument is an expression over `it` (and `i`). */
 export const ITERATORS = new Set(['map', 'filter', 'find', 'some', 'every', 'count-if', 'sort-by', 'sum-by']);
-const PLACE = new Set(['set!', 'toggle!', 'dup!', 'remove!', 'ref', 'child']);
 const NUM_RE = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/;
 const LITERALS = new Set(['true', 'false', 'nil', 'null']);
 
@@ -121,10 +120,11 @@ interface Run {
   at: Raw | null;
 }
 
-function run(src: string, known?: Known, stop = Infinity): Run {
+/** `locals`: names bound around the whole code, like an event's value in a handler. */
+function run(src: string, known?: Known, stop = Infinity, locals: string[] = []): Run {
   const raws = scan(src);
   const toks: Tok[] = [];
-  const stack: Frame[] = [{ tok: -1, pos: -1, close: null, head: null, n: 0, vars: [], bound: [] }];
+  const stack: Frame[] = [{ tok: -1, pos: -1, close: null, head: null, n: 0, vars: locals, bound: [] }];
   let at: Raw | null = null;
   for (const r of raws) {
     if (r.start >= stop) break;
@@ -185,7 +185,7 @@ function run(src: string, known?: Known, stop = Infinity): Run {
       continue;
     } else if (vars.includes(name)) kind = 'local';
     else if (known?.(name)) kind = 'ref';
-    else if (f.head && PLACE.has(f.head) && k === 1) kind = 'symbol';
+    else if (f.head && PLACE_FORMS.has(f.head) && k === 1) kind = 'symbol';
     else if (isBuiltin(name)) kind = 'builtin';
     else kind = 'symbol';
     toks.push({ kind, start: r.start, end: r.end, text });
@@ -194,8 +194,8 @@ function run(src: string, known?: Known, stop = Infinity): Run {
 }
 
 /** Every token, classified, with brackets paired and their depth. */
-export function lex(src: string, known?: Known): Tok[] {
-  return run(src, known).toks;
+export function lex(src: string, known?: Known, locals?: string[]): Tok[] {
+  return run(src, known, Infinity, locals).toks;
 }
 
 export interface Spot {
@@ -213,8 +213,8 @@ export interface Spot {
 }
 
 /** Where an offset sits: its call, the argument it is, what it can see. */
-export function spotAt(src: string, offset: number, known?: Known): Spot {
-  const { stack, at } = run(src, known, offset);
+export function spotAt(src: string, offset: number, known?: Known, locals?: string[]): Spot {
+  const { stack, at } = run(src, known, offset, locals);
   const f = stack[stack.length - 1];
   const spot: Spot = { call: null, record: null, locals: [], word: null, string: null, comment: false };
   if (f.close === ')') spot.call = { head: f.head, arg: f.n - 1, open: f.pos };

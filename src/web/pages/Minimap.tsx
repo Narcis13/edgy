@@ -17,8 +17,8 @@ function fromNotation(n: Json): Cell | null {
 
 function Block({ cell, dir }: { cell: Cell; dir: 'row' | 'col' | null }) {
   const style = dir ? flexOf(cell.size === 'hug' ? 'hug' : typeof cell.size === 'string' ? undefined : cell.size) : undefined;
-  // A data cell takes no room on the page.
-  if (cell.kind === 'data') return null;
+  // A data cell or a timer takes no room on the page.
+  if (cell.kind === 'data' || cell.kind === 'timer') return null;
   if (cell.children) {
     const titles = cell.kind === 'tabs' || cell.kind === 'accordion' ? panelTitles(cell) : [];
     const open = cell.kind === 'tabs' ? [openTab(cell)] : cell.kind === 'accordion' ? openSections(cell) : [];
@@ -43,6 +43,8 @@ function Block({ cell, dir }: { cell: Cell; dir: 'row' | 'col' | null }) {
       </div>
     );
   }
+  // A fetch is one status line in Live: a thin tinted strip.
+  if (cell.kind === 'fetch') return <div className="mm-leaf fetch" style={{ ...style, maxHeight: 6, background: 'color-mix(in srgb, var(--live) 24%, var(--paper))' }} />;
   return <div className={`mm-leaf ${cell.kind}`} style={style} />;
 }
 

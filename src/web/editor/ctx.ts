@@ -21,4 +21,5 @@ export const KIND_LABEL: Record<string, string> = {
   row: 'Row', col: 'Column', empty: 'Empty', text: 'Text', formula: 'Formula', input: 'Input', button: 'Button',
   image: 'Picture', icon: 'Icon', chart: 'Chart', table: 'Table', list: 'List', calendar: 'Calendar', canvas: 'Drawing', stat: 'Stat',
   break: 'Page break', tabs: 'Tabs', accordion: 'Accordion', collapsible: 'Collapsible', panel: 'Panel', diagram: 'Diagram', data: 'Data',
+  timer: 'Timer', fetch: 'Fetch',
 };

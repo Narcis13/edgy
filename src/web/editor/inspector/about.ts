@@ -23,4 +23,6 @@ export const KIND_ABOUT: Record<string, string> = {
   panel: 'One tab or section: a title and the cells under it.',
   diagram: 'Shapes, text and arrows that stay joined when you move them.',
   data: 'A value for formulas and buttons to use. Readers never see it.',
+  timer: 'Ticks every so often (or once) while the document is open in Live, and runs its tick handler.',
+  fetch: 'JSON from a web address, fetched by the server; formulas read it by name.',
 };

@@ -704,6 +704,17 @@ export class Session {
         cell = ['data', { name, ...props }, v];
         break;
       }
+      case 'timer':
+      case 'fetch': {
+        if (same) return;
+        // Both are read by name, so each gets a free one; a fetch starts on the demo rate so it shows something at once.
+        const names = new Set(indexTree(this.s.doc!.root).byName.keys());
+        const base = kind === 'timer' ? 'timer' : 'rate';
+        let name = c.name;
+        if (!name) for (let n = 1; !name; n++) if (!names.has(n === 1 ? base : `${base}${n}`)) name = n === 1 ? base : `${base}${n}`;
+        cell = kind === 'timer' ? ['timer', { name, every: 30, ...props }] : ['fetch', { name, label: 'Exchange rate', ...props }, '/api/demo/rate'];
+        break;
+      }
       case 'diagram':
         cell = same ? ['diagram', { ...own('label', 'value'), ...keep }] : ['diagram', keep,
           { id: 'a', type: 'rect', text: 'Start', fill: 'accent-soft', color: 'accent' },

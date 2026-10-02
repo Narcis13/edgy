@@ -1,6 +1,7 @@
 // The strip under the header: the selected cell's name and its source, the
 // way a spreadsheet shows a cell's formula.
 
+import { durationMs, sayDuration } from '../../core/duration';
 import { Maximize2, Sparkles } from 'lucide-react';
 import type { Json } from '../../core/types';
 import { show } from '../../core/sx';
@@ -102,6 +103,16 @@ export function FormulaBar() {
     case 'data':
       source = <TextField key={cell.id} value={cell.value === undefined ? '' : JSON.stringify(cell.value)} mono placeholder='1, "text", ["a", "b"] or {"vat": 0.2}' label="Value"
         onCommit={(v) => set('value', dataValue(v))} />;
+      break;
+    case 'timer': {
+      const every = durationMs(cell.every);
+      const after = durationMs(cell.after);
+      source = <span className="fbar-hint">{every ? `Ticks every ${sayDuration(every)}` : after ? `Ticks once, ${sayDuration(after)} after opening` : 'No time set'} while the document is open in Live; {cell.value === false ? 'stopped' : 'running'}.</span>;
+      break;
+    }
+    case 'fetch':
+      source = <TextField key={cell.id} value={cell.url ?? ''} mono placeholder="/api/demo/rate or https://…" label="Address" onCommit={(v) => set('url', v.trim() || null)} />;
+      result = error;
       break;
     case 'diagram':
       source = <span className="fbar-hint">Draw in the cell. {describeDiagram(elementsOf(cell.value))}.</span>;
