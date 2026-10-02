@@ -33,6 +33,8 @@ $P/serve.sh fresh 8791 "$TMPDIR/data"    # build, empty data, production server:
 $P/serve.sh stop 8791
 ```
 
+- On Windows (Git Bash) set `CHROME="C:/Program Files/Google/Chrome/Application/chrome.exe"` for `cdp.mjs`/`sweep.sh`; `swift` isn't there, so PDFs aren't rendered to PNG (open the PDF or shoot the Page view instead). `serve.sh stop` kills by pid file (`lsof` is missing, harmless).
+- Timers and fetch cells run on the server only while a browser has the document open in Live (the SSE stream says `?client&mode`). A document that should tick in a screenshot must be opened with `?view=live`. `/api/demo/rate`, `/api/demo/fail` and `/api/demo/slow?ms=` are local fixtures for fetch cells.
 - Never verify against `data/edgy.db`, and never stop the user's dev server (5173 for web, 8787 for API).
   Use port 8791, or 8792 and up for a second instance.
 - `serve.sh` builds first, so run it again after code changes. It's a production build, with no hot reload.

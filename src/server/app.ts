@@ -16,7 +16,7 @@ import { GUIDE } from '../core/reference';
 import { TEMPLATES, tour } from '../core/templates';
 import { Hub } from './hub';
 import { type Clock, type Getter, Runner } from './runner';
-import { type Provider, type Target, ComposeError, Requests, TARGETS, claudeConfig, compose, context, validate } from './compose';
+import { type Provider, ComposeError, Requests, TARGETS, accept, claudeConfig, compose, context, eventOf, eventProblem, isTarget } from './compose';
 import { type Store, shortId } from './store';
 
 const ASSET_TYPES: Record<string, string> = {
@@ -315,12 +315,15 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const body = (await c.req.json()) as { prompt?: string; cell?: string; target?: string; current?: string; provider?: string };
     const prompt = typeof body.prompt === 'string' ? body.prompt.trim().slice(0, 2000) : '';
     if (!prompt) return c.json({ error: 'say what the cell should do' }, 400);
-    const target = (body.target ?? 'expr') as Target;
-    if (!TARGETS.includes(target)) return c.json({ error: `target is one of ${TARGETS.join(', ')}` }, 400);
+    const target = body.target ?? 'expr';
+    if (!isTarget(target)) return c.json({ error: `target is one of ${TARGETS.join(', ')} or on.<event>` }, 400);
     const provider = body.provider as Provider | undefined;
     if (provider && !['claude', 'agent', 'local'].includes(provider)) return c.json({ error: 'provider is claude, agent or local' }, 400);
     const ctx = context(doc, world(doc.id), collections(), { cell: body.cell, target, current: typeof body.current === 'string' ? body.current : '' });
     if (body.cell && !ctx.cell) return c.json({ error: `no cell "${body.cell}"` }, 400);
+    const event = eventOf(target);
+    const wrong = event && eventProblem(ctx.cell ?? null, event);
+    if (wrong) return c.json({ error: wrong }, 400);
     const cell = ctx.cell;
     const agent = hub.listening(doc.id)
       ? () => {
@@ -347,15 +350,16 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const request = doc && requests.get(id, c.req.param('rid'));
     if (!doc || !request) return c.json({ error: 'no such request; it may have been answered or timed out' }, 404);
     const body = (await c.req.json()) as { code?: unknown; explanation?: string; actor?: unknown };
-    let expr: Sx;
+    let answer: ReturnType<typeof accept>;
     try {
       const ctx = context(doc, world(id), collections(), { cell: request.cell, target: request.target, current: request.current });
-      expr = validate(ctx, body.code, request.target);
+      // For target events, code is the ops: a JSON array, {ops}, or that as text.
+      answer = accept(ctx, body.code);
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 422);
     }
     const explanation = typeof body.explanation === 'string' ? body.explanation.slice(0, 600) : undefined;
-    requests.answer(request.id, { expr, explanation });
+    requests.answer(request.id, explanation ? { ...answer, explanation } : answer);
     hub.publish(id, { type: 'presence', actor: { ...cleanActor(body.actor), kind: 'agent' }, state: 'editing', ts: Date.now() });
     return c.json({ ok: true });
   });

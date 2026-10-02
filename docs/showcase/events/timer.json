@@ -1,0 +1,8 @@
+{
+  "title": "Timer check",
+  "ops": [["meta", "on.open", ["set!", "opens", ["+", "$opens", 1]]]],
+  "root": ["col",
+    ["text", "Ticks {{ticks}} · opens {{opens}}"],
+    ["timer", {"name": "poll", "every": 2, "on": {"tick": ["set!", "ticks", ["+", "$ticks", 1]]}}],
+    ["data", {"name": "ticks"}, 0], ["data", {"name": "opens"}, 0]]
+}

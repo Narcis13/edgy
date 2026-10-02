@@ -56,6 +56,24 @@ Rows typed into a table are edited in place in Edit view: double-click a cell, E
 
 The **Order desk** template uses all five: a flowchart with live numbers, tabs opened from buttons, a three-step order form run on a hidden step counter, folding questions with a table and a chart inside, and notes that start folded.
 
+## Events: documents that react
+
+Any cell can say what happens when something happens to it, in its **on**: an event's name and an action, written in the same language as a button's. The document has its own (`open`, `close`) and can define **custom actions** once and call them anywhere.
+
+- **The document opening and closing**: `open` runs once each time someone opens it in Live (a visit counter: `(set! visits (+ visits 1))`); `close` when they leave it.
+- **Values changing**: `change` on any cell with a value — a ticked checkbox or list item, an input, a picked calendar day, a signed canvas, a data cell, a formula whose inputs moved — with `value` and `was` bound (a list also binds the `item` and its `index`); `pick` on a table binds the picked `rows`; accordions and collapsibles raise `open` and `close`. It follows the value whoever changed it: a person, a button, another handler or an agent.
+- **Clicks**: `click` and `dblclick` on text, images, icons, stats, charts, table rows (`row`), list items (`item`) and diagram shapes (`element`). A cell that handles double-click waits a quarter of a second after one click to see whether a second follows, and then runs only `dblclick`; without one, `click` runs at once.
+- **Time**: a **timer** cell ticks `every` so often, or once `after` a delay, while the document is open in Live; `(stop! poll)` and `(start! poll)` stop and restart it.
+- **Fetching**: a **fetch** cell gets JSON from an address — the server fetches it, so secrets stay on the server (`"Authorization": "secret:RATES_KEY"` is filled from `EDGY_SECRET_RATES_KEY`) and private addresses are refused — when the document opens, every so often, and on `(refresh! rate)`. Its value is the answer, so `(get rate "usd")` reads a field; it raises `load` and `fail` (with a `message`); `(status rate)` is `"loading"`, `"ready"` or `"failed"`. Readers see one line: loading, when it last updated, or what failed with Retry. `/api/demo/rate`, `/api/demo/fail` and `/api/demo/slow` answer locally for trying it.
+- **Custom events**: `(emit! "order-placed" {total total})` reaches every cell, and the document, with an `order-placed` handler; they read the `payload`.
+- **Custom actions**: `["meta", "actions.add", ["fn", ["item", "qty"], …]]` once, then `(add "Apples" 1)` from any button or handler. Calling a name that exists nowhere shows as an error in the cell before anything runs.
+
+A person's clicks and changes run in their own browser, and one gesture with everything its handlers changed is one undo step. Timers, fetches and the handlers they set off — and changes made by agents — run once, on the server, while anyone has the document open in Live, so nothing runs twice when two people are looking. Nothing fires while designing (Edit) or on paper. A handler that keeps setting itself off stops after eight levels with an error. Activity lists each event, the cell it came from and what it changed.
+
+In the code studio the **Events** part lists what a cell (or the document) can raise and the handlers attached, each editable as code or Blocks, with presets for the common ones, a button to fire an event by hand to try it, and Ask AI: "when every box is ticked, save the checklist and show the thank-you note".
+
+The **Market stall** template uses all of it: a live exchange rate that warns above 5 and refreshes when tapped, a basket filled by double-clicking produce or pressing buttons that call one custom action, an order that sends an event two cells listen for, a set-up checklist that announces when it is done, and timers that turn the offer and show a tip.
+
 ## Designing a cell
 
 The panel on the right shows what the selected cell is and everything it can do, in sections: **Content** first — a designer made for that kind of cell (a table's data, columns, rows, row buttons and look; a canvas's paper and pen; a list's markers; a chart's type and colour; an empty cell's choice of what to hold) — then **Text**, **Spacing and size**, **Box**, and the cell's rules and notation. Presets come first (text styles such as Title, Heading, Label or Quote; table looks such as Striped or Grid; ready-made row buttons), so most things take a click and no code.
@@ -104,8 +122,10 @@ src/core      the model, shared by everything, no dependencies
   engine.ts     evaluate a document: values, resolved styles, links between cells
   notation.ts   cells as s-expressions: ["row", {props}, ...children]
   outline.ts    the compact text view an agent reads
+  events.ts     which events each kind raises, and react(): running the handlers a change or an event sets off
   templates.ts  the starting points, in notation
 src/server    Hono on Node: the API, SQLite storage, live events over SSE, compose (sentence → code)
+  runner.ts     timers, fetch cells and the handlers they set off, run once per document while someone is in Live
 src/mcp       the MCP server; each tool calls the HTTP API
 src/web       React + Vite: the editor, the home page, the data browser
   code/         the code editor, code studio, Blocks and Ask AI
@@ -135,6 +155,7 @@ Some decisions worth knowing:
 (now) (today) (days a b) (date+ d 30)
 (sib 1) (idx) (child lines -1) (rows "orders") (selected invoices)
 (set! qty 5) (set! view "Details") (toggle! done) (insert! "orders" {…}) (update! "orders" id {…}) (delete! "orders" id) (dup! (child lines -1)) (remove! (child lines -1)) (do a b)
+(show! note) (hide! note) (emit! "saved" {total total}) (start! poll) (stop! poll) (refresh! rate) (status rate) (error-of rate) (greet "Ann")
 ```
 
 Formats: `int`, `number`, `0.00`, `percent`, `compact`, `currency`, `USD`/`EUR`/…, `date`, `time`, `datetime`, `ago`.

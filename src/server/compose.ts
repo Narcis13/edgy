@@ -5,19 +5,40 @@
 //   claude   the Anthropic API, when ANTHROPIC_API_KEY is set
 //   agent    a live agent listening on the document (edgy_listen / edgy_answer)
 //   local    a built-in composer that knows common beginner phrasings
+//
+// Most targets are one expression. Three are about events: `on.<event>` (one
+// handler), `action` (a custom action's (fn …)) and `events` (a whole sentence,
+// answered with ops: handlers, custom events and actions, timers, fetch intervals).
 
-import type { Cell, Doc, Json, Sx } from '../core/types';
-import { isGroup } from '../core/types';
-import { type Computed, type World, evalIn, evaluate, plainValue } from '../core/engine';
+import type { Cell, Doc, Json, Op, Sx } from '../core/types';
+import { NAME_RE, isGroup } from '../core/types';
+import { type Computed, type World, actionProblems, customAction, evalIn, evaluate, plainValue } from '../core/engine';
 import { panelTitles } from '../core/containers';
+import { BUILTIN_EVENTS, EVENT_NAME_RE, customEvents, durationMs, eventsOf } from '../core/events';
 import { FUNCTIONS } from '../core/reference';
+import { applyOps } from '../core/ops';
 import { outline } from '../core/outline';
-import { SxError, formatValue, isBuiltin, print, read } from '../core/sx';
-import { type Index, indexTree, walk } from '../core/tree';
+import { SxError, deepEqual, formatValue, isBuiltin, print, read } from '../core/sx';
+import { type Index, indexTree, resolve, walk } from '../core/tree';
 
-export const TARGETS = ['expr', 'do', 'hidden', 'style', 'options', 'compare', 'trend'] as const;
-export type Target = (typeof TARGETS)[number];
+export const TARGETS = ['expr', 'do', 'hidden', 'style', 'options', 'compare', 'trend', 'action', 'events'] as const;
+/** A target above, or `on.<event>`: one handler of the cell (or of the document). */
+export type Target = (typeof TARGETS)[number] | `on.${string}`;
 export type Provider = 'claude' | 'agent' | 'local';
+
+export const isTarget = (t: unknown): t is Target =>
+  typeof t === 'string' && ((TARGETS as readonly string[]).includes(t) || (t.startsWith('on.') && EVENT_NAME_RE.test(t.slice(3))));
+/** The event an `on.<event>` target is for, or null. */
+export const eventOf = (t: Target): string | null => (t.startsWith('on.') ? t.slice(3) : null);
+/** Targets whose code is an action: actions are allowed and nothing is previewed. */
+const acts = (t: Target) => t === 'do' || t === 'action' || t === 'events' || t.startsWith('on.');
+
+/** One thing an `events` answer writes: a handler, an action or a cell, in plain words and Lisp. */
+export interface Change {
+  cell: string | null;
+  label: string;
+  code: string;
+}
 
 export interface Ask {
   prompt: string;
@@ -28,8 +49,11 @@ export interface Ask {
 
 /** What a provider hands back before it is checked. */
 export interface Answer {
+  /** The expression; null for an `events` answer, which is ops. */
   expr: Sx;
   explanation?: string;
+  ops?: Op[];
+  changes?: Change[];
 }
 
 export interface Composed {
@@ -39,6 +63,9 @@ export interface Composed {
   preview?: { value?: Json; display?: string; error?: string };
   provider: Provider;
   notes?: string[];
+  /** `events` only: the ops to apply, already checked against the document. */
+  ops?: Op[];
+  changes?: Change[];
 }
 
 export class ComposeError extends Error {
@@ -121,9 +148,42 @@ export function context(doc: Doc, world: World, collections: string[], ask: Part
 
 // ───────────────────────────── checking ─────────────────────────────
 
-const ACTIONS = new Set(['set!', 'toggle!', 'insert!', 'delete!', 'clear!', 'dup!', 'remove!']);
-const PLACES = new Set(['set!', 'toggle!', 'dup!', 'remove!', 'ref', 'child']);
+const ACTIONS = new Set(['set!', 'toggle!', 'insert!', 'update!', 'delete!', 'clear!', 'dup!', 'remove!', 'emit!', 'show!', 'hide!', 'start!', 'stop!', 'refresh!']);
+const PLACES = new Set(['set!', 'toggle!', 'dup!', 'remove!', 'ref', 'child', 'show!', 'hide!', 'start!', 'stop!', 'refresh!']);
+/** Actions that only work on one kind of cell. */
+const PLACE_KIND: Record<string, string> = { 'start!': 'timer', 'stop!': 'timer', 'refresh!': 'fetch' };
 const FREE = new Set(['it', 'i', 'acc']);
+
+/** What each built-in event binds while a cell's handler runs; `event` and `target` always. */
+const EVENT_VARS: Record<string, string[]> = {
+  change: ['value', 'was', 'item', 'index'],
+  click: ['row', 'index', 'item', 'element'],
+  dblclick: ['row', 'index', 'item', 'element'],
+  pick: ['rows', 'value', 'was'],
+  open: ['title', 'value'],
+  close: ['title', 'value'],
+  tick: ['count', 'at'],
+  load: ['data', 'value'],
+  fail: ['message', 'status'],
+};
+
+/** The names a handler for this event finds bound, on a cell or (null) on the document. */
+export function eventVars(cell: Cell | null, event: string): string[] {
+  const base = ['event', 'target'];
+  if (!BUILTIN_EVENTS.has(event)) return [...base, 'payload', 'from'];
+  // The document's open and close carry no data.
+  return cell ? [...base, ...(EVENT_VARS[event] ?? [])] : base;
+}
+
+/** Why a cell (or the document, null) can't hold a handler for this event, or null when it can. */
+export function eventProblem(cell: Cell | null, event: string): string | null {
+  if (!EVENT_NAME_RE.test(event)) return `"${event}" is not an event name`;
+  if (!BUILTIN_EVENTS.has(event)) return null;
+  const raised = eventsOf(cell).map((e) => e.name);
+  if (raised.includes(event)) return null;
+  const who = cell ? `${cell.name ?? cell.id} (a ${cell.kind})` : 'the document';
+  return `${who} does not raise ${event}` + (raised.length ? `; it raises ${listed(raised)}` : '');
+}
 
 function distance(a: string, b: string): number {
   const d = Array.from({ length: b.length + 1 }, (_, i) => i);
@@ -139,23 +199,30 @@ function distance(a: string, b: string): number {
   return d[b.length];
 }
 
-function noCell(ctx: Ctx, name: string): string {
-  const near = [...ctx.idx.byName.keys()].filter((n) => distance(n.toLowerCase(), name.toLowerCase()) <= 2);
+function noCell(ctx: Ctx, name: string, bound: Iterable<string> = []): string {
+  const near = [...new Set([...ctx.idx.byName.keys(), ...bound])].filter((n) => distance(n.toLowerCase(), name.toLowerCase()) <= 2);
   return `there is no cell called "${name}"` + (near.length ? `; did you mean ${listed(near, 'or')}?` : '');
 }
 
-/** Throw if the expression uses a function or a name the document does not have, or an action where none is allowed. */
-export function check(ctx: Ctx, x: Sx, target: Target): void {
+/**
+ * Throw if the expression uses a function or a name the document does not have, or an action where none is allowed.
+ * A handler (target on.<event>) sees its event's data names; `cell` is the cell holding it (null: the document),
+ * by default the one being composed for.
+ */
+export function check(ctx: Ctx, x: Sx, target: Target, cell?: Cell | null): void {
   const known = (n: string) => ctx.idx.byName.has(n) || ctx.idx.byId.has(n);
-  const place = (p: Sx, scope: Set<string>) => {
+  const place = (p: Sx, scope: Set<string>, head: string) => {
     if (typeof p !== 'string') return visit(p, scope);
     const n = p.replace(/^\$/, '');
-    if (!known(n) && !scope.has(n)) throw new SxError(noCell(ctx, n));
+    if (!known(n) && !scope.has(n)) throw new SxError(noCell(ctx, n, scope));
+    const kind = PLACE_KIND[head];
+    const c = ctx.idx.byName.get(n) ?? ctx.idx.byId.get(n);
+    if (kind && c && c.kind !== kind) throw new SxError(`${head} needs a ${kind}, and ${n} is a ${c.kind}`);
   };
   const visit = (x: Sx, scope: Set<string>): void => {
     if (typeof x === 'string') {
       const n = x.slice(1);
-      if (x.startsWith('$') && !scope.has(n) && !FREE.has(n) && !known(n)) throw new SxError(noCell(ctx, n));
+      if (x.startsWith('$') && !scope.has(n) && !FREE.has(n) && !known(n)) throw new SxError(noCell(ctx, n, scope));
       return;
     }
     if (x === null || typeof x !== 'object') return;
@@ -179,12 +246,15 @@ export function check(ctx: Ctx, x: Sx, target: Target): void {
       } else for (const p of Array.isArray(b) ? b : [b]) inner.add(String(p).replace(/^\$/, ''));
       return args.slice(1).forEach((a) => visit(a, inner));
     }
-    if (ACTIONS.has(head) && target !== 'do') throw new SxError(`${head} changes the document, so it only works in a button's action`);
+    if (ACTIONS.has(head) && !acts(target)) throw new SxError(`${head} changes the document, so it only works in a button's action`);
+    if (head === 'emit!' && typeof args[0] === 'string' && BUILTIN_EVENTS.has(args[0])) {
+      throw new SxError(`"${args[0]}" is an event the document raises itself; give your event a name of its own`);
+    }
     if (PLACES.has(head)) {
-      if (args.length) place(args[0], scope);
+      if (args.length) place(args[0], scope, head);
       return args.slice(1).forEach((a) => visit(a, scope));
     }
-    if (!isBuiltin(head) && !scope.has(head)) {
+    if (!isBuiltin(head) && !scope.has(head) && customAction(ctx.doc, head) === undefined) {
       const cell = ctx.idx.byName.get(head) ?? ctx.idx.byId.get(head);
       if (!cell) throw new SxError(`unknown function ${head}`);
       const holds = typeof ctx.computed.cells[cell.id]?.value === 'function' || (Array.isArray(cell.expr) && cell.expr[0] === 'fn');
@@ -192,25 +262,55 @@ export function check(ctx: Ctx, x: Sx, target: Target): void {
     }
     args.forEach((a) => visit(a, scope));
   };
-  visit(x, new Set());
+  const event = eventOf(target);
+  visit(x, new Set(event ? eventVars(cell === undefined ? ctx.cell ?? null : cell, event) : []));
 }
 
 /** Read an answer (Lisp text, possibly fenced, or the JSON form) and check it. */
 export function validate(ctx: Ctx, code: unknown, target: Target): Sx {
+  if (target === 'events') throw new SxError('an events answer is a list of ops; read it with validateOps');
   let expr: Sx;
   if (typeof code === 'string') {
     const fenced = /```[\w-]*\s*\n?([\s\S]*?)```/.exec(code);
     expr = read((fenced ? fenced[1] : code).trim());
   } else expr = (code ?? null) as Sx;
   if (expr === null || (typeof expr === 'string' && !expr.trim())) throw new SxError('the answer is empty');
+  if (target === 'action' && !(Array.isArray(expr) && expr[0] === 'fn' && expr.length >= 3)) {
+    throw new SxError('an action is written as a function: (fn (who) (set! hello who)), its inputs and then what it does');
+  }
+  const event = eventOf(target);
+  if (event) {
+    const problem = eventProblem(ctx.cell ?? null, event);
+    if (problem) throw new SxError(problem);
+  }
   check(ctx, expr, target);
   return expr;
 }
 
+/** Check any answer for the context's target: one expression, or for `events` a list of ops. */
+export function accept(ctx: Ctx, code: unknown): Answer {
+  if (ctx.target !== 'events') return { expr: validate(ctx, code, ctx.target) };
+  const v = validateOps(ctx, code);
+  return { expr: null, ops: v.ops, changes: v.changes, explanation: v.explanation };
+}
+
 /** Pretty code, a plain explanation and, for anything but an action, the value it gives in the cell. */
-export function finish(ctx: Ctx, expr: Sx, provider: Provider, explanation?: string, notes: string[] = []): Composed {
-  const out: Composed = { code: print(expr, 60), expr, explanation: explanation?.trim() || explain(ctx, expr), provider };
-  if (ctx.target !== 'do') {
+export function finish(ctx: Ctx, a: Answer, provider: Provider, notes: string[] = []): Composed {
+  if (a.ops) {
+    const changes = a.changes ?? [];
+    return {
+      code: changes.map((c) => c.code).filter(Boolean).join('\n'),
+      expr: null,
+      explanation: a.explanation?.trim() || 'Changes how the document reacts.',
+      provider,
+      ...(notes.length ? { notes } : {}),
+      ops: a.ops,
+      changes,
+    };
+  }
+  const expr = a.expr;
+  const out: Composed = { code: print(expr, 60), expr, explanation: a.explanation?.trim() || explain(ctx, expr), provider };
+  if (!acts(ctx.target)) {
     const r = evalIn(ctx.doc, ctx.world, expr, ctx.cell?.id);
     const currency = typeof ctx.doc.meta.currency === 'string' ? ctx.doc.meta.currency : 'USD';
     out.preview = r.error
@@ -292,6 +392,7 @@ function say(x: Sx): string {
     case 'list': return listed(a.map(say));
     case 'if': return `${say(a[1])} when ${cond(a[0])}, otherwise ${say(a[2] ?? null)}`;
     case 'get': return `the ${say(a[1]).replace(/"/g, '')} of ${say(a[0])}`;
+    case 'ref': return String(a[0]).replace(/^\$/, '');
     case 'count-if': {
       const types = elementTypes(a[0]);
       const what = !types ? null : types.join() === SHAPE_TYPES.join() ? 'shapes' : types.length === 1 && types[0] !== 'text' ? `${types[0]}s` : `${listed(types, 'or')} elements`;
@@ -323,6 +424,8 @@ function cond(x: Sx): string {
   if (h === 'not') return Array.isArray(a[0]) ? `not (${cond(a[0])})` : `${say(a[0])} is off`;
   if (h === 'empty?') return `${say(a[0])} is empty`;
   if (h === 'includes?') return `${say(a[0])} includes ${say(a[1])}`;
+  if (h === 'every' && Array.isArray(a[0]) && a[0][0] === 'get' && a[0][1] === '$it' && a[0][2] === 'done') return 'every box is ticked';
+  if (h === 'every' || h === 'some') return `${h === 'every' ? 'every' : 'some'} item of ${say(a[1])} passes ${say(a[0])}`;
   return say(x);
 }
 
@@ -440,6 +543,8 @@ function action(x: Sx, ctx?: Ctx): string {
       }
       if (v === '') return `clears ${p}`;
       if (v === true || v === false) return `${v ? 'ticks' : 'unticks'} ${p}`;
+      if (v === '$value') return `sets ${p} to the new value`;
+      if (Array.isArray(v) && typeof v[0] === 'string' && CMP_WORDS[v[0]]) return `sets ${p} to true when ${cond(v)}, false otherwise`;
       return `sets ${p} to ${say(v ?? null)}`;
     }
     case 'toggle!': return kind(place(a[0])) === 'collapsible' ? `folds or unfolds ${place(a[0])}` : `switches ${place(a[0])} on or off`;
@@ -452,15 +557,82 @@ function action(x: Sx, ctx?: Ctx): string {
     case 'dup!': return `adds a copy of ${place(a[0])}`;
     case 'remove!': return `removes ${place(a[0])}`;
     case 'do': return listed(a.map((y) => action(y, ctx)), 'then');
-    default: return `works out ${say(x)}`;
+    case 'show!': return `shows ${place(a[0])}`;
+    case 'hide!': return `hides ${place(a[0])}`;
+    case 'start!': return `starts ${place(a[0])}`;
+    case 'stop!': return `stops ${place(a[0])}`;
+    case 'refresh!': return `fetches ${place(a[0])} again`;
+    case 'emit!': {
+      const keys = a[1] && typeof a[1] === 'object' && !Array.isArray(a[1]) ? Object.keys(a[1]) : [];
+      return `sends the ${a[0]} event` + (keys.length ? ` with ${listed(keys)}` : a[1] !== undefined ? ` with ${say(a[1])}` : '');
+    }
+    case 'when': return `checks whether ${cond(a[0])} and if so ${action(a.length > 2 ? ['do', ...a.slice(1)] : a[1] ?? null, ctx)}`;
+    default:
+      if (typeof h === 'string' && ctx && customAction(ctx.doc, h)) return `runs the ${h} action` + (a.length ? ` with ${listed(a.map(say))}` : '');
+      return `works out ${say(x)}`;
   }
+}
+
+/** "When agree changes", "Every minute (new timer every-minute)": a handler in plain words. */
+function handlerLabel(cell: Cell | null, event: string, isNew = false): string {
+  if (!cell) {
+    if (event === 'open') return 'When the document opens';
+    if (event === 'close') return 'When the document closes';
+    return `When ${event} happens (heard by the document)`;
+  }
+  const n = cell.name ?? cell.id;
+  const made = isNew ? ` (new ${cell.kind} ${n})` : '';
+  if (cell.kind === 'timer' && event === 'tick') return (timing(cell) ?? `When ${n} ticks`) + made;
+  const phrase = EVENT_PHRASE[event];
+  const every = cell.kind === 'fetch' && durationMs(cell.every) ? `, fetched every ${sayEvery(durationMs(cell.every)! / 1000)}` : '';
+  return (phrase ? `When ${n} ${phrase}` : `When ${event} happens (heard by ${n})`) + made + every;
+}
+
+const EVENT_PHRASE: Record<string, string> = {
+  change: 'changes', click: 'is clicked', dblclick: 'is double-clicked', pick: 'has rows picked', open: 'opens', close: 'closes',
+  tick: 'ticks', load: 'loads', fail: 'fails to load',
+};
+
+const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+/** 5 → "5 seconds", 120 → "2 minutes". */
+function sayFor(s: number): string {
+  if (s >= 3600 && s % 3600 === 0) return plural(s / 3600, 'hour');
+  if (s >= 60 && s % 60 === 0) return plural(s / 60, 'minute');
+  return plural(tidy(s), 'second');
+}
+/** 60 → "minute", 300 → "5 minutes": what follows "every". */
+const sayEvery = (s: number) => sayFor(s).replace(/^1 /, '');
+
+/** "Every minute", "After 5 seconds", from a timer's props. */
+function timing(cell: Cell): string | null {
+  const every = durationMs(cell.every);
+  if (every) return `Every ${sayEvery(every / 1000)}`;
+  const after = durationMs(cell.after);
+  return after ? `After ${sayFor(after / 1000)}` : null;
+}
+
+/** "Action greet (who)". */
+const actionLabel = (name: string, fn: Sx) => {
+  const params = Array.isArray(fn) && Array.isArray(fn[1]) ? fn[1].map((p) => String(p).replace(/^\$/, '')) : [];
+  return `Action ${name}${params.length ? ` (${params.join(' ')})` : ''}`;
+};
+
+/** What a custom action does: "takes who and sets hello to …". */
+function fnWords(x: Sx, ctx?: Ctx): string {
+  if (!Array.isArray(x) || x[0] !== 'fn') return action(x, ctx);
+  const params = (Array.isArray(x[1]) ? x[1] : [x[1]]).map((p) => String(p).replace(/^\$/, ''));
+  const body = x.length > 3 ? ['do', ...x.slice(2)] : x[2] ?? null;
+  return (params.length ? `takes ${listed(params)} and ` : '') + action(body, ctx);
 }
 
 const tokenWord = (t: Sx) => (typeof t === 'string' ? TOKEN_WORDS[t] ?? t : t === null ? 'unchanged' : say(t));
 
 /** One or two plain sentences for a beginner. */
 export function explain(ctx: Ctx, x: Sx): string {
+  const event = eventOf(ctx.target);
+  if (event) return `${handlerLabel(ctx.cell ?? null, event)}, it ${action(x, ctx)}.`;
   switch (ctx.target) {
+    case 'action': return `This action ${fnWords(x, ctx)}.`;
     case 'do': return `When clicked, it ${action(x, ctx)}.`;
     case 'hidden': return `Hides this cell while ${cond(x)}.` + updates(x).replace('It updates', 'It checks again');
     case 'style':
@@ -585,6 +757,8 @@ type Rule = [RegExp, (g: string[]) => Sx | null];
 
 class Local {
   quotes: string[] = [];
+  /** Words that name something a handler or an action finds bound ("the new value", "its rate"), tried before cells. */
+  word?: (ph: string) => Sx | null;
   constructor(readonly ctx: Ctx) {}
 
   run(prompt: string): Sx | null {
@@ -776,6 +950,8 @@ class Local {
   }
 
   value(ph: string): Sx {
+    const w = this.word?.(ph.trim());
+    if (w != null) return w;
     const s = ph.replace(/^(?:say|show|display|return|print|output|write|it is|its|the text|the word)\s+/, '').trim();
     const q = /^qq(\d+)qq$/.exec(s);
     if (q) return lit(this.quotes[Number(q[1])] ?? '');
@@ -808,6 +984,8 @@ class Local {
   }
 
   atom(ph: string): Sx | null {
+    const w = this.word?.(ph);
+    if (w != null) return w;
     const n = num(ph);
     if (n !== null) return n;
     const q = /^qq(\d+)qq$/.exec(ph);
@@ -1406,7 +1584,31 @@ class Local {
     return ['set!', tabs.name ?? tabs.id, ['cond', ...titles.slice(0, -1).flatMap((t, i): Sx[] => [['=', r, lit(t)], lit(titles[i + 1])]), r]];
   }
 
-  private act(c: string): Sx | null {
+  /** A record to save or send: "everything", or "client and total as amount". */
+  record(ph: string): Record<string, Sx> | null {
+    if (/^(?:everything|all|all fields|all the fields|all inputs|all the inputs|every field|the form|this form|it|this|the values|all values)$/.test(ph)) {
+      const rec: Record<string, Sx> = {};
+      walk(this.ctx.doc.root, (cell) => {
+        if (!cell.name || isGroup(cell) || (cell.kind !== 'input' && cell.kind !== 'formula')) return;
+        if (typeof this.ctx.computed.cells[cell.id]?.value === 'function') return;
+        rec[cell.name] = ref(cell);
+      });
+      return Object.keys(rec).length ? rec : null;
+    }
+    const parts = ph.split(/\s*,\s*(?:and\s+)?|\s+and\s+/).map((p) => p.trim()).filter(Boolean);
+    const rec: Record<string, Sx> = {};
+    for (const p of parts) {
+      const alias = /^(.+?)\s+as\s+([a-z][\w-]*)$/.exec(p);
+      const cell = this.cell(stripArticles(alias ? alias[1] : p));
+      if (cell) { rec[alias ? alias[2] : cell.name ?? cell.id] = ref(cell); continue; }
+      const t = alias ? this.term(alias[1]) : null;
+      if (t === null) return null;
+      rec[alias![2]] = t;
+    }
+    return Object.keys(rec).length ? rec : null;
+  }
+
+  act(c: string): Sx | null {
     const line = (g: string | undefined, which: string | undefined): Sx | null => {
       const group = g ? this.group(g) : this.lines();
       if (!group) return null;
@@ -1430,28 +1632,7 @@ class Local {
       if (this.cell(s)) return null;
       return this.coll(s) ?? (/^[a-z][\w-]*$/.test(s) ? s : null);
     };
-    const record = (ph: string): Sx | null => {
-      if (/^(?:everything|all|all fields|all the fields|all inputs|all the inputs|every field|the form|this form|it|this|the values|all values)$/.test(ph)) {
-        const rec: Record<string, Sx> = {};
-        walk(this.ctx.doc.root, (cell) => {
-          if (!cell.name || isGroup(cell) || (cell.kind !== 'input' && cell.kind !== 'formula')) return;
-          if (typeof this.ctx.computed.cells[cell.id]?.value === 'function') return;
-          rec[cell.name] = ref(cell);
-        });
-        return Object.keys(rec).length ? rec : null;
-      }
-      const parts = ph.split(/\s*,\s*(?:and\s+)?|\s+and\s+/).map((p) => p.trim()).filter(Boolean);
-      const rec: Record<string, Sx> = {};
-      for (const p of parts) {
-        const alias = /^(.+?)\s+as\s+([a-z][\w-]*)$/.exec(p);
-        const cell = this.cell(stripArticles(alias ? alias[1] : p));
-        if (cell) { rec[alias ? alias[2] : cell.name ?? cell.id] = ref(cell); continue; }
-        const t = alias ? this.term(alias[1]) : null;
-        if (t === null) return null;
-        rec[alias![2]] = t;
-      }
-      return Object.keys(rec).length ? rec : null;
-    };
+    const record = (ph: string) => this.record(ph);
 
     const limit = '(?:\\s*,?\\s*(?:but\\s+)?(?:not\\s+(?:past|beyond|above|below|under)|up\\s+to|down\\s+to|at\\s+most|at\\s+least|no\\s+(?:further|more|less|lower|higher)\\s+than)\\s+(-?\\d+))?';
     return this.apply(c, [
@@ -1609,13 +1790,719 @@ function splits(s: string, ...words: string[]): [string, string][] {
   return out.sort((a, b) => b[0] - a[0]).map(([, l, r]) => [l, r]);
 }
 
-/** The built-in composer: an expression for the prompt, or null when no phrasing matched. */
+/** The built-in composer: an expression (or for `events`, ops) for the prompt, or null when no phrasing matched. */
 export function composeLocal(ctx: Ctx, prompt: string): Answer | null {
+  if (ctx.target === 'events') {
+    let ops: Op[] | null = null;
+    try { ops = new Sentences(ctx).run(prompt); } catch { ops = null; }
+    if (!ops) return null;
+    try { return accept(ctx, ops); } catch { return null; }
+  }
   let expr: Sx | null = null;
-  try { expr = new Local(ctx).run(prompt); } catch { expr = null; }
+  try {
+    const event = eventOf(ctx.target);
+    expr = event ? new Sentences(ctx).handler(prompt, event) : ctx.target === 'action' ? new Sentences(ctx).action(prompt) : new Local(ctx).run(prompt);
+  } catch { expr = null; }
   if (expr === null) return null;
-  try { check(ctx, expr, ctx.target); } catch { return null; }
+  try { validate(ctx, expr, ctx.target); } catch { return null; }
   return { expr, explanation: explain(ctx, expr) };
+}
+
+// ───────────────────────────── events: handlers, actions and timers from a sentence ─────────────────────────────
+
+/** Event words as people write them, and the event each means. "on"/"off": ticked or unticked. */
+const PHRASES: [string, string, ('on' | 'off')?][] = [
+  ['is double[ -]?clicked|gets double[ -]?clicked|is double[ -]?tapped|double[ -]?clicked', 'dblclick'],
+  ['is clicked|is pressed|is tapped|is pushed|gets clicked|gets pressed|clicked|pressed|tapped', 'click'],
+  ['fails to load|fails to fetch|fails|does not load|cannot load|can not load|errors|goes wrong', 'fail'],
+  ['loads|is loaded|has loaded|arrives|is fetched|comes in|comes back|is refreshed', 'load'],
+  ['is ticked|is checked|are ticked|are checked|is done|are done|is complete|are complete|is turned on|is switched on|gets ticked|gets checked', 'change', 'on'],
+  ['is unticked|is unchecked|is turned off|is switched off|gets unticked|gets unchecked', 'change', 'off'],
+  ['changes|is changed|has changed|changed|is edited|is updated|updates|is set', 'change'],
+  ['is picked|is selected|is chosen|gets picked|gets selected|picked|selected|chosen', 'pick'],
+  ['opens|is opened|opened|is started', 'open'],
+  ['closes|is closed|closed|is left|is folded', 'close'],
+  ['ticks|goes off', 'tick'],
+  ['happens|is sent|is emitted|is fired|fires|is announced|is raised|occurs|is heard|comes', 'custom'],
+];
+const PHRASE_RES = PHRASES.map(([src, event, flag]) => [new RegExp(`^(?:${src})$`), event, flag] as const);
+const HEAD = new RegExp(`^(?:when|whenever|once|as soon as|each time|every time)\\s+(?:(.+?)\\s+)?(${PHRASES.map((p) => p[0]).join('|')})(?=$|[\\s,])\\s*,?\\s*(?:then\\s+)?(.*)$`);
+const ON = /^on\s+(double[ -]?clicks?|dblclick|clicks?|taps?|change|changes|open|opening|close|closing|load|loading|fail|failure|tick|pick|[a-z][\w-]*)\s*,?\s*(.+)$/;
+const ON_WORDS: Record<string, string> = { tap: 'click', taps: 'click', clicks: 'click', changes: 'change', opening: 'open', closing: 'close', loading: 'load', failure: 'fail' };
+const UNITS = '(seconds?|secs?|minutes?|mins?|hours?|hrs?)';
+const unitSeconds = (u: string) => (u.startsWith('h') ? 3600 : u.startsWith('m') ? 60 : 1);
+/** Verbs that start a new clause: "save it to done and show the note". */
+const EVENT_VERBS = `${VERBS}|fetch|refresh|reload|warn|alert|flag|send|emit|broadcast|announce|fire|raise|call|run|trigger|start|stop|pause|restart|reveal|unhide|set`;
+const EVENT_VERB_SET = new Set(EVENT_VERBS.split('|'));
+/** A marker on names a handler finds bound, so a cell of the same name can be told apart afterwards. */
+const BOUND = '$\u0001';
+
+/** "sends saved" reads as "send saved". */
+function presentE(clause: string): string {
+  const w = /^[a-z]+/.exec(clause)?.[0];
+  if (!w || EVENT_VERB_SET.has(w)) return clause;
+  const base = [w.replace(/es$/, ''), w.replace(/s$/, '')].find((b) => b !== w && EVENT_VERB_SET.has(b));
+  return base ? base + clause.slice(w.length) : clause;
+}
+
+function clauses(s: string): string[] {
+  return s.split(/\s*(?:,\s*)?\b(?:and then|then|after that|afterwards)\b\s*,?\s*/)
+    .flatMap((p) => p.split(new RegExp(`\\s*(?:,\\s*(?:and\\s+)?|\\band\\s+)(?=(?:${EVENT_VERBS})(?:e?s)?\\b)`)))
+    .map((p) => p.trim()).filter(Boolean);
+}
+
+/** Marked bound names back to plain ones; a cell named like a bound name is read with (ref name). */
+function unmark(x: Sx, bound: Set<string>): Sx {
+  if (typeof x === 'string') {
+    if (x.startsWith(BOUND)) return '$' + x.slice(BOUND.length);
+    return x.startsWith('$') && bound.has(x.slice(1)) ? ['ref', x.slice(1)] : x;
+  }
+  if (Array.isArray(x)) return x[0] === 'quote' ? x : x.map((y) => unmark(y, bound));
+  if (x && typeof x === 'object') return Object.fromEntries(Object.entries(x).map(([k, v]) => [k, unmark(v, bound)]));
+  return x;
+}
+
+/**
+ * The built-in composer for events. It reads one sentence at a time and turns
+ * each into ops on a working copy of the document, so a later sentence sees
+ * what an earlier one made (a timer, an action, a data cell).
+ */
+class Sentences {
+  doc: Doc;
+  ops: Op[] = [];
+  quotes: string[] = [];
+  /** The handlers this prompt attaches, by "cell event", so two sentences for one event run both. */
+  private attached = new Map<string, Sx>();
+
+  constructor(readonly base: Ctx) {
+    this.doc = base.doc;
+  }
+
+  private ctxFor(cell: Cell | null, target: Target): Ctx {
+    return context(this.doc, this.base.world, [...this.base.collections.keys()], { target, cell: cell?.id });
+  }
+
+  /** A phrase reader for a handler on `cell` for `event` (or for an action, event ''), with what it finds bound. */
+  private local(cell: Cell | null, event: string, params: string[] = []): Local {
+    const l = new Local(this.ctxFor(cell, event ? `on.${event}` : 'do'));
+    l.quotes = this.quotes;
+    l.word = this.words(l, cell, event, params);
+    return l;
+  }
+
+  private bound(cell: Cell | null, event: string, params: string[]): Set<string> {
+    // A timer's tick is composed before the timer exists.
+    const holder = cell ?? (event === 'tick' ? ({ id: '', kind: 'timer' } as Cell) : null);
+    return new Set([...(event ? eventVars(holder, event) : []), ...params]);
+  }
+
+  private push(...ops: Op[]): void {
+    this.doc = applyOps(this.doc, ops).doc;
+    this.ops.push(...ops);
+  }
+
+  private read(prompt: string): string {
+    const { s, quotes } = normalize(prompt, this.base);
+    this.quotes = quotes;
+    return s.replace(/^(?:please|can you|could you|i want|i would like|id like|make it so that|make sure that|make sure|so that)\s+/, '').replace(/\s+please$/, '');
+  }
+
+  // ── the three targets ──
+
+  /** `events`: every sentence of the prompt, as ops; null when one is not understood. */
+  run(prompt: string): Op[] | null {
+    const parts = prompt.split(/(?<=[.;!?])\s+|\n+/).map((p) => p.trim()).filter(Boolean);
+    for (const p of parts) if (!this.sentence(this.read(p))) return null;
+    return this.ops.length ? this.ops : null;
+  }
+
+  /** `on.<event>`: the action, from "add 1 to clicks" or a whole sentence about that event. */
+  handler(prompt: string, event: string): Sx | null {
+    const cell = this.base.cell ?? null;
+    const s = this.read(prompt);
+    if (/^(?:when|whenever|once|each time|every time|on|after|every|each)\s/.test(s) && this.sentence(s)) {
+      const key = `${cell ? cell.id : ''} ${event}`;
+      return this.attached.size === 1 && this.attached.has(key) ? this.attached.get(key)! : null;
+    }
+    return this.body(cell, event, s);
+  }
+
+  /** `action`: (fn (params…) body…), from "takes who and sets hello to who" or "make an action called … that …". */
+  action(prompt: string): Sx | null {
+    const s = this.read(prompt);
+    const named = this.defining(s);
+    if (named) return named.fn;
+    return this.fn(s.replace(/^(?:an?\s+)?(?:custom\s+)?action\s+(?:that|which|to)\s+/, '').replace(/^(?:it\s+)?(?:should\s+)?/, ''));
+  }
+
+  // ── sentences ──
+
+  private sentence(s: string): boolean {
+    if (!s) return false;
+    const def = this.defining(s);
+    if (def) {
+      this.push(['meta', `actions.${def.name}`, def.fn as Json]);
+      return true;
+    }
+    let m = new RegExp(`^(?:every|each|once\\s+(?:a|an|every))\\s+(?:(\\S+)\\s+)?${UNITS}\\b\\s*,?\\s*(?:then\\s+)?(.+)$`).exec(s);
+    if (m) return this.every(m[1], m[2], m[3]);
+    m = new RegExp(`^(?:after|in|wait)\\s+(\\S+)\\s+${UNITS}\\b\\s*,?\\s*(?:then\\s+)?(.+)$`).exec(s);
+    if (m) return this.after(m[1], m[2], m[3]);
+    m = HEAD.exec(s);
+    if (m) {
+      const [, subj, phrase, rest] = m;
+      const p = PHRASE_RES.find(([re]) => re.test(phrase));
+      const who = p && this.subject(subj, p[1], p[2]);
+      return !!who && !!rest && this.attach(who.cell, who.event, rest, who.cond);
+    }
+    m = ON.exec(s);
+    if (m) {
+      const w = m[1].replace(/^double[ -]?clicks?$/, 'dblclick');
+      const event = ON_WORDS[w] ?? (w === 'click' ? 'click' : w);
+      const who = this.subject(undefined, BUILTIN_EVENTS.has(event) ? event : 'custom', undefined, event);
+      return !!who && this.attach(who.cell, who.event, m[2]);
+    }
+    return false;
+  }
+
+  /** How many seconds "5 minutes" or "a minute" is. */
+  private seconds(n: string | undefined, unit: string): number | null {
+    const k = n === undefined || n === 'a' || n === 'an' || n === 'one' ? 1 : num(n);
+    return k === null || k <= 0 ? null : tidy(k * unitSeconds(unit));
+  }
+
+  /** "Every minute fetch the rate and warn …": the fetch refreshes that often; otherwise a new timer runs the actions. */
+  private every(n: string | undefined, unit: string, rest: string): boolean {
+    const secs = this.seconds(n, unit);
+    if (secs === null) return false;
+    const [first, ...more] = clauses(rest);
+    const f = /^(?:fetch|refresh|reload|update|re-?fetch|get|check)\s+(.+?)(?:\s+again|\s+now)?$/.exec(presentE(first ?? ''));
+    const fetch = f ? this.kindCell(f[1], 'fetch') : undefined;
+    if (fetch && secs >= 5) {
+      const name = fetch.name ?? fetch.id;
+      const load = more.length ? this.body(fetch, 'load', more.join(' and ')) : null;
+      if (more.length && load === null) return false;
+      this.push(['set', name, 'every', secs]);
+      return load === null || this.put(fetch, 'load', load);
+    }
+    const tick = this.body(null, 'tick', rest);
+    if (tick === null) return false;
+    const name = this.free(`every-${sayEvery(secs).replace(/\s+/g, '-')}`);
+    this.add(['timer', { name, every: secs, on: { tick: tick as Json } }]);
+    return true;
+  }
+
+  /** "After 5 seconds show the welcome note": a new timer that ticks once. */
+  private after(n: string, unit: string, rest: string): boolean {
+    const secs = this.seconds(n, unit);
+    const tick = secs === null ? null : this.body(null, 'tick', rest);
+    if (tick === null) return false;
+    const name = this.free(`after-${sayFor(secs!).replace(/\s+/g, '-')}`);
+    this.add(['timer', { name, after: secs, on: { tick: tick as Json } }]);
+    return true;
+  }
+
+  /** "an action called reset that sets qty to 0 and clears note" → its name and (fn () …). */
+  private defining(s: string): { name: string; fn: Sx } | null {
+    const m = /^(?:make|create|define|add|write|set up|give me)\s+(?:me\s+)?(?:a\s+new\s+|a\s+|an\s+|the\s+)?(?:custom\s+)?action\s+(?:called|named)\s+(qq\d+qq|[a-z][\w-]*)\s*,?\s*(.*)$/.exec(s)
+      ?? /^(?:an?\s+)?(?:custom\s+)?action\s+(?:called|named)\s+(qq\d+qq|[a-z][\w-]*)\s*,?\s*(.*)$/.exec(s);
+    if (!m) return null;
+    const name = this.unq(m[1]);
+    if (!NAME_RE.test(name) || isBuiltin(name)) return null;
+    const fn = this.fn(m[2].replace(/^(?:that|which|to|so that it|so it|and it|it)\s+/, ''));
+    return fn ? { name, fn } : null;
+  }
+
+  /** "takes who and sets hello to who" → (fn (who) (set! hello who)). */
+  private fn(s: string): Sx | null {
+    let params: string[] = [];
+    const m = /^(?:takes|accepts|gets|receives|with|taking|given|has)\s+(?:an?\s+|the\s+)?(?:parameters?\s+|inputs?\s+|arguments?\s+)?([a-z][\w-]*(?:\s*(?:,\s*(?:and\s+)?|\s+and\s+)[a-z][\w-]*)*)\s*(?:,\s*(?:and\s+)?(?:then\s+)?|\s+and\s+(?:then\s+)?|\s+then\s+)(.+)$/.exec(s);
+    if (m) {
+      params = m[1].split(/\s*,\s*(?:and\s+)?|\s+and\s+/).filter(Boolean);
+      if (params.some((p) => !NAME_RE.test(p) || isBuiltin(p))) return null;
+      s = m[2];
+    } else {
+      // "adds an amount to qty": the amount is what the caller passes.
+      const given = /\b(?:an?|some|any|the given)\s+(amount|number|value|name|text|quantity|message|label|title|person|price)\b/.exec(s);
+      if (given) {
+        params = [given[1]];
+        s = s.replace(given[0], given[1]);
+      }
+    }
+    const body = this.body(null, '', s, params);
+    if (body === null) return null;
+    return ['fn', params, ...(Array.isArray(body) && body[0] === 'do' ? body.slice(1) : [body])];
+  }
+
+  /**
+   * Who a "when …" sentence is about: a cell, the document (null), or a custom
+   * event (heard by the cell being composed for, else the document).
+   */
+  private subject(subj: string | undefined, event: string, flag?: 'on' | 'off', custom?: string): { cell: Cell | null; event: string; cond?: Sx } | null {
+    const own = this.base.cell ? indexTree(this.doc.root).byId.get(this.base.cell.id) ?? null : null;
+    const l = this.local(own, '');
+    const s = subj === undefined ? '' : stripArticles(this.unq(subj).toLowerCase());
+    if (event === 'custom') {
+      const name = custom ?? (subj ? this.unq(subj).replace(/^(?:the\s+)?(?:event\s+)?/i, '').replace(/\s+event$/i, '') : '');
+      return EVENT_NAME_RE.test(name) && !BUILTIN_EVENTS.has(name) ? { cell: own, event: name } : null;
+    }
+    let cell: Cell | null | undefined;
+    let cond: Sx | undefined;
+    const self = !subj || /^(?:it|this|this cell|this one|me|that|here|the cell)$/.test(subj);
+    const isDoc = !!subj && /^(?:the\s+|this\s+)?(?:document|doc|page|file|app)$/.test(subj);
+    if (isDoc || (self && !own && (event === 'open' || event === 'close' || event === 'load'))) {
+      // "When the document loads" means when it opens.
+      const e = event === 'load' ? 'open' : event;
+      return e === 'open' || e === 'close' ? { cell: null, event: e } : null;
+    }
+    if (self) cell = own;
+    else if (flag === 'on' && /^(?:every|each|all|all of)\s+(?:the\s+)?(?:box(?:es)?|items?|tasks?|things?|checkbox(?:es)?|ones?|todos?|steps?)$|^everything$|^all$/.test(subj!.replace(/^the\s+/, ''))) {
+      cell = own?.kind === 'list' && own.type === 'check' ? own : l.near('list').find((c) => c.type === 'check');
+      cond = ['every', ['get', '$it', 'done'], BOUND + 'value'];
+      flag = undefined;
+    } else if (/^(?:a|an|any|one|the)?\s*row(?:\s+(?:in|of|from)\s+(.+))?$/.test(s)) {
+      const named = /\s(?:in|of|from)\s+(.+)$/.exec(s)?.[1];
+      cell = named ? l.cell(stripArticles(named).replace(/\s+table$/, '')) : own?.kind === 'table' ? own : l.near('table')[0];
+    } else if (/^button$/.test(s)) cell = own?.kind === 'button' ? own : l.near('button')[0];
+    else cell = this.findCell(l, subj!);
+    if (!cell) return null;
+    if (flag && cell.kind === 'input' && ['checkbox', 'toggle'].includes(cell.type ?? '')) cond = flag === 'on' ? BOUND + 'value' : ['not', BOUND + 'value'];
+    return eventProblem(cell, event) ? null : { cell, event, cond };
+  }
+
+  /** The handler for "<rest>" on a cell's event, attached; false when the words are not understood. */
+  private attach(cell: Cell | null, event: string, rest: string, cond?: Sx): boolean {
+    const action = this.body(cell, event, rest, [], cond);
+    return action !== null && this.put(cell, event, action);
+  }
+
+  private put(cell: Cell | null, event: string, action: Sx): boolean {
+    const key = `${cell ? cell.id : ''} ${event}`;
+    const before = this.attached.get(key);
+    const both: Sx = before === undefined ? action : ['do', ...(Array.isArray(before) && before[0] === 'do' ? before.slice(1) : [before]), action];
+    this.attached.set(key, both);
+    this.push(cell ? ['set', cell.name ?? cell.id, `on.${event}`, both as Json] : ['meta', `on.${event}`, both as Json]);
+    return true;
+  }
+
+  // ── what a handler does ──
+
+  /** The actions of "save it to done and show the note", for a handler on `cell` (or the document) for `event`. */
+  private body(cell: Cell | null, event: string, s: string, params: string[] = [], cond?: Sx): Sx | null {
+    const l = this.local(cell, event, params);
+    const x = this.actions(l, cell, event, s.trim());
+    if (x === null) return null;
+    const c = cond === undefined ? x : ['when', cond, x];
+    return unmark(c, this.bound(cell, event, params));
+  }
+
+  private actions(l: Local, own: Cell | null, event: string, s: string): Sx | null {
+    s = s.replace(/^(?:then|it should|it will|please|we|i want to)\s+/, '').replace(/[\s,]+$/, '');
+    const lead = /^(?:if|when|whenever|only if|only when)\s+(.+?)\s*(?:,|\bthen\b)\s*(.+)$/.exec(s);
+    if (lead) {
+      const c = l.condition(lead[1]);
+      const b = c === null ? null : this.actions(l, own, event, lead[2]);
+      if (b !== null) return ['when', c, b];
+    }
+    const out: Sx[] = [];
+    for (const c of clauses(s)) {
+      const a = this.clause(l, own, event, presentE(c));
+      if (a === null) return null;
+      out.push(a);
+    }
+    return out.length === 1 ? out[0] : out.length ? ['do', ...out] : null;
+  }
+
+  private clause(l: Local, own: Cell | null, event: string, c: string): Sx | null {
+    // "warn when it is above 5": a flag that follows the condition.
+    let m = /^(?:warn|alert|flag|raise\s+(?:a|an|the)\s+(?:warning|alarm|alert|flag))(?:\s+(?:me|us|people|everyone|the user|the reader))?\s+(?:when|if|whenever|once)\s+(.+)$/.exec(c);
+    if (m) {
+      const cond = l.condition(m[1]);
+      return cond === null ? null : ['set!', this.warnCell(l), cond];
+    }
+    // "add 1 to clicks only when it is on": an action that waits for a condition.
+    m = /^(.+?)\s+(?:but\s+)?(?:only\s+)?(?:if|when|whenever|once)\s+(.+)$/.exec(c);
+    if (m) {
+      const a = this.verb(l, own, event, m[1]);
+      const cond = a === null ? null : l.condition(m[2]);
+      if (a !== null && cond !== null) return ['when', cond, a];
+    }
+    return this.verb(l, own, event, c);
+  }
+
+  private verb(l: Local, own: Cell | null, event: string, c: string): Sx | null {
+    let m = /^(show|reveal|display|unhide|hide)\s+(.+)$/.exec(c);
+    if (m) {
+      const t = this.findCell(l, m[2]);
+      if (t && t.kind !== 'panel') return [m[1] === 'hide' ? 'hide!' : 'show!', t.name ?? t.id];
+    }
+    const call = this.call(l, c, true);
+    if (call) return call;
+    m = /^(?:send|emit|broadcast|announce|fire|raise|signal|trigger)\s+(?:out\s+)?(?:an?\s+|the\s+)?(?:event\s+)?(qq\d+qq|[a-z][\w-]*)(?:\s+event)?(?:\s+(?:with|carrying|containing)\s+(.+))?$/.exec(c);
+    if (m) {
+      const name = this.unq(m[1]);
+      if (EVENT_NAME_RE.test(name) && !BUILTIN_EVENTS.has(name)) {
+        if (!m[2]) return ['emit!', name];
+        const payload = l.record(stripArticles(m[2]) || m[2]) ?? l.term(m[2]);
+        return payload === null ? null : ['emit!', name, payload];
+      }
+    }
+    m = /^(?:fetch|refresh|reload|re-?fetch|update)\s+(.+?)(?:\s+again|\s+now)?$/.exec(c);
+    const fetch = m && this.kindCell(m[1], 'fetch');
+    if (fetch) return ['refresh!', fetch.name ?? fetch.id];
+    m = /^(start|restart|resume|stop|pause|cancel|end)\s+(.+)$/.exec(c);
+    const timer = m && this.kindCell(m[2], 'timer');
+    if (m && timer) return [/^(?:start|restart|resume)$/.test(m[1]) ? 'start!' : 'stop!', timer.name ?? timer.id];
+    // A timer's or a fetch's own handler: "stop", "fetch again".
+    m = /^(start|restart|resume|stop|pause|cancel|end|refresh|reload|fetch again|try again|retry)(?:\s+(?:it|itself|this))?$/.exec(c);
+    if (m && own?.kind === 'timer' && !/^(?:refresh|reload|fetch again|try again|retry)$/.test(m[1])) return [/^(?:start|restart|resume)$/.test(m[1]) ? 'start!' : 'stop!', own.name ?? own.id];
+    if (m && own?.kind === 'fetch' && /^(?:refresh|reload|fetch again|try again|retry)$/.test(m[1])) return ['refresh!', own.name ?? own.id];
+    // "copy the new value into note", "put the message into note": one cell takes a value.
+    m = /^(?:copy|put|write|store|save|place)\s+(.+?)\s+(?:into|in|to|onto)\s+(.+)$/.exec(c);
+    const into = m && l.settable(m[2]);
+    const what = into ? l.word?.(m![1]) ?? l.term(m![1]) : null;
+    if (into && what !== null) return ['set!', into.name ?? into.id, what];
+    // "save the checklist to done": what changed, as a new record (which carries the time it was saved).
+    m = /^(?:save|store|record|log|copy|keep|archive|add|put|write)\s+(.+?)\s+(?:to|into|in)\s+(.+?)(?:\s+with\s+the\s+(?:time|date))?$/.exec(c);
+    if (m && own && event === 'change' && this.refersTo(l, own, m[1])) {
+      const coll = this.collection(l, m[2]);
+      if (coll) return ['insert!', coll, { [own.kind === 'list' ? 'items' : 'value']: BOUND + 'value' }];
+    }
+    return l.act(c) ?? this.call(l, c, false);
+  }
+
+  /** A call to one of the document's actions: "call reset", "run greet with "Ann"", or (bare) "reset". */
+  private call(l: Local, c: string, explicit: boolean): Sx | null {
+    const m = explicit
+      ? /^(?:call|run|perform|invoke|use|do|trigger|apply)\s+(?:the\s+)?(?:action\s+)?(qq\d+qq|[a-z][\w-]*)(?:\s+action)?(?:\s+(?:with|on|for|using|passing)\s+(.+))?$/.exec(c)
+      : /^([a-z][\w-]*)(?:\s+(.+))?$/.exec(c);
+    if (!m) return null;
+    const name = Object.keys(this.doc.meta.actions ?? {}).find((k) => canon(k) === canon(this.unq(m[1])));
+    if (!name) return null;
+    const args = m[2] ? m[2].split(/\s*,\s*(?:and\s+)?|\s+and\s+/).filter(Boolean).map((a) => l.value(a)) : [];
+    return [name, ...args];
+  }
+
+  /** Whether words mean the cell itself: "it", "the checklist", its name. */
+  private refersTo(l: Local, own: Cell, ph: string): boolean {
+    if (/^(?:it|this|them|these|its value|the value|the values|the new values?|new value|the list|the checklist|the items|the boxes|the tasks|everything|the answers?)$/.test(ph)) return true;
+    return l.cell(stripArticles(ph)) === own;
+  }
+
+  private collection(l: Local, ph: string): string | null {
+    const s = stripArticles(this.unq(ph)).replace(/^(?:saved\s+)?/, '').replace(/\s+(?:collection|list|table|records)$/, '');
+    return l.coll(s) ?? (/^[a-z][\w-]*$/i.test(s) ? s : null);
+  }
+
+  /** A cell of one kind, by name, or the only one: "the rate", "the timer". */
+  private kindCell(ph: string, kind: string): Cell | undefined {
+    const l = this.local(null, '');
+    const s = stripArticles(this.unq(ph).toLowerCase()).replace(new RegExp(`\\s+(?:${kind}|feed|request|data)$`), '');
+    const c = l.cell(s);
+    if (c) return c.kind === kind ? c : undefined;
+    const all = l.near(kind);
+    return all.length === 1 && (s === kind || /^(?:it|this)$/.test(s)) ? all[0] : undefined;
+  }
+
+  /** A cell by name, label or what it says: "the thank-you note" finds the hidden text "Thank you…". */
+  private findCell(l: Local, ph: string): Cell | undefined {
+    const s0 = stripArticles(this.unq(ph).toLowerCase());
+    const s = s0.replace(/\s+(?:note|message|text|cell|box|banner|panel|line|block|card|notice|paragraph|label|image|picture|button|checkbox|check box|toggle|switch|list|checklist|table|fetch|timer|field|input)$/, '');
+    const direct = l.cell(s) ?? l.cell(s0);
+    if (direct) return direct;
+    const key = canon(s);
+    if (key.length < 3) return undefined;
+    const found: Cell[] = [];
+    walk(this.doc.root, (c) => {
+      if (isGroup(c) && c.kind !== 'collapsible') return;
+      if (canon([c.name, c.text, c.title, c.label, c.alt].filter(Boolean).join(' ')).includes(key)) found.push(c);
+    });
+    // A hidden cell is the likelier one to show.
+    return found.find((c) => c.hidden === true) ?? found[0];
+  }
+
+  /** A flag to set: a data cell or checkbox called warn, warning or alert, else a new data cell. */
+  private warnCell(l: Local): string {
+    for (const n of ['warn', 'warning', 'alert', 'alarm', 'flag']) {
+      const c = l.settable(n);
+      if (c) return c.name ?? c.id;
+    }
+    const name = this.free('warning');
+    this.add(['data', { name }, false]);
+    return name;
+  }
+
+  /**
+   * Words for what a handler finds bound, marked so they stay variables even
+   * where a cell has the same name.
+   */
+  private words(l: Local, cell: Cell | null, event: string, params: string[]): (ph: string) => Sx | null {
+    const v = (n: string) => BOUND + n;
+    const get = (src: Sx, f: string): Sx => ['get', src, f];
+    return (raw) => {
+      const ph = raw.trim().toLowerCase();
+      if (params.includes(ph)) return v(ph);
+      if (!event) return null;
+      if (/^(?:the\s+)?event$/.test(ph)) return v('event');
+      if (!BUILTIN_EVENTS.has(event)) {
+        if (/^(?:the\s+)?payload$|^what was sent$/.test(ph)) return v('payload');
+        if (/^(?:the\s+)?sender$|^who sent it$/.test(ph)) return v('from');
+        const f = /^(?:its|the payload|the sent)\s+([a-z][\w-]*)$/.exec(ph);
+        return f ? get(v('payload'), f[1]) : null;
+      }
+      const kind = cell?.kind;
+      switch (event) {
+        case 'change': {
+          if (/^(?:it|the new value|new value|its new value|its value|the value|value|what it is now|the new one|the new state)$/.test(ph)) return v('value');
+          if (/^(?:the\s+|its\s+)?(?:old|previous|earlier|former)\s+(?:value|one|state)$|^what it was$/.test(ph)) return v('was');
+          if (kind === 'list') {
+            if (/^(?:the\s+)?(?:ticked\s+|changed\s+|new\s+|edited\s+)?item$/.test(ph)) return v('item');
+            if (/^(?:its|the item|the ticked item)\s+text$/.test(ph)) return get(v('item'), 'text');
+          }
+          return null;
+        }
+        case 'click':
+        case 'dblclick': {
+          if (/^(?:the\s+)?target$/.test(ph)) return v('target');
+          if (kind === 'table') {
+            if (/^(?:the\s+)?(?:clicked\s+)?row$/.test(ph)) return v('row');
+            const f = /^(?:its|the row|the clicked row)\s+([a-z][\w-]*)$/.exec(ph);
+            if (f) return get(v('row'), f[1]);
+          }
+          if (kind === 'list') {
+            if (/^(?:the\s+)?(?:clicked\s+)?item$/.test(ph)) return v('item');
+            if (/^(?:its|the item)\s+text$/.test(ph)) return get(v('item'), 'text');
+          }
+          if (kind === 'diagram') {
+            if (/^(?:the\s+)?(?:clicked\s+)?(?:shape|element)$/.test(ph)) return v('element');
+            const f = /^(?:its|the shape|the element)\s+([a-z][\w-]*)$/.exec(ph);
+            if (f) return get(v('element'), f[1]);
+          }
+          return null;
+        }
+        case 'pick': {
+          if (/^(?:the\s+)?(?:picked\s+|selected\s+|chosen\s+)?rows$/.test(ph)) return v('rows');
+          if (/^(?:the\s+)?(?:picked\s+|selected\s+|chosen\s+)?row$/.test(ph)) return ['first', v('rows')];
+          const f = /^(?:its|the row|the picked row|the selected row|the chosen row)\s+([a-z][\w-]*)$/.exec(ph);
+          return f ? get(['first', v('rows')], f[1]) : null;
+        }
+        case 'load': {
+          if (/^(?:the\s+)?(?:data|answer|result|response|reply)$/.test(ph)) return v('data');
+          if (ph === 'it') {
+            const main = cell ? this.mainField(l, cell) : null;
+            return main ? get(v('data'), main) : v('data');
+          }
+          const f = /^(?:its|the data|the answer)\s+(qq\d+qq|[a-z][\w-]*)$|^(?:the\s+)?(qq\d+qq|[a-z][\w-]*)\s+field$|^(?:the\s+)?(?:field\s+)?(qq\d+qq|[a-z][\w-]*)\s+(?:field\s+)?(?:of|in|from)\s+(?:the\s+)?(?:data|answer)$/.exec(ph);
+          return f ? get(v('data'), this.unq(f[1] ?? f[2] ?? f[3])) : null;
+        }
+        case 'fail':
+          if (/^(?:the\s+)?(?:error|error message|message|problem|reason)$|^what went wrong$/.test(ph)) return v('message');
+          return /^(?:the\s+)?(?:http\s+)?status(?:\s+code)?$/.test(ph) ? v('status') : null;
+        case 'tick':
+          return /^(?:the\s+)?(?:tick count|number of ticks|ticks so far)$/.test(ph) ? v('count') : null;
+        case 'open':
+        case 'close':
+          return /^(?:the\s+)?(?:section|section title|title)$/.test(ph) ? v('title') : null;
+      }
+      return null;
+    };
+  }
+
+  /** The field "it" means in a fetch's answer: one named like the cell, else its only number. */
+  private mainField(l: Local, fetch: Cell): string | null {
+    const v = l.ctx.computed.cells[fetch.id]?.value;
+    const name = fetch.name ?? '';
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const keys = Object.keys(v);
+      const same = keys.find((k) => canon(k) === canon(name));
+      if (same) return same;
+      const nums = keys.filter((k) => typeof (v as Record<string, unknown>)[k] === 'number');
+      if (nums.length === 1) return nums[0];
+    }
+    // Not fetched yet: a fetch called rate most likely answers with a rate.
+    return /^[a-z][\w-]*$/i.test(name) ? name : null;
+  }
+
+  // ── new cells ──
+
+  /** A name no cell has yet: warning, warning-2, … */
+  private free(base: string): string {
+    const idx = indexTree(this.doc.root);
+    let n = base;
+    for (let i = 2; idx.byName.has(n) || idx.byId.has(n) || isBuiltin(n); i++) n = `${base}-${i}`;
+    return n;
+  }
+
+  /** Add a cell at the end of the document (timers and data cells take no room). */
+  private add(notation: Json): void {
+    const root = this.doc.root;
+    const last = root.kind === 'col' ? root.children?.at(-1) : undefined;
+    this.push(['split', last ? last.id : root.id, 'col', { cell: notation }]);
+  }
+
+  private unq(ph: string): string {
+    return ph.replace(/qq(\d+)qq/g, (_, i: string) => this.quotes[Number(i)] ?? '');
+  }
+}
+
+// ───────────────────────────── checking an events answer ─────────────────────────────
+
+/** The props an events answer may set on a cell: handlers, a timer's or a fetch's timing, hidden. */
+const EDITS = /^(?:on\.[A-Za-z][\w-]*|every|after|hidden)$/;
+/** The cells an events answer may add. */
+const NEW_KINDS = new Set(['timer', 'fetch', 'data']);
+
+/** Ops from a reply: a ```json block, a JSON array, {ops: […]}, or one op on its own; "do" is flattened. */
+export function readOps(code: unknown): Op[] {
+  let v: unknown = code;
+  if (typeof v === 'string') {
+    const fenced = /```[\w-]*\s*\n?([\s\S]*?)```/.exec(v);
+    const src = (fenced ? fenced[1] : v).trim();
+    const at = src.search(/[[{]/);
+    try { v = JSON.parse(at > 0 ? src.slice(at) : src); } catch { throw new SxError('the answer is not a JSON list of ops'); }
+  }
+  if (v && typeof v === 'object' && !Array.isArray(v) && Array.isArray((v as { ops?: unknown }).ops)) v = (v as { ops: unknown[] }).ops;
+  if (!Array.isArray(v)) throw new SxError('the answer is not a list of ops');
+  if (typeof v[0] === 'string') v = [v];
+  const out: Op[] = [];
+  const add = (op: unknown): void => {
+    if (!Array.isArray(op) || typeof op[0] !== 'string') throw new SxError(`${JSON.stringify(op)?.slice(0, 80)} is not an op`);
+    if (op[0] === 'do') return op.slice(1).forEach(add);
+    out.push(lispIn(op as Op));
+  };
+  (v as unknown[]).forEach(add);
+  if (!out.length) throw new SxError('the answer has no ops');
+  return out;
+}
+
+const lisp = (v: Json): Json => (typeof v === 'string' && v.trim().startsWith('(') ? (read(v) as Json) : v);
+
+/** A new cell's handlers written as Lisp text, read: ["timer", {"on": {"tick": "(…)"}}]. */
+function lispOn(n: Json): Json {
+  if (!Array.isArray(n) || !n[1] || typeof n[1] !== 'object' || Array.isArray(n[1])) return n;
+  const props = n[1] as Record<string, Json>;
+  const on = props.on;
+  if (!on || typeof on !== 'object' || Array.isArray(on)) return n;
+  return [n[0], { ...props, on: Object.fromEntries(Object.entries(on).map(([k, v]) => [k, lisp(v)])) }, ...n.slice(2)];
+}
+
+/** Handlers and actions written as Lisp text inside an op, read into their JSON form. */
+function lispIn(op: Op): Op {
+  const out = [...op] as Op;
+  if (op[0] === 'set' && typeof op[2] === 'string' && op[2].startsWith('on.')) out[3] = lisp(op[3]);
+  else if (op[0] === 'meta') out[2] = lisp(op[2]);
+  else if (op[0] === 'put') out[2] = lispOn(op[2]);
+  else if (op[0] === 'split' && op[3] && typeof op[3] === 'object' && !Array.isArray(op[3])) {
+    const opts = op[3] as Record<string, Json>;
+    if (opts.cell !== undefined) out[3] = { ...opts, cell: lispOn(opts.cell) };
+  }
+  return out;
+}
+
+/** Ask AI only adds behaviour: handlers, actions, timing, and timer, fetch or data cells. */
+function allowed(doc: Doc, op: Op): void {
+  const kindOf = (n: Json | undefined) => (Array.isArray(n) ? n[0] : n);
+  switch (op[0]) {
+    case 'set':
+      if (typeof op[2] !== 'string' || !EDITS.test(op[2])) throw new SxError(`an answer here changes handlers, actions and timing, not "${op[2]}"`);
+      return;
+    case 'meta':
+      if (typeof op[1] !== 'string' || !/^(?:on|actions)\.[A-Za-z][\w-]*$/.test(op[1])) throw new SxError(`an answer here sets the document's on.<event> or actions.<name>, not "${op[1]}"`);
+      return;
+    case 'split': {
+      const opts = op[3] as Record<string, Json> | undefined;
+      const k = kindOf(opts && typeof opts === 'object' && !Array.isArray(opts) ? opts.cell : undefined);
+      if (typeof k !== 'string' || !NEW_KINDS.has(k)) throw new SxError('a split here adds a timer, a fetch or a data cell: ["split", cell, "col", {"cell": ["timer", {…}]}]');
+      return;
+    }
+    case 'put': {
+      const target = typeof op[1] === 'string' ? resolve(doc.root, op[1]) : undefined;
+      const k = kindOf(op[2]);
+      if (target?.kind !== 'empty') throw new SxError('put only fills an empty cell here; add new cells with split');
+      if (typeof k !== 'string' || !NEW_KINDS.has(k)) throw new SxError('a put here adds a timer, a fetch or a data cell');
+      return;
+    }
+    default:
+      throw new SxError(`an answer here adds handlers, actions, timers, fetches and data cells; "${op[0]}" is not one of those ops`);
+  }
+}
+
+const handlersOf = (on: unknown): Record<string, Sx> =>
+  (on && typeof on === 'object' && !Array.isArray(on) ? Object.fromEntries(Object.entries(on as Record<string, Sx>).filter(([, a]) => a != null)) : {});
+
+/**
+ * Check an `events` answer against the document: the ops apply, every handler
+ * and action they write passes `check` (with its event's names bound) and calls
+ * nothing unknown. Gives the ops, what each wrote, and a plain explanation.
+ */
+export function validateOps(ctx: Ctx, code: unknown): { ops: Op[]; changes: Change[]; explanation: string } {
+  const ops = readOps(code);
+  let doc = ctx.doc;
+  for (const op of ops) {
+    allowed(doc, op);
+    try {
+      doc = applyOps(doc, [op]).doc;
+    } catch (e) {
+      throw new SxError(`${JSON.stringify(op).slice(0, 80)} does not apply: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  const after = context(doc, ctx.world, [...ctx.collections.keys()], { target: 'events', cell: ctx.cell?.id });
+  const before = ctx.idx.byId;
+  const changes: Change[] = [];
+  const says: string[] = [];
+  const touched = new Map<Cell | null, string[]>();
+  const note = (cell: Cell | null, where: string) => touched.set(cell, [...(touched.get(cell) ?? []), where]);
+  const handler = (cell: Cell | null, event: string, a: Sx, isNew: boolean) => {
+    const problem = eventProblem(cell, event);
+    if (problem) throw new SxError(problem);
+    try {
+      if (!Array.isArray(a) || !a.length) throw new SxError(`a handler is an action such as (set! status value), not ${JSON.stringify(a)}`);
+      check(after, a, `on.${event}`, cell);
+    } catch (e) {
+      throw new SxError(`on ${event}${cell ? ` of ${cell.name ?? cell.id}` : ' of the document'}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    const label = handlerLabel(cell, event, isNew);
+    changes.push({ cell: cell ? cell.name ?? cell.id : null, label, code: print(a, 60) });
+    says.push(`${label}, it ${action(a, after)}.`);
+    note(cell, `on ${event}`);
+  };
+  walk(after.doc.root, (c) => {
+    const old = before.get(c.id);
+    const isNew = !old || old.kind !== c.kind;
+    const was = handlersOf(isNew ? undefined : old!.on);
+    const on = Object.entries(handlersOf(c.on)).filter(([k, a]) => !deepEqual(was[k], a));
+    const timed = !isNew && (!deepEqual(c.every ?? null, old!.every ?? null) || !deepEqual(c.after ?? null, old!.after ?? null));
+    for (const [event, a] of on) handler(c, event, a, isNew);
+    if (on.length || !(isNew || timed)) return;
+    const n = c.name ?? c.id;
+    const t = c.kind === 'timer' ? timing(c) : durationMs(c.every) ? `every ${sayEvery(durationMs(c.every)! / 1000)}` : null;
+    const label = isNew ? `New ${c.kind}${c.kind === 'data' ? ' cell' : ''} ${n}${t ? ` (${t.toLowerCase()})` : ''}` : `${n} fetches ${t ?? 'when asked'}`;
+    changes.push({ cell: n, label, code: c.kind === 'data' ? print((c.value ?? null) as Sx) : '' });
+    says.push(`${label}.`);
+  });
+  const wasOn = handlersOf(ctx.doc.meta.on);
+  for (const [event, a] of Object.entries(handlersOf(doc.meta.on))) if (!deepEqual(wasOn[event], a)) handler(null, event, a, false);
+  const wasActs = handlersOf(ctx.doc.meta.actions);
+  for (const [name, fn] of Object.entries(handlersOf(doc.meta.actions))) {
+    if (deepEqual(wasActs[name], fn)) continue;
+    try {
+      if (!(Array.isArray(fn) && fn[0] === 'fn' && fn.length >= 3)) throw new SxError('write it as (fn (inputs…) what it does)');
+      check(after, fn, 'action', null);
+    } catch (e) {
+      throw new SxError(`action ${name}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    const label = actionLabel(name, fn);
+    changes.push({ cell: null, label, code: print(fn, 60) });
+    says.push(`${label} ${fnWords(fn, after)}.`);
+    note(null, `action ${name}`);
+  }
+  // The engine's own check for calls to names that exist nowhere, on what changed.
+  for (const [cell, wheres] of touched) {
+    const bad = actionProblems(doc, cell).find((p) => wheres.some((w) => p.startsWith(`${w}:`)));
+    if (bad) throw new SxError(`${cell ? `${cell.name ?? cell.id} ` : ''}${bad}`);
+  }
+  if (!changes.length) throw new SxError('the ops add no handler, action or cell');
+  return { ops, changes, explanation: says.join(' ') };
 }
 
 /** Phrasings the built-in composer understands, made from the document's own names. */
@@ -1639,6 +2526,8 @@ export function suggestions(ctx: Ctx): string[] {
   };
   const [tabs, acc, fold, diagram] = [of('tabs'), of('accordion'), of('collapsible'), of('diagram')];
   const counter = named.find((c) => c.kind === 'data' && typeof value(c) === 'number');
+  const event = eventOf(ctx.target);
+  if (event || ctx.target === 'events' || ctx.target === 'action') return eventSuggestions(ctx, named, event);
   switch (ctx.target) {
     case 'do': return pick([
       tabs && title(tabs) && `open the ${title(tabs)} tab`,
@@ -1668,6 +2557,39 @@ export function suggestions(ctx: Ctx): string[] {
   }
 }
 
+/** Sentences about events the built-in composer understands, with the document's own names. */
+function eventSuggestions(ctx: Ctx, named: Cell[], event: string | null): string[] {
+  const value = (c: Cell) => ctx.computed.cells[c.id]?.value;
+  const own = ctx.cell;
+  const settable = named.filter((c) => (c.kind === 'data' || c.kind === 'input') && c !== own);
+  const num = settable.find((c) => typeof value(c) === 'number')?.name;
+  const text = settable.find((c) => typeof value(c) === 'string' && (c.kind === 'data' || (c.type ?? 'text') === 'text'))?.name;
+  const hidden = named.find((c) => c.hidden === true && c !== own)?.name;
+  const fetch = named.find((c) => c.kind === 'fetch')?.name;
+  const pick = (xs: (string | false | undefined | null)[]) => xs.filter((x): x is string => !!x).slice(0, 5);
+  if (ctx.target === 'action') return pick([num && `sets ${num} to 0`, text && `clears ${text}`, hidden && `shows ${hidden}`, num && `takes n and adds n to ${num}`]);
+  if (event) return pick([
+    num && `add 1 to ${num}`,
+    event === 'change' && text && `set ${text} to the new value`,
+    hidden && `show ${hidden}`,
+    event === 'fail' && text && `set ${text} to the error`,
+    num && `reset ${num}`,
+  ]);
+  const field = own?.kind === 'table' && Array.isArray(value(own)) ? Object.keys((value(own) as Record<string, unknown>[])[0] ?? {}).find((k) => k !== 'id') : undefined;
+  const ownName = own && (own.name ?? own.id);
+  return pick([
+    own?.kind === 'list' && own.type === 'check' && hidden && `when every box is ticked, show ${hidden}`,
+    own?.kind === 'input' && text && `when ${ownName} changes, set ${text} to the new value`,
+    own?.kind === 'table' && text && field && `when a row is picked, set ${text} to its ${field}`,
+    own?.kind === 'fetch' && hidden && `when ${ownName} fails to load, show ${hidden}`,
+    own && own.kind !== 'fetch' && own.kind !== 'data' && own.kind !== 'timer' && num && `when this is clicked, add 1 to ${num}`,
+    num && `when the document opens, add 1 to ${num}`,
+    hidden && `after 5 seconds show ${hidden}`,
+    fetch && `every minute refresh ${fetch}`,
+    num && `make an action called reset that sets ${num} to 0`,
+  ]);
+}
+
 // ───────────────────────────── Claude ─────────────────────────────
 
 const DEFAULT_BASE = 'https://api.anthropic.com';
@@ -1689,7 +2611,9 @@ export function claudeConfig(env: NodeJS.ProcessEnv = process.env): ClaudeConfig
   };
 }
 
-const TARGET_TASK: Record<Target, string> = {
+const TARGET_TASK: Record<(typeof TARGETS)[number], string> = {
+  action: 'a custom action for the document: (fn (inputs…) actions…), which any button or handler then calls by its name like a built-in',
+  events: 'the ops that make it react as the person describes: handlers on its events (or the document\'s), custom events, custom actions, new timers, and how often a fetch refreshes',
   expr: 'the expression this cell shows (its formula)',
   do: 'the action this button runs when clicked. Use set!, toggle!, insert!, delete!, clear!, dup! and remove!; wrap several in (do …)',
   hidden: 'a condition: the cell is hidden while it is true',
@@ -1740,6 +2664,31 @@ function kindNotes(ctx: Ctx): string[] {
   return out;
 }
 
+/** How events work, told with this document's cells, events and actions. Only for the event targets. */
+function eventNotes(ctx: Ctx): string[] {
+  const c = ctx.cell ?? null;
+  const name = (x: Cell) => x.name ?? x.id;
+  const event = eventOf(ctx.target);
+  const out = [
+    '- A cell\'s on prop, and the document\'s, map an event name to an action: the same kind of code as a button\'s action (set!, insert!, emit!, show!, …; several in (do …)). While a handler runs, the event\'s data is bound by name, and a bound name hides a cell of the same name ((ref name) still reads the cell).',
+    `- ${c ? `${name(c)} (a ${c.kind})` : 'The document'} raises: ${eventsOf(c).map((e) => `${e.name} (${e.data})`).join('; ') || 'nothing of its own'}.`,
+  ];
+  if (event) out.push(`- In this handler these names are bound: ${eventVars(c, event).join(', ')}.`);
+  if (c) out.push('- The document raises open (once each time someone opens it in Live) and close.');
+  const custom = customEvents(ctx.doc);
+  out.push(`- Custom events: (emit! "saved" {total total}) sends one to every cell, and the document, with an on.saved handler; that handler sees payload (what was sent) and from (who sent it). ${custom.length ? `This document uses: ${custom.join(', ')}.` : 'This document uses none yet.'}`);
+  const defined = Object.entries(handlersOf(ctx.doc.meta.actions)).map(([n, fn]) => `${n}${Array.isArray(fn) && Array.isArray(fn[1]) && fn[1].length ? ` (${fn[1].join(' ')})` : ' ()'}`);
+  out.push(`- Custom actions are called like built-ins, (greet "Ann"). ${defined.length ? `This document defines: ${defined.join(', ')}.` : 'This document defines none yet.'}`);
+  out.push('- Timers tick while the document is open in Live: every 60 is each minute, after 5 is once after five seconds; tick binds count and at; (start! t) and (stop! t). A fetch cell holds the JSON its address answers; (refresh! f) fetches again; its every sets how often; load binds data and value, fail binds message and status. (show! c) and (hide! c) show or hide a cell.');
+  return out;
+}
+
+/** Where a new cell goes in an events answer: after the last top-level cell. */
+function endOf(doc: Doc): string {
+  const last = doc.root.kind === 'col' ? doc.root.children?.at(-1) : undefined;
+  return (last ?? doc.root).id;
+}
+
 /** The system prompt: the language, the document and the task. */
 export function systemPrompt(ctx: Ctx): string {
   const fns = (['Math', 'Logic', 'Lists', 'Records', 'Text', 'Dates', 'Cells', 'Actions'] as const)
@@ -1749,6 +2698,21 @@ export function systemPrompt(ctx: Ctx): string {
   const c = ctx.cell;
   const where = c ? `cell ${c.id}${c.name ? ` named ${c.name}` : ''} (a ${c.kind}${c.type ? ` of type ${c.type}` : ''})` : 'the document';
   const notes = kindNotes(ctx);
+  const event = eventOf(ctx.target);
+  const evented = !!event || ctx.target === 'action' || ctx.target === 'events';
+  const task = event
+    ? `the action ${where} runs on its ${event} event`
+    : `${TARGET_TASK[ctx.target as (typeof TARGETS)[number]]}, for ${where}`;
+  const end = endOf(ctx.doc);
+  const answer = ctx.target === 'events'
+    ? [
+        '- Ops you may use: ["set", "<cell>", "on.<event>", action] gives a cell (by name or id) a handler; ["meta", "on.<event>", action] gives the document one (open, close, or a custom event); '
+          + '["meta", "actions.<name>", ["fn", ["who"], action, …]] defines a custom action; ["set", "<fetch>", "every", 60] makes a fetch refresh every minute; '
+          + `["split", "${end}", "col", {"cell": ["timer", {"name": "every-minute", "every": 60, "on": {"tick": action}}]}] adds a timer at the end of the document, and a data cell (["data", {"name": "warning"}, false]) or a fetch (["fetch", {"name": "rate"}, "/api/demo/rate"]) is added the same way.`,
+        '- In ops, code is JSON: ["set!", "status", "$value"] is (set! status value): "$name" reads a cell or a bound name, other strings are text. A handler may also be given as Lisp text, "(set! status value)".',
+        '- Answer with ONLY a ```json block holding the array of ops, followed by one line starting with "Explanation:" that tells a beginner, in one or two plain sentences, what will happen and when.',
+      ]
+    : ['- Answer with ONLY the expression in Lisp syntax inside a ```lisp block, followed by one line starting with "Explanation:" that tells a beginner, in one or two plain sentences, what it does and which cells it reads.'];
   return [
     'You write code for one cell of an Edgy document. Edgy formulas are a small Lisp: (* qty price), (if (> total 100) "big" "small"). A bare word reads the cell with that name (or id); text goes in "double quotes"; {key value} is a record.',
     '',
@@ -1759,23 +2723,26 @@ export function systemPrompt(ctx: Ctx): string {
     outline(ctx.doc, ctx.computed),
     ...(colls ? ['', 'Collections that can be read with (rows "name"):', colls] : []),
     ...(notes.length ? ['', 'What these cells hold, and how code reads and changes them:', ...notes] : []),
+    ...(evented ? ['', 'Events:', ...eventNotes(ctx)] : []),
     '',
-    `Task: write ${TARGET_TASK[ctx.target]}, for ${where}.`,
+    `Task: write ${task}.`,
     `Current code: ${ctx.current.trim() || '(none)'}`,
     '',
     'Rules:',
-    '- Use only the functions above, the names of cells in the document, let/fn variables, and it, i, acc inside map/filter/reduce.',
+    `- Use only the functions above, the names of cells in the document,${evented ? ' the custom actions it defines, the names an event binds,' : ''} let/fn variables, and it, i, acc inside map/filter/reduce.`,
     ctx.target === 'do'
       ? '- This is an action, so set!, toggle!, insert!, delete!, clear!, dup!, remove! and do are allowed.'
-      : '- Do not use set!, toggle!, insert!, delete!, clear!, dup! or remove!: they only work in buttons.',
-    '- Prefer the simplest expression that does what the person asked.',
-    '- Answer with ONLY the expression in Lisp syntax inside a ```lisp block, followed by one line starting with "Explanation:" that tells a beginner, in one or two plain sentences, what it does and which cells it reads.',
+      : evented
+        ? '- This is an action, so set!, toggle!, insert!, update!, delete!, clear!, dup!, remove!, emit!, show!, hide!, start!, stop!, refresh!, the document\'s custom actions and do are allowed.'
+        : '- Do not use set!, toggle!, insert!, delete!, clear!, dup! or remove!: they only work in buttons.',
+    `- Prefer the simplest ${evented ? 'code' : 'expression'} that does what the person asked.`,
+    ...answer,
   ].join('\n');
 }
 
 interface Block { type: string; text?: string }
 
-async function messages(cfg: ClaudeConfig, system: string, msgs: { role: 'user' | 'assistant'; content: unknown }[]): Promise<Block[]> {
+async function messages(cfg: ClaudeConfig, system: string, msgs: { role: 'user' | 'assistant'; content: unknown }[], maxTokens = 600): Promise<Block[]> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 30_000);
   const fallback = cfg.base === DEFAULT_BASE && FALLBACK_MODELS.has(cfg.model);
@@ -1791,7 +2758,7 @@ async function messages(cfg: ClaudeConfig, system: string, msgs: { role: 'user' 
       },
       body: JSON.stringify({
         model: cfg.model,
-        max_tokens: 600,
+        max_tokens: maxTokens,
         system,
         messages: msgs,
         // A short answer needs no extended thinking; this is the lowest setting on Sonnet 5.5.
@@ -1823,16 +2790,19 @@ export function parseReply(text: string): { code: string; explanation?: string }
 export async function composeClaude(ctx: Ctx, prompt: string, cfg: ClaudeConfig): Promise<Answer> {
   const system = systemPrompt(ctx);
   const msgs: { role: 'user' | 'assistant'; content: unknown }[] = [{ role: 'user', content: prompt }];
+  // A set of ops is longer than one expression.
+  const ops = ctx.target === 'events';
   let last = '';
   for (let attempt = 0; attempt < 2; attempt++) {
-    const content = await messages(cfg, system, msgs);
+    const content = await messages(cfg, system, msgs, ops ? 2000 : 600);
     const text = content.filter((b) => b.type === 'text').map((b) => b.text ?? '').join('\n');
     const { code, explanation } = parseReply(text);
     try {
-      return { expr: validate(ctx, code, ctx.target), explanation };
+      const a = accept(ctx, code);
+      return explanation ? { ...a, explanation } : a;
     } catch (e) {
       last = e instanceof Error ? e.message : String(e);
-      msgs.push({ role: 'assistant', content }, { role: 'user', content: `That code does not work here: ${last}. Answer again in the same format.` });
+      msgs.push({ role: 'assistant', content }, { role: 'user', content: `${ops ? 'Those ops do' : 'That code does'} not work here: ${last}. Answer again in the same format.` });
     }
   }
   throw new Error(`its code did not fit the document (${last})`);
@@ -1912,8 +2882,7 @@ export async function compose(ctx: Ctx, prompt: string, p: Providers): Promise<C
         continue;
       }
       try {
-        const a = await composeClaude(ctx, prompt, p.claude);
-        return finish(ctx, a.expr, 'claude', a.explanation, notes);
+        return finish(ctx, await composeClaude(ctx, prompt, p.claude), 'claude', notes);
       } catch (e) {
         notes.push(`Claude could not answer: ${e instanceof Error ? e.message : String(e)}.`);
       }
@@ -1923,11 +2892,11 @@ export async function compose(ctx: Ctx, prompt: string, p: Providers): Promise<C
         continue;
       }
       const a = await p.agent();
-      if (a) return finish(ctx, a.expr, 'agent', a.explanation, notes);
+      if (a) return finish(ctx, a, 'agent', notes);
       notes.push('Fell back to the built-in composer because no agent answered.');
     } else {
       const a = composeLocal(ctx, prompt);
-      if (a) return finish(ctx, a.expr, 'local', a.explanation, notes);
+      if (a) return finish(ctx, a, 'local', notes);
     }
   }
   throw new ComposeError(

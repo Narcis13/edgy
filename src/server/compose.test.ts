@@ -5,11 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from './app';
 import { Store } from './store';
-import { type Target, check, compose as composeWith, composeClaude, composeLocal, context, parseReply, suggestions, systemPrompt, validate } from './compose';
+import { type Target, check, compose as composeWith, composeClaude, composeLocal, context, parseReply, readOps, suggestions, systemPrompt, validate, validateOps } from './compose';
 import { applyOps } from '../core/ops';
 import { type Doc, type Json, type Op, type Sx, newDoc } from '../core/types';
 import { print, read } from '../core/sx';
-import { evalIn, evaluate, runAction } from '../core/engine';
+import { type World, evalIn, evaluate, runAction } from '../core/engine';
+import { type Reaction, react } from '../core/events';
 import { indexTree } from '../core/tree';
 
 // No test talks to the network: Claude is only "set up" where a test mocks fetch.
@@ -701,4 +702,415 @@ test('tabs and sections are not lines of a form, and a title starting with $ sta
   const moved = click(doc, 'go', next.expr);
   assert.equal(valueOf(moved, 'view'), 'Terms');
   assert.equal(valueOf(click(moved, 'go', reset.expr), 'view'), '$ Pricing');
+});
+
+// ── events: handlers, custom events and actions from a sentence ──
+
+/** A document with something for every family of events to act on. */
+const EVENTS: Json = ['col',
+  ['list', { name: 'checklist', type: 'check' }, 'Pack', 'Book'],
+  ['text', { name: 'thanks', hidden: true }, 'Thank you for finishing!'],
+  ['text', { name: 'welcome', hidden: true }, 'Welcome back!'],
+  ['text', { name: 'error', hidden: true }, 'The rate could not be loaded.'],
+  ['input', { name: 'agree', type: 'checkbox', value: false }],
+  ['input', { name: 'qty', type: 'number', value: 3 }],
+  ['input', { name: 'note', type: 'text', value: 'hi' }],
+  ['input', { name: 'price', type: 'number', value: 1 }],
+  ['formula', { name: 'total' }, ['*', '$qty', 10]],
+  ['text', { name: 'hello' }, 'Hello'],
+  ['table', { name: 'people', select: 'one', value: [{ id: 'a', name: 'Ann' }, { id: 'b', name: 'Bo' }] }],
+  ['button', { name: 'save' }, 'Save'],
+  ['fetch', { name: 'rate' }, '/api/demo/rate'],
+  ['data', { name: 'visits' }, 0], ['data', { name: 'clicks' }, 0], ['data', { name: 'count' }, 5],
+  ['data', { name: 'status' }, ''], ['data', { name: 'chosen' }, ''], ['data', { name: 'saves' }, 0]];
+const eventsDoc = () => applyOps(newDoc('e'), [['put', 'c1', EVENTS]]).doc;
+const evWorld: World = { rows: () => [], now: Date.UTC(2026, 9, 1) };
+const evCtx = (target: Target, cell?: string, doc = eventsDoc()) => context(doc, evWorld, [], { target, cell });
+const idOf = (doc: Doc, name: string) => indexTree(doc.root).byName.get(name)!.id;
+const val = (doc: Doc, name: string) => evaluate(doc, evWorld).cells[idOf(doc, name)].value;
+const cellOf = (doc: Doc, name: string) => indexTree(doc.root).byName.get(name)!;
+/** The id of the only cell of a kind, such as the timer an answer added. */
+const onlyOf = (doc: Doc, kind: string) => [...indexTree(doc.root).byId.values()].find((c) => c.kind === kind)!.id;
+/** Where a new cell goes: after the last top-level cell. */
+const END = eventsDoc().root.children!.at(-1)!.id;
+
+interface Scenario {
+  family: string;
+  prompt: string;
+  cell?: string;
+  /** What the built-in composer writes, change by change. */
+  local: string[];
+  /** A plausible reply from Claude: different words, the same behaviour. */
+  claude: string;
+  /** Fire the events that should set the answer off, on the document with the answer applied. */
+  fire: (doc: Doc) => Reaction;
+  expect: (r: Reaction, doc: Doc) => void;
+}
+
+const json = (ops: unknown, why: string) => '```json\n' + JSON.stringify(ops) + '\n```\nExplanation: ' + why;
+
+const SCENARIOS: Scenario[] = [
+  {
+    family: 'lifecycle',
+    prompt: 'When the document opens, add 1 to visits.',
+    local: ['When the document opens: (set! visits (+ visits 1))'],
+    // A handler given as Lisp text inside an op is accepted too.
+    claude: json([['meta', 'on.open', '(set! visits (+ visits 1))']], 'Counts each time the document is opened.'),
+    fire: (doc) => {
+      const once = react(doc, evWorld, { events: [{ cell: null, name: 'open' }] });
+      return react(once.doc, evWorld, { events: [{ cell: null, name: 'open' }] });
+    },
+    expect: (r) => assert.equal(val(r.doc, 'visits'), 2, 'two opens count two visits'),
+  },
+  {
+    family: 'value change',
+    prompt: 'When agree changes, set status to the new value',
+    local: ['When agree changes: (set! status value)'],
+    claude: json([['set', 'agree', 'on.change', ['set!', 'status', '$value']]], 'Copies the tick into status.'),
+    fire: (doc) => react(doc, evWorld, { ops: [['set', idOf(doc, 'agree'), 'value', true]] }),
+    expect: (r) => assert.equal(val(r.doc, 'status'), true, 'status follows the tick'),
+  },
+  {
+    family: 'value change',
+    prompt: 'When every box is ticked, save the checklist to done and show the thank-you note.',
+    cell: 'checklist',
+    local: ['When checklist changes: (when (every (get it "done") value)\n  (do (insert! "done" {items value}) (show! thanks)))'],
+    claude: json([['set', 'checklist', 'on.change', '(when (every (get it "done") value) (do (insert! "done" {items value}) (show! thanks)))']], 'Saves the list and thanks you once all is done.'),
+    fire: (doc) => {
+      const half = react(doc, evWorld, { ops: [['set', idOf(doc, 'checklist'), 'value', [{ text: 'Pack', done: true }, { text: 'Book', done: false }]]] });
+      assert.equal(cellOf(half.doc, 'thanks').hidden, true, 'one box ticked: the note stays hidden');
+      assert.deepEqual(half.effects, [], 'one box ticked: nothing is saved');
+      return react(half.doc, evWorld, { ops: [['set', idOf(doc, 'checklist'), 'value', [{ text: 'Pack', done: true }, { text: 'Book', done: true }]]] });
+    },
+    expect: (r) => {
+      assert.equal(cellOf(r.doc, 'thanks').hidden, undefined, 'every box ticked: the thank-you note shows');
+      assert.equal(r.effects.length, 1, 'one record is saved');
+      assert.deepEqual(r.effects[0], { type: 'insert', collection: 'done', record: { items: [{ text: 'Pack', done: true }, { text: 'Book', done: true }] } });
+    },
+  },
+  {
+    family: 'pointer',
+    prompt: 'When this is clicked, add 1 to clicks',
+    cell: 'hello',
+    local: ['When hello is clicked: (set! clicks (+ clicks 1))'],
+    claude: json([['set', 'hello', 'on.click', ['set!', 'clicks', ['+', '$clicks', 1]]]], 'Counts the clicks on hello.'),
+    fire: (doc) => react(doc, evWorld, { events: [{ cell: idOf(doc, 'hello'), name: 'click' }] }),
+    expect: (r) => assert.equal(val(r.doc, 'clicks'), 1, 'one click counts one'),
+  },
+  {
+    family: 'pointer',
+    prompt: 'on double click reset count',
+    cell: 'hello',
+    local: ['When hello is double-clicked: (set! count 0)'],
+    claude: json([['set', 'hello', 'on.dblclick', ['set!', 'count', 0]]], 'A double-click sets count back to 0.'),
+    fire: (doc) => react(doc, evWorld, { events: [{ cell: idOf(doc, 'hello'), name: 'dblclick' }] }),
+    expect: (r) => assert.equal(val(r.doc, 'count'), 0, 'count is reset'),
+  },
+  {
+    family: 'table pick',
+    prompt: 'When a row is picked, set chosen to its name',
+    cell: 'people',
+    local: ['When people has rows picked: (set! chosen (get (first rows) "name"))'],
+    claude: json([['set', 'people', 'on.pick', ['set!', 'chosen', ['get', ['first', '$rows'], 'name']]]], 'Shows who was picked.'),
+    fire: (doc) => react(doc, evWorld, { ops: [['set', idOf(doc, 'people'), 'selected', ['b']]] }),
+    expect: (r) => assert.equal(val(r.doc, 'chosen'), 'Bo', 'the picked row\'s name'),
+  },
+  {
+    family: 'time',
+    prompt: 'After 5 seconds show the welcome note',
+    local: ['After 5 seconds (new timer after-5-seconds): (show! welcome)'],
+    claude: json([['split', END, 'col', { cell: ['timer', { name: 'greeter', after: 5, on: { tick: ['show!', 'welcome'] } }] }]], 'Shows the welcome note after five seconds.'),
+    fire: (doc) => react(doc, evWorld, { events: [{ cell: onlyOf(doc, 'timer'), name: 'tick', data: { count: 1, at: evWorld.now } }] }),
+    expect: (r, doc) => {
+      assert.ok([...indexTree(doc.root).byId.values()].some((c) => c.kind === 'timer' && c.after === 5), 'a one-off timer was added');
+      assert.equal(cellOf(r.doc, 'welcome').hidden, undefined, 'its tick shows the note');
+    },
+  },
+  {
+    family: 'time',
+    prompt: 'every second add 1 to count',
+    local: ['Every second (new timer every-second): (set! count (+ (ref count) 1))'],
+    // count is also what a tick binds, so the cell is read with (ref count).
+    claude: json([['split', END, 'col', { cell: ['timer', { name: 'every-second', every: 1, on: { tick: '(set! count (+ (ref count) 1))' } }] }]], 'Adds one to count every second.'),
+    fire: (doc) => react(doc, evWorld, { events: [{ cell: onlyOf(doc, 'timer'), name: 'tick', data: { count: 40, at: evWorld.now } }] }),
+    expect: (r) => assert.equal(val(r.doc, 'count'), 6, 'the cell count, not the tick count, goes up by one'),
+  },
+  {
+    family: 'fetch',
+    prompt: 'Every minute fetch the rate and warn when it is above 5.',
+    local: ['When rate loads, fetched every minute: (set! warning (> (get data "rate") 5))', 'New data cell warning: false'],
+    claude: json([
+      ['split', END, 'col', { cell: ['data', { name: 'too-high' }, false] }],
+      ['set', 'rate', 'every', 60],
+      ['set', 'rate', 'on.load', ['set!', 'too-high', ['>', ['get', '$data', 'rate'], 5]]],
+    ], 'Fetches the rate every minute and flags it above 5.'),
+    fire: (doc) => {
+      const low = react(doc, evWorld, { events: [{ cell: idOf(doc, 'rate'), name: 'load', data: { data: { rate: 4 }, value: { rate: 4 } } }] });
+      const flag = indexTree(low.doc.root).byName.has('warning') ? 'warning' : 'too-high';
+      assert.equal(val(low.doc, flag), false, 'a rate of 4 raises no warning');
+      return react(low.doc, evWorld, { events: [{ cell: idOf(doc, 'rate'), name: 'load', data: { data: { rate: 6 }, value: { rate: 6 } } }] });
+    },
+    expect: (r, doc) => {
+      assert.equal(cellOf(doc, 'rate').every, 60, 'the rate is fetched every minute');
+      const flag = indexTree(r.doc.root).byName.has('warning') ? 'warning' : 'too-high';
+      assert.equal(val(r.doc, flag), true, 'a rate of 6 raises the warning');
+    },
+  },
+  {
+    family: 'fetch',
+    prompt: 'When the rate fails to load, show the error note',
+    local: ['When rate fails to load: (show! error)'],
+    claude: json([['set', 'rate', 'on.fail', ['show!', 'error']]], 'Shows the error note when the rate can\'t be fetched.'),
+    fire: (doc) => react(doc, evWorld, { events: [{ cell: idOf(doc, 'rate'), name: 'fail', data: { message: 'HTTP 500', status: 500 } }] }),
+    expect: (r) => assert.equal(cellOf(r.doc, 'error').hidden, undefined, 'the error note shows'),
+  },
+  {
+    family: 'fetch',
+    prompt: 'when it loads set price to its rate',
+    cell: 'rate',
+    local: ['When rate loads: (set! price (get data "rate"))'],
+    claude: json([['set', 'rate', 'on.load', ['set!', 'price', ['get', '$data', 'rate']]]], 'Copies the fetched rate into price.'),
+    fire: (doc) => react(doc, evWorld, { events: [{ cell: idOf(doc, 'rate'), name: 'load', data: { data: { rate: 4.2 }, value: { rate: 4.2 } } }] }),
+    expect: (r) => assert.equal(val(r.doc, 'price'), 4.2, 'price takes the rate'),
+  },
+  {
+    family: 'custom event',
+    prompt: 'When the button is pressed, send saved with the total. When saved happens, add 1 to saves.',
+    cell: 'save',
+    local: ['When save is clicked: (emit! "saved" {total total})', 'When saved happens (heard by save): (set! saves (+ saves 1))'],
+    // Claude puts the listener on saves itself: just as good.
+    claude: json([
+      ['set', 'save', 'on.click', ['emit!', 'saved', { total: '$total' }]],
+      ['set', 'saves', 'on.saved', ['set!', 'saves', ['+', '$saves', ['if', ['get', '$payload', 'total'], 1, 0]]]],
+    ], 'The button announces saved with the total; saves counts it.'),
+    fire: (doc) => react(doc, evWorld, { events: [{ cell: idOf(doc, 'save'), name: 'click' }] }),
+    expect: (r) => {
+      assert.equal(val(r.doc, 'saves'), 1, 'the listener heard the event once');
+      assert.ok(r.trace.some((t) => t.name === 'saved' && t.depth === 1), 'saved ran as a consequence of the click');
+    },
+  },
+  {
+    family: 'custom action',
+    prompt: 'Make an action called reset that sets qty to 0 and clears note. When this is clicked, call reset.',
+    cell: 'save',
+    local: ['When save is clicked: (reset)', 'Action reset: (fn () (set! qty 0) (set! note ""))'],
+    claude: json([
+      ['meta', 'actions.reset', ['fn', [], ['set!', 'qty', 0], ['set!', 'note', '']]],
+      ['set', 'save', 'on.click', ['reset']],
+    ], 'Defines reset and runs it from the button.'),
+    fire: (doc) => react(doc, evWorld, { events: [{ cell: idOf(doc, 'save'), name: 'click' }] }),
+    expect: (r) => {
+      assert.equal(val(r.doc, 'qty'), 0, 'reset set qty to 0');
+      assert.equal(val(r.doc, 'note'), '', 'reset cleared note');
+    },
+  },
+];
+
+test('the built-in composer turns event sentences into ops that do what was asked', () => {
+  const families = new Set<string>();
+  for (const s of SCENARIOS) {
+    const doc = eventsDoc();
+    const a = composeLocal(evCtx('events', s.cell, doc), s.prompt);
+    assert.ok(a, `the built-in composer understands "${s.prompt}"`);
+    assert.equal(a.expr, null, 'an events answer is ops, not an expression');
+    assert.deepEqual(a.changes!.map((c) => `${c.label}: ${c.code}`), s.local, s.prompt);
+    assert.ok(a.explanation && !/\$|\(/.test(a.explanation.replace(/\((?:new|heard by) [^)]*\)/g, '')), `"${a.explanation}" is plain words`);
+    // Checked again exactly as the person's Apply would send it.
+    assert.doesNotThrow(() => validateOps(evCtx('events', s.cell, doc), a.ops), s.prompt);
+    const after = applyOps(doc, a.ops!).doc;
+    s.expect(s.fire(after), after);
+    families.add(s.family);
+  }
+  assert.deepEqual([...families].sort(), ['custom action', 'custom event', 'fetch', 'lifecycle', 'pointer', 'table pick', 'time', 'value change']);
+});
+
+test('Claude writes the same behaviour as ops, checked before anyone sees them', async () => {
+  for (const s of SCENARIOS) {
+    const mock = mockClaude([s.claude]);
+    try {
+      const doc = eventsDoc();
+      const c = evCtx('events', s.cell, doc);
+      const a = await composeClaude(c, s.prompt, CFG);
+      assert.equal(mock.calls.length, 1, `${s.prompt}: accepted the first time`);
+      const sys = mock.calls[0].body.system as string;
+      assert.match(sys, /Events:/, 'the event model is explained');
+      assert.match(sys, /```json block holding the array of ops/, 'it is asked for ops');
+      assert.match(sys, new RegExp(`\\["split", "${END}", "col"`), 'it is told where new cells go');
+      assert.ok(mock.calls[0].body.max_tokens >= 1000, 'room for several ops');
+      assert.ok(a.ops?.length && a.changes?.length, `${s.prompt}: ops and changes`);
+      assert.ok(a.explanation && a.explanation.length > 10, 'Claude\'s explanation is kept');
+      const after = applyOps(doc, a.ops!).doc;
+      s.expect(s.fire(after), after);
+    } finally {
+      mock.restore();
+    }
+  }
+});
+
+test('an events answer that calls an unknown action, or does not fit, is rejected; Claude gets one retry', async () => {
+  const c = evCtx('events', 'save');
+  const bad = (ops: unknown, why: RegExp) => assert.throws(() => validateOps(c, ops), why, JSON.stringify(ops));
+  bad([['set', 'save', 'on.click', ['resett']]], /unknown function resett/);
+  bad([['meta', 'actions.reset', ['fn', [], ['set!', 'qty', 0], ['wipe-all']]]], /action reset: unknown function wipe-all/);
+  bad([['set', 'nope', 'on.click', ['set!', 'qty', 0]]], /does not apply: no cell called "nope"/);
+  bad([['set', 'agree', 'on.tick', ['set!', 'qty', 0]]], /agree \(a input\) does not raise tick; it raises change and click/);
+  bad([['set', 'agree', 'on.change', ['set!', 'status', '$valu']]], /no cell called "valu"; did you mean value/);
+  bad([['remove', 'qty']], /"remove" is not one of those ops/);
+  bad([['set', 'qty', 'value', 9]], /not "value"/);
+  bad([['split', END, 'col', { cell: ['text', 'Hi'] }]], /adds a timer, a fetch or a data cell/);
+  bad([['set', 'save', 'on.click', ['emit!', 'click']]], /raises itself/);
+  bad([['set', 'save', 'on.click', ['start!', 'rate']]], /start! needs a timer, and rate is a fetch/);
+  bad([['set', 'save', 'on.click', 'add one to clicks']], /a handler is an action/);
+  bad('no ops here', /not a JSON list of ops/);
+  bad([], /no ops/);
+  // An op on its own, {ops}, "do" and Lisp text are all read.
+  assert.deepEqual(readOps('```json\n{"ops": [["do", ["meta", "on.open", "(set! visits 1)"]]]}\n```'), [['meta', 'on.open', ['set!', 'visits', 1]]]);
+  assert.deepEqual(readOps(['meta', 'on.open', ['set!', 'visits', 1]]), [['meta', 'on.open', ['set!', 'visits', 1]]]);
+
+  const mock = mockClaude([
+    json([['set', 'save', 'on.click', ['resett']]], 'Resets.'),
+    json([['meta', 'actions.reset', ['fn', [], ['set!', 'qty', 0]]], ['set', 'save', 'on.click', ['reset']]], 'Defines reset and runs it on a click.'),
+  ]);
+  try {
+    const a = await composeClaude(c, 'reset when clicked', CFG);
+    assert.equal(mock.calls.length, 2, 'asked once more');
+    assert.match(mock.calls[1].body.messages[2].content, /^Those ops do not work here: .*unknown function resett/);
+    assert.deepEqual(a.changes!.map((ch) => ch.label), ['When save is clicked', 'Action reset']);
+  } finally {
+    mock.restore();
+  }
+  const twice = mockClaude([json([['set', 'save', 'on.click', ['resett']]], 'x'), json([['set', 'save', 'on.click', ['resett']]], 'x')]);
+  try {
+    await assert.rejects(composeClaude(c, 'reset when clicked', CFG), /did not fit the document \(on click of save: unknown function resett\)/);
+  } finally {
+    twice.restore();
+  }
+});
+
+test('one handler (on.<event>) and one custom action (action) as targets', async () => {
+  const one = (target: Target, prompt: string, cell?: string) => {
+    const a = composeLocal(evCtx(target, cell), prompt);
+    return a ? `${print(a.expr, 1000)} | ${a.explanation}` : null;
+  };
+  assert.equal(one('on.change', 'set status to the new value', 'agree'), '(set! status value) | When agree changes, it sets status to the new value.');
+  assert.equal(one('on.click', 'add 1 to clicks', 'hello'), '(set! clicks (+ clicks 1)) | When hello is clicked, it adds 1 to clicks.');
+  assert.equal(one('on.open', 'add 1 to visits'), '(set! visits (+ visits 1)) | When the document opens, it adds 1 to visits.');
+  assert.equal(one('on.fail', 'show the error note', 'rate'), '(show! error) | When rate fails to load, it shows error.');
+  assert.equal(one('on.load', 'set price to its rate', 'rate'), '(set! price (get data "rate")) | When rate loads, it sets price to the rate of data.');
+  assert.equal(one('on.change', 'when agree changes, set status to the new value', 'agree'), '(set! status value) | When agree changes, it sets status to the new value.', 'a whole sentence about the same event works too');
+  assert.equal(one('on.saved', 'add 1 to saves', 'save'), '(set! saves (+ saves 1)) | When saved happens (heard by save), it adds 1 to saves.');
+  assert.equal(one('action', 'takes n and adds n to qty'), '(fn (n) (set! qty (+ qty n))) | This action takes n and adds n to qty.');
+  assert.equal(one('action', 'sets qty to 0 and clears note'), '(fn () (set! qty 0) (set! note "")) | This action sets qty to 0 then clears note.');
+  assert.equal(one('action', 'make an action called reset that sets qty to 0'), '(fn () (set! qty 0)) | This action sets qty to 0.');
+  assert.equal(one('on.click', 'make it sparkle', 'hello'), null, 'no guessing');
+  // The studio's own example phrasings.
+  const code = (target: Target, prompt: string, cell?: string) => one(target, prompt, cell)?.split(' | ')[0];
+  assert.equal(code('on.change', 'Copy the new value into note', 'agree'), '(set! note value)');
+  assert.equal(code('on.change', 'Save the new value to "log" with the time', 'agree'), '(insert! "log" {value value})');
+  assert.equal(code('on.change', 'Show thanks when it is true', 'agree'), '(when value (show! thanks))');
+  assert.equal(code('on.click', 'Send "picked" with the target', 'hello'), '(emit! "picked" target)');
+  assert.equal(code('on.load', 'Put the field "rate" of data into price', 'rate'), '(set! price (get data "rate"))');
+  assert.equal(code('on.fail', 'Put the message into note', 'rate'), '(set! note message)');
+  assert.equal(code('on.fail', 'try again', 'rate'), '(refresh! rate)');
+  assert.equal(code('action', 'Add an amount to qty'), '(fn (amount) (set! qty (+ qty amount)))');
+
+  // The names an event binds are in scope, and only in its handlers.
+  const ok = (target: Target, cell: string | undefined, code: string) => validate(evCtx(target, cell), code, target);
+  ok('on.change', 'agree', '(set! status (str was "→" value))');
+  ok('on.load', 'rate', '(set! price (get data "rate"))');
+  ok('on.saved', undefined, '(set! saves (get payload "total"))');
+  assert.throws(() => ok('expr', 'total', '(+ value 1)'), /no cell called "value"/);
+  assert.throws(() => ok('on.open', undefined, '(set! status value)'), /no cell called "value"/, 'the document\'s open binds nothing');
+  assert.throws(() => ok('on.tick', 'agree', '(set! qty 1)'), /does not raise tick/);
+  assert.throws(() => ok('action', undefined, '(set! qty 1)'), /written as a function/);
+  ok('on.click', 'save', '(do (emit! "saved" {total total}) (refresh! rate) (show! thanks))');
+  // A custom action is a known function once the document defines it.
+  const withReset = applyOps(eventsDoc(), [['meta', 'actions.reset', ['fn', [], ['set!', 'qty', 0]]]]).doc;
+  validate(evCtx('on.click', 'save', withReset), '(reset)', 'on.click');
+  assert.throws(() => validate(evCtx('on.click', 'save'), '(reset)', 'on.click'), /unknown function reset/);
+
+  const mock = mockClaude([
+    '```lisp\n(set! status valu)\n```\nExplanation: Copies it.',
+    '```lisp\n(set! status value)\n```\nExplanation: Copies the new value into status.',
+    '```lisp\n(set! qty 0)\n```\nExplanation: Not a function.',
+    '```lisp\n(fn (n) (set! qty (+ qty n)))\n```\nExplanation: Adds n to qty.',
+  ]);
+  try {
+    const h = await composeClaude(evCtx('on.change', 'agree'), 'copy it into status', CFG);
+    assert.equal(print(h.expr), '(set! status value)');
+    assert.match(mock.calls[0].body.system, /Task: write the action cell c\d+ named agree \(a input of type checkbox\) runs on its change event\./);
+    assert.match(mock.calls[0].body.system, /In this handler these names are bound: event, target, value, was, item, index\./);
+    assert.match(mock.calls[1].body.messages[2].content, /no cell called "valu"/);
+    const f = await composeClaude(evCtx('action'), 'add n to qty', CFG);
+    assert.equal(print(f.expr), '(fn (n) (set! qty (+ qty n)))');
+    assert.match(mock.calls[3].body.messages[2].content, /written as a function/);
+    assert.match(mock.calls[2].body.system, /Task: write a custom action for the document/);
+  } finally {
+    mock.restore();
+  }
+});
+
+test('event suggestions use the document\'s names and compose', () => {
+  for (const [target, cell] of [['events', 'checklist'], ['events', undefined], ['events', 'agree'], ['events', 'people'], ['events', 'rate'], ['on.change', 'agree'], ['on.click', 'hello'], ['action', undefined]] as [Target, string?][]) {
+    const c = evCtx(target, cell);
+    const tips = suggestions(c);
+    assert.ok(tips.length >= 3, `${target} on ${cell}: ${tips.length} suggestions`);
+    for (const tip of tips) assert.ok(composeLocal(c, tip), `suggestion "${tip}" for ${target} on ${cell} should compose`);
+  }
+  assert.ok(suggestions(evCtx('events', 'checklist')).includes('when every box is ticked, show thanks'), 'a checklist is offered its own sentence');
+  assert.ok(suggestions(evCtx('events', 'people')).includes('when a row is picked, set note to its name'), 'a table is offered a pick');
+});
+
+test('compose over HTTP with the new targets, applied with ops, and answered by an agent', async () => {
+  const { call } = api();
+  const doc = (await call('POST', '/api/docs', { title: 'Events', root: EVENTS })).json as { id: string };
+  const url = `/api/docs/${doc.id}/compose`;
+
+  const r = await call('POST', url, { prompt: 'When agree changes, set status to the new value', target: 'events', cell: 'agree' });
+  assert.equal(r.status, 200);
+  assert.equal(r.json.provider, 'local');
+  assert.equal(r.json.expr, null);
+  assert.equal(r.json.code, '(set! status value)');
+  assert.deepEqual(r.json.ops, [['set', 'agree', 'on.change', ['set!', 'status', '$value']]]);
+  assert.deepEqual(r.json.changes, [{ cell: 'agree', label: 'When agree changes', code: '(set! status value)' }]);
+  assert.equal(r.json.preview, undefined, 'nothing is run for a preview');
+  const applied = await call('POST', `/api/docs/${doc.id}/ops`, { actor: { kind: 'human', name: 'You' }, ops: r.json.ops });
+  assert.equal(applied.status, 200, 'the answer applies as it is');
+
+  const timer = await call('POST', url, { prompt: 'Every minute fetch the rate and warn when it is above 5.', target: 'events' });
+  assert.equal(timer.status, 200);
+  assert.deepEqual(timer.json.changes.map((c: { label: string }) => c.label), ['When rate loads, fetched every minute', 'New data cell warning']);
+  assert.equal((await call('POST', `/api/docs/${doc.id}/ops`, { actor: { kind: 'human', name: 'You' }, ops: timer.json.ops })).status, 200);
+
+  const h = await call('POST', url, { prompt: 'add 1 to clicks', target: 'on.click', cell: 'hello' });
+  assert.equal(h.status, 200);
+  assert.equal(h.json.code, '(set! clicks (+ clicks 1))');
+  assert.equal(h.json.explanation, 'When hello is clicked, it adds 1 to clicks.');
+  const act = await call('POST', url, { prompt: 'sets qty to 0 and clears note', target: 'action' });
+  assert.equal(act.json.code, '(fn () (set! qty 0) (set! note ""))');
+
+  assert.equal((await call('POST', url, { prompt: 'x', target: 'on.' })).status, 400);
+  const tick = await call('POST', url, { prompt: 'add 1 to clicks', target: 'on.tick', cell: 'agree' });
+  assert.equal(tick.status, 400);
+  assert.match(tick.json.error, /does not raise tick/);
+  const lost = await call('POST', url, { prompt: 'make it sparkle like the sea', target: 'events', cell: 'agree' });
+  assert.equal(lost.status, 422);
+  assert.ok(lost.json.suggestions.some((s: string) => s.includes('agree')), 'suggestions use the document\'s names');
+
+  // An agent gets the request with its target, and answers with ops.
+  const listening = call('GET', `/api/docs/${doc.id}/messages/wait?timeout=5&agent=Claude`);
+  await sleep(20);
+  const composing = call('POST', url, { prompt: 'count the clicks on hello', target: 'events', cell: 'hello' });
+  const req = (await listening).json.requests[0];
+  assert.equal(req.target, 'events');
+  assert.equal(req.cellName, 'hello');
+  const answer = (code: unknown) => call('POST', `${url}/${req.id}`, { code, explanation: 'Counts the clicks.', actor: { name: 'Claude' } });
+  const unknown = await answer([['set', 'hello', 'on.click', ['bump-clicks']]]);
+  assert.equal(unknown.status, 422);
+  assert.match(unknown.json.error, /unknown function bump-clicks/);
+  assert.equal((await answer('[["set", "hello", "on.click", "(set! clicks (+ clicks 1))"]]')).status, 200, 'ops as JSON text are read too');
+  const got = (await composing).json;
+  assert.equal(got.provider, 'agent');
+  assert.deepEqual(got.ops, [['set', 'hello', 'on.click', ['set!', 'clicks', ['+', '$clicks', 1]]]]);
+  assert.equal(got.explanation, 'Counts the clicks.');
 });

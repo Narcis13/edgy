@@ -48,6 +48,8 @@ test('evaluation', () => {
   assert.equal(run('(reduce (+ acc it) 0 (list 1 2 3))'), 6);
   assert.equal(run('((fn (x y) (* x y)) 3 4)'), 12);
   assert.equal(run('(let (sq (fn (x) (* x x))) (sq 5))'), 25);
+  assert.equal(run('(when (> 2 1) 1 2)'), 2, 'when runs every body');
+  assert.equal(run('(when false 1 2)'), null);
   assert.equal(run('(cond (> 1 2) "a" (> 2 1) "b" "c")'), 'b');
   assert.equal(run('(str "a" 1.5 nil "b")'), 'a1.5b');
   assert.equal(run('(get {a 1 b (+ 1 1)} "b")'), 2);
@@ -292,7 +294,8 @@ test('page setup lives in meta and a row can opt out of stacking', () => {
 test('every template builds and evaluates without errors', async () => {
   const { TEMPLATES, tour } = await import('./templates');
   for (const t of [...TEMPLATES, tour]) {
-    const doc = applyOp(newDoc('t'), ['put', 'c1', t.root]).doc;
+    // Settings first (a template's handlers and custom actions), then its cells, as the server builds it.
+    const doc = applyOps(newDoc('t'), [...Object.entries(t.meta ?? {}).map(([k, v]) => ['meta', k, v] as Op), ['put', 'c1', t.root]]).doc;
     const c = evaluate(doc, world);
     const broken = Object.entries(c.cells).filter(([, st]) => st.error).map(([id, st]) => `${id}: ${st.error}`);
     assert.deepEqual(broken, [], t.id);

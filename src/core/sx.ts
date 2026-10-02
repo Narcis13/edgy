@@ -708,8 +708,13 @@ export class Interp {
       switch (name) {
         case 'if':
           return truthy(this.ev(x[1], scope)) ? this.ev(x[2] ?? null, scope) : this.ev(x[3] ?? null, scope);
-        case 'when':
-          return truthy(this.ev(x[1], scope)) ? this.ev(x[2] ?? null, scope) : null;
+        case 'when': {
+          // Every body runs when the test holds, like (do …): (when done (save) (show! thanks)).
+          if (!truthy(this.ev(x[1], scope))) return null;
+          let v: unknown = null;
+          for (let i = 2; i < x.length; i++) v = this.ev(x[i], scope);
+          return v;
+        }
         case 'cond': {
           for (let i = 1; i + 1 < x.length; i += 2) if (truthy(this.ev(x[i], scope))) return this.ev(x[i + 1], scope);
           return x.length % 2 === 0 ? this.ev(x[x.length - 1], scope) : null;

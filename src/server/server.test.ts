@@ -6,9 +6,9 @@ import { join } from 'node:path';
 import { createApp } from './app';
 import { Store } from './store';
 import { TEMPLATES, tour } from '../core/templates';
-import { applyOp } from '../core/ops';
-import { evaluate } from '../core/engine';
-import { newDoc } from '../core/types';
+import { applyOp, applyOps } from '../core/ops';
+import { actionProblems, evaluate } from '../core/engine';
+import { type Op, newDoc } from '../core/types';
 import { leaves } from '../core/tree';
 
 function api() {
@@ -26,10 +26,12 @@ function api() {
 
 test('templates build and evaluate without errors', () => {
   for (const t of [...TEMPLATES, tour]) {
-    const doc = applyOp(newDoc('t'), ['put', 'c1', t.root]).doc;
+    // As the server builds them: settings (handlers, custom actions) first, then the cells.
+    const doc = applyOps(newDoc('t'), [...Object.entries(t.meta ?? {}).map(([k, v]) => ['meta', k, v] as Op), ['put', 'c1', t.root]]).doc;
     const computed = evaluate(doc, { rows: () => [], now: Date.now() });
     const errors = leaves(doc.root).filter((c) => computed.cells[c.id].error).map((c) => `${c.name ?? c.id}: ${computed.cells[c.id].error}`);
     assert.deepEqual(errors, [], t.id);
+    assert.deepEqual(actionProblems(doc, null), [], t.id);
   }
 });
 

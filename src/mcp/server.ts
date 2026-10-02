@@ -154,7 +154,7 @@ server.registerTool('edgy_say', {
 }));
 
 server.registerTool('edgy_listen', {
-  description: 'Wait for the person to write to you in a document\'s Activity panel. Returns their messages, or nothing after the timeout. Pass the id of the last message you saw as after. It also returns compose requests: the person described in words what a cell should compute or do and is waiting (up to 45 seconds) for code; answer each one with edgy_answer.',
+  description: 'Wait for the person to write to you in a document\'s Activity panel. Returns their messages, or nothing after the timeout. Pass the id of the last message you saw as after. It also returns compose requests: the person described in words what a cell should compute or do, or how it (or the document) reacts to events, and is waiting (up to 45 seconds) for code; each request says what shape of answer it needs. Answer each one with edgy_answer.',
   inputSchema: {
     doc: z.string().describe('Document id or title'),
     after: z.number().optional().describe('Only messages newer than this message id'),
@@ -168,22 +168,39 @@ server.registerTool('edgy_listen', {
   return text([
     ...r.messages.map((m: any) => `#${m.id} ${m.actor.name}${m.cell ? ` (about ${m.cell})` : ''}: ${m.text}`),
     ...asked.map((q) => `Compose request ${q.id} for ${q.cell ? `cell ${q.cellName ?? q.cell}` : 'the document'} (${q.target}): ${JSON.stringify(q.prompt)}. `
-      + `Current code: ${q.current?.trim() || '(none)'}. Answer with edgy_answer.`),
+      + `Current code: ${q.current?.trim() || '(none)'}. ${wanted(q.target, q.cellName ?? q.cell)} Answer with edgy_answer.`),
   ].join('\n'));
 }));
+
+/** What a compose request asks for, in a sentence, so an agent knows the shape of its answer. */
+function wanted(target: string, cell?: string): string {
+  const who = cell ? `cell ${cell}` : 'the document';
+  if (target.startsWith('on.')) {
+    return `Write ONE action that ${who} runs on its ${target.slice(3)} event, like a button's action; the event's data is bound by name (change: value, was; click: row, item, element; pick: rows; load: data; fail: message, status; tick: count; a custom event: payload, from).`;
+  }
+  if (target === 'action') return 'Write ONE custom action for the document: (fn (inputs…) actions…).';
+  if (target === 'events') {
+    return `Answer with a JSON array of ops for ${who}: ["set", cell, "on.<event>", action], ["meta", "on.open", action], ["meta", "actions.<name>", ["fn", [params], …]], ["set", fetch, "every", seconds], or ["split", <last top-level cell>, "col", {"cell": ["timer", {"name", "every", "on": {"tick": action}}]}] for a new timer (or data/fetch cell).`;
+  }
+  return '';
+}
 
 server.registerTool('edgy_answer', {
   description: 'Answer a compose request from edgy_listen with code in the document\'s Lisp syntax, e.g. "(* qty price)". '
     + 'Write ONE expression for the request\'s target: expr = what the cell shows; do = a button action (set!, toggle!, insert!, delete!, clear!, dup!, remove!, several in (do …)); '
     + 'hidden = a condition that hides the cell while true; style = an expression giving a colour token such as (if (< total 0) "bad" "ink"); '
     + 'options = a list for a select, e.g. (list "S" "M" "L"); compare = a number to compare against; trend = a list of numbers over time. '
-    + 'Use only cell names that exist (edgy_read shows them) and the functions in edgy_guide; actions only for target do. '
+    + 'Events (see the Events section of edgy_guide): on.<event> = one handler, an action run when that event reaches the cell (or the document), with the event\'s data bound by name, e.g. for on.change (set! status value); '
+    + 'action = a custom action, (fn (who) (set! hello (str "Hi " who))); '
+    + 'events = a whole sentence answered with a JSON array of ops, e.g. [["set", "agree", "on.change", ["set!", "status", "$value"]], ["meta", "on.open", ["set!", "visits", ["+", "$visits", 1]]], ["meta", "actions.reset", ["fn", [], ["set!", "qty", 0]]], ["set", "rate", "every", 60]]; '
+    + 'new timers, fetches and data cells are added with ["split", <last top-level cell>, "col", {"cell": ["timer", {"name": "every-minute", "every": 60, "on": {"tick": …}}]}]. '
+    + 'Use only cell names that exist (edgy_read shows them) and the functions in edgy_guide; actions only for targets do, on.<event>, action and events. '
     + 'Add a one or two sentence explanation for a beginner: what it does and which cells it reads. '
     + 'The code is checked against the document; if it is rejected you get the reason and can call edgy_answer again for the same request.',
   inputSchema: {
     doc: z.string().describe('Document id or title'),
     request: z.string().describe('The request id from edgy_listen, e.g. r7'),
-    code: z.string().describe('One expression in Lisp syntax'),
+    code: z.union([z.string(), z.array(z.any())]).describe('One expression in Lisp syntax; for target events, the JSON array of ops (as an array or as text)'),
     explanation: z.string().optional().describe('One or two plain sentences for a beginner'),
   },
 }, safely(async ({ doc, request, code, explanation }) => {
@@ -195,7 +212,7 @@ server.registerTool('edgy_answer', {
     if (/no such request/.test(why)) throw new Error(`Request ${request} is no longer waiting: it was answered or timed out.`);
     throw new Error(`The code was rejected: ${why}. Fix it and call edgy_answer again for ${request}.`);
   }
-  return text(`Answered ${request}; the person now sees ${code} with a preview.`);
+  return text(`Answered ${request}; the person now sees ${typeof code === 'string' ? code : JSON.stringify(code)}${Array.isArray(code) || /^\s*[[{`]/.test(code) ? ' and can apply it' : ' with a preview'}.`);
 }));
 
 await server.connect(new StdioServerTransport());
