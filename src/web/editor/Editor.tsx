@@ -319,7 +319,7 @@ function useKeyboard() {
       if (!cell) {
         if (['ArrowDown', 'ArrowRight', 'Tab'].includes(e.key) && s.doc) {
           e.preventDefault();
-          session.select(shownLeaves(s.doc.root)[0].id);
+          session.select((shownLeaves(s.doc.root)[0] ?? leaves(s.doc.root)[0]).id);
         }
         return;
       }

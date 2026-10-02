@@ -80,6 +80,8 @@ export interface Ctx {
 const canon = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, '');
 const ref = (c: Cell): string => '$' + (c.name ?? c.id);
 const lit = (s: string): Sx => (s.startsWith('$') ? ['quote', s] : s);
+/** A row or col: the groups that hold lines of a form; tabs, sections and panels are not lines. */
+const isLines = (c: Cell): boolean => c.kind === 'row' || c.kind === 'col';
 const num = (s: string): number | null => (/^-?\d+(?:\.\d+)?$/.test(s) ? Number(s) : null);
 const tidy = (n: number) => Number(n.toPrecision(12));
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -646,13 +648,13 @@ class Local {
 
   group(ph: string): Cell | undefined {
     const c = this.cell(stripArticles(ph));
-    return c && isGroup(c) ? c : undefined;
+    return c && isLines(c) ? c : undefined;
   }
 
   /** The first named group made of rows, e.g. invoice lines. */
   lines(): Cell | undefined {
     let found: Cell | undefined;
-    walk(this.ctx.doc.root, (c) => { if (!found && c.name && isGroup(c) && c.children!.some(isGroup)) found = c; });
+    walk(this.ctx.doc.root, (c) => { if (!found && c.name && isLines(c) && c.children!.some(isLines)) found = c; });
     return found;
   }
 
@@ -747,7 +749,7 @@ class Local {
   isOpen(ph: string, bare = false): Sx | null {
     if (bare && this.cell(stripArticles(ph))) return null;
     const p = this.panel(ph);
-    if (p) return p.box.kind === 'tabs' ? ['=', ref(p.box), p.title] : ['includes?', ref(p.box), p.title];
+    if (p) return p.box.kind === 'tabs' ? ['=', ref(p.box), lit(p.title)] : ['includes?', ref(p.box), lit(p.title)];
     if (bare) return null;
     const c = this.fold(ph);
     return c ? ref(c) : null;
@@ -755,7 +757,7 @@ class Local {
 
   /** Which column of a group of rows holds a field: by a header, a cell name, or the last numeric column. */
   column(g: Cell, field?: string): number | null {
-    const rows = g.children!.filter(isGroup);
+    const rows = g.children!.filter(isLines);
     if (field) {
       const want = new Set(this.forms(stripArticles(field)));
       const siblings = this.ctx.idx.parent.get(g.id)?.children ?? [];
@@ -1107,7 +1109,7 @@ class Local {
     const single = stripArticles(rest);
     const g = this.group(single);
     if (g) {
-      if (!g.children!.some(isGroup)) return [fn, ref(g)];
+      if (!g.children!.some(isLines)) return [fn, ref(g)];
       const i = this.column(g);
       return i === null ? null : [fn, ['column', ref(g), i]];
     }
@@ -1376,9 +1378,9 @@ class Local {
     if (p) {
       const name = p.box.name ?? p.box.id;
       const r = ref(p.box);
-      if (!want) return ['set!', name, ['filter', ['!=', '$it', p.title], r]];
+      if (!want) return ['set!', name, ['filter', ['!=', '$it', lit(p.title)], r]];
       // One title is accepted and means just that one open; any-number mode keeps the others.
-      return p.box.kind === 'accordion' && p.box.multiple ? ['set!', name, ['uniq', ['concat', r, ['list', p.title]]]] : ['set!', name, p.title];
+      return p.box.kind === 'accordion' && p.box.multiple ? ['set!', name, ['uniq', ['concat', r, ['list', lit(p.title)]]]] : ['set!', name, lit(p.title)];
     }
     const c = this.fold(ph);
     if (c) return ['set!', c.name ?? c.id, want];
@@ -1401,7 +1403,7 @@ class Local {
     const titles = dir > 0 ? panelTitles(tabs) : panelTitles(tabs).reverse();
     if (titles.length < 2) return null;
     const r = ref(tabs);
-    return ['set!', tabs.name ?? tabs.id, ['cond', ...titles.slice(0, -1).flatMap((t, i): Sx[] => [['=', r, t], titles[i + 1]]), r]];
+    return ['set!', tabs.name ?? tabs.id, ['cond', ...titles.slice(0, -1).flatMap((t, i): Sx[] => [['=', r, lit(t)], lit(titles[i + 1])]), r]];
   }
 
   private act(c: string): Sx | null {
@@ -1474,7 +1476,7 @@ class Local {
       }],
       [/^(?:open|expand|unfold|show)\s+(?:all|every|each|everything)(?:\s+(?:of\s+)?(?:the\s+)?(?:sections?|panels?|parts?))?(?:\s+(?:in|of)\s+(.+))?$/, ([x]) => {
         const acc = this.accordion(x, true);
-        return acc ? ['set!', acc.name ?? acc.id, ['list', ...panelTitles(acc)]] : null;
+        return acc ? ['set!', acc.name ?? acc.id, ['list', ...panelTitles(acc).map(lit)]] : null;
       }],
       // Tabs are opened, not expanded: "expand the details" means a section or a collapsible.
       [/^(?:expand|unfold)\s+(.+)$/, ([x]) => this.open(x, true, ['accordion'])],
@@ -1536,7 +1538,7 @@ class Local {
         const box = this.cell(stripArticles(x));
         if (box?.kind === 'tabs' || box?.kind === 'accordion') {
           const t = this.titleIn(box, v);
-          return t ? ['set!', box.name ?? box.id, t] : null;
+          return t ? ['set!', box.name ?? box.id, lit(t)] : null;
         }
         if (box?.kind === 'collapsible' && /^(?:open|closed|folded|unfolded|true|false)$/.test(v)) return ['set!', box.name ?? box.id, /^(?:open|unfolded|true)$/.test(v)];
         const cell = this.settable(x);
@@ -1553,7 +1555,7 @@ class Local {
         if (cell) return ['set!', cell.name ?? cell.id, blank(cell)];
         // Tabs go back to the first tab, an accordion closes.
         const box = this.cell(stripArticles(x));
-        if (box?.kind === 'tabs') return ['set!', box.name ?? box.id, panelTitles(box)[0]];
+        if (box?.kind === 'tabs') return ['set!', box.name ?? box.id, lit(panelTitles(box)[0])];
         if (box?.kind === 'accordion') return ['set!', box.name ?? box.id, ['list']];
         const k = this.coll(x);
         return k ? ['clear!', k] : null;
@@ -1564,7 +1566,7 @@ class Local {
         const p = this.panel(x, ['accordion']);
         if (!p) return null;
         const [name, r, t] = [p.box.name ?? p.box.id, ref(p.box), p.title];
-        const opened: Sx = p.box.multiple ? ['concat', r, ['list', t]] : t;
+        const opened: Sx = p.box.multiple ? ['concat', r, ['list', lit(t)]] : lit(t);
         return ['set!', name, ['if', ['includes?', r, t], ['filter', ['!=', '$it', t], r], opened]];
       }],
       [/^(?:check|tick|turn on|switch on|enable)\s+(.+)$|^mark\s+(.+?)\s+(?:as\s+)?(?:done|complete|finished|checked)$/, ([x]) => { const cell = this.settable(x); return cell ? ['set!', cell.name ?? cell.id, true] : null; }],
@@ -1625,7 +1627,7 @@ export function suggestions(ctx: Ctx): string[] {
   const inputs = named.filter((c) => c.kind === 'input' && ['number', 'slider', 'rating'].includes(c.type ?? '')).map((c) => c.name!);
   const bools = named.filter((c) => c.kind === 'input' && ['checkbox', 'toggle'].includes(c.type ?? '')).map((c) => c.name!);
   const dates = named.filter((c) => c.kind === 'input' && c.type === 'date').map((c) => c.name!);
-  const groups = named.filter((c) => isGroup(c) && c.children!.some(isGroup)).map((c) => c.name!);
+  const groups = named.filter((c) => isLines(c) && c.children!.some(isLines)).map((c) => c.name!);
   const colls = [...ctx.collections.keys()];
   const [a = 'qty', b = 'price'] = nums;
   const pick = (xs: (string | false | undefined)[]) => xs.filter((x): x is string => !!x).slice(0, 4);

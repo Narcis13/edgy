@@ -1,0 +1,12 @@
+Ask AI on the Order desk document, offline composer (provider local), through POST /api/docs/<id>/compose
+
+do on next: "a button that opens the Orders tab" -> (set! view "Orders") | When clicked, it opens the Orders tab of view. | via local
+do on next: "go to the next step" -> (set! step (+ step 1)) | When clicked, it adds 1 to step. | via local
+do on back: "go back a step" -> (set! step (- step 1)) | When clicked, it takes 1 away from step. | via local
+do on next: "open the Returns section" -> (set! faq "Returns") | When clicked, it opens the Returns section of faq. | via local
+do on next: "collapse about" -> (set! about false) | When clicked, it folds about. | via local
+expr on order: "how many shapes in the flow" -> (count-if (includes? (list "rect" "ellipse" "diamond")
+    (get it "type"))
+  flow) | Counts the shapes in flow. It updates whenever flow changes. | via local
+hidden on back: "show only on the Orders tab" -> (!= view "Orders") | Hides this cell while view is not "Orders". It checks again whenever view changes. | via local
+hidden on back: "show on step 2" -> (!= step 2) | Hides this cell while step is not 2. It checks again whenever step changes. | via local

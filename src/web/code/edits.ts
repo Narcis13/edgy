@@ -247,10 +247,12 @@ export interface ValueChoice {
  */
 export function valueChoices(target: Cell | undefined): ValueChoice[] {
   if (!target) return [];
-  if (target.kind === 'tabs') return panelTitles(target).map((t) => ({ label: t, value: t, detail: 'Show this tab' }));
+  // A title starting with $ would read as a cell; quoted, it stays text.
+  const text = (t: string): Sx => (t.startsWith('$') ? ['quote', t] : t);
+  if (target.kind === 'tabs') return panelTitles(target).map((t) => ({ label: t, value: text(t), detail: 'Show this tab' }));
   if (target.kind === 'accordion') {
     return [
-      ...panelTitles(target).map((t) => ({ label: t, value: t, detail: target.multiple ? 'Open only this section' : 'Open this section' })),
+      ...panelTitles(target).map((t) => ({ label: t, value: text(t), detail: target.multiple ? 'Open only this section' : 'Open this section' })),
       ...(target.multiple ? [{ label: 'All open', value: true, detail: 'Open every section' }] : []),
       { label: 'All closed', value: ['list'], detail: 'Close every section' },
     ];

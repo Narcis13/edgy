@@ -1,7 +1,7 @@
 // A data cell: a value readers never see. Its type and an editor for each,
 // and how formulas and buttons use it.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import type { Json } from '../../../../core/types';
 import { NumberField, TextField } from '../../fields';
 import { cx } from '../../ctx';
@@ -64,6 +64,7 @@ function LinesField({ value, onCommit }: { value: (string | number | boolean)[];
   const source = listToLines(value);
   const [text, setText] = useState(source);
   const [focused, setFocused] = useState(false);
+  const cancelled = useRef(false);
   useEffect(() => {
     if (!focused) setText(source);
   }, [source, focused]);
@@ -73,11 +74,14 @@ function LinesField({ value, onCommit }: { value: (string | number | boolean)[];
       onChange={(ev) => setText(ev.target.value)}
       onBlur={() => {
         setFocused(false);
-        if (text !== source) onCommit(linesToList(text));
+        // Escape blurs before React has put the old text back, so it says not to save.
+        if (cancelled.current) cancelled.current = false;
+        else if (text !== source) onCommit(linesToList(text));
       }}
       onKeyDown={(ev) => {
         stop(ev);
         if (ev.key === 'Escape') {
+          cancelled.current = true;
           setText(source);
           ev.currentTarget.blur();
         }
@@ -92,6 +96,7 @@ function JsonField({ value, want, onCommit }: { value: Json; want: 'list' | 'rec
   const [text, setText] = useState(source);
   const [focused, setFocused] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cancelled = useRef(false);
   useEffect(() => {
     if (!focused && !error) setText(source);
   }, [source, focused, error]);
@@ -109,11 +114,13 @@ function JsonField({ value, want, onCommit }: { value: Json; want: 'list' | 'rec
         onChange={(ev) => setText(ev.target.value)}
         onBlur={() => {
           setFocused(false);
-          save();
+          if (cancelled.current) cancelled.current = false;
+          else save();
         }}
         onKeyDown={(ev) => {
           stop(ev);
           if (ev.key === 'Escape') {
+            cancelled.current = true;
             setText(source);
             setError(null);
             ev.currentTarget.blur();

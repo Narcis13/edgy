@@ -462,7 +462,9 @@ export class Session {
     const doc = this.s.doc;
     if (!doc) return;
     // Only the cells people can see: not those behind a closed tab or a folded section.
-    const ls = shownLeaves(doc.root);
+    const shown = shownLeaves(doc.root);
+    // Everything folded away: fall back to every cell rather than none.
+    const ls = shown.length ? shown : leaves(doc.root);
     const cur = this.s.selection.at(-1);
     let i = cur ? ls.findIndex((c) => c.id === cur) : delta > 0 ? -1 : 0;
     i = (i + delta + ls.length) % ls.length;

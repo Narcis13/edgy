@@ -9,29 +9,29 @@ designer, notation, outline, minimap, guide, Blocks, Ask AI.
 
 Started 2026-10-02 on branch `main` at `50bf912`. Brief: Brief 4 in `FEATURES_PROMPTS.md`.
 
-**Next:** integrate the three agents' work (diagram editor, designers, Ask AI) when they report; verify each; then the showcase evidence (template `elements` is written).
+**Next:** final audit — fresh build, empty data, gates, sweep, re-read evidence, stop servers, final commit.
 
 ## Contract (Done means)
 
 | # | criterion | verified by | evidence | status |
 |---|---|---|---|---|
-| G1 | Typecheck, all tests and the production build pass, no chunk warning | `gates.sh` | Log | open |
-| G2 | Zero console/network problems on every screen at 1440×900 and 390×844, plus tablet 820×1180 and dark | `sweep.sh` + `cdp.mjs --dark` | Log | open |
-| G3 | A showcase template using all five kinds in one realistic document, verified on desktop, phone and print | sweep + reading the images | `docs/showcase/new-elements/` | open |
-| D1 | Collapsible: click on the heading, Enter or Space folds and unfolds; the state survives a reload; it can start folded; the heading has `aria-expanded` | `cdp.mjs --js` click + key events, reload, read `aria-expanded` | `collapsible.png`, Log | open |
-| D2 | Accordion: one-at-a-time closes the open section when another opens; "any number" keeps them independent; a section holds a table and a chart | scripted clicks in both modes, screenshot | `accordion.png` | open |
-| D3 | Tabs: click and arrow keys change the tab; the open tab is the value and a formula elsewhere reacts; a button with `set!` changes it; at 390px the tab bar scrolls inside itself with no page overflow; formulas in hidden panels still evaluate | scripted clicks/keys + `GET /read`; phone shot + `scrollWidth` check | `tabs.png`, `tabs-phone.png`, Log | open |
-| D4 | Inside containers cells split, merge, move, duplicate and are removed; tabs and sections are added, renamed, reordered and removed from the designer and on the page; undo restores each step; a container with one child survives `normalize` | unit tests + scripted UI run with undo | `containers-edit.png`, Log | open |
-| D5 | Paper: collapsibles and accordions print unfolded; tabs print every panel in order under its title; no cell is cut between pages | PDF rendered to PNG, read | `new-elements.pdf`, `printed.png` | open |
-| D6 | Diagram by hand: draw three shapes, connect them with arrows, label them; move a shape and arrows follow; resize, delete; undo/redo each step; persists after reload; works by touch at 390×844; dark mode reads well; prints as vector | scripted pointer/touch events, reload, dark shot, PDF | `diagram-hand.png`, `diagram-touch.png`, `diagram-dark.png` | open |
-| D7 | Diagram as data: one ops POST builds a five-node flowchart from notation and it renders as written; a shape whose text is `{{total \| currency}}` updates when `total` changes; a formula counts the shapes | curl + screenshot + `GET /read` | `diagram-data.png`, Log | open |
-| D8 | Data cell: invisible and taking no space in Live, Page view and PDF; a chip in Edit; a button's `set!` changes it and a `hidden` rule reacts; its value shows in the outline; the showcase wizard's Next and Back run on one | DOM size check in Live/Page, screenshots, `GET /read` | `data-chip.png`, `wizard.png` | open |
-| D9 | Each of the five: in the `/` menu, designed in the panel without code, round-trips through notation, an outline line, a minimap glyph, described in `/api/guide` | screenshots of menu, each designer, home minimap; tests; curl guide | `menu.png`, `panel-*.png`, `minimap.png` | open |
-| D10 | Ask AI answers a sentence about each kind ("a button that opens the Details tab", "go to the next step", and one each for accordion, collapsible, diagram) on the offline composer and the Claude path (mocked fetch) | compose tests + one run through the studio | `ask-ai.png`, tests | open |
-| D11 | New tests cover notation and ops round trips of each kind, `normalize` with containers, tab and accordion state, arrow geometry, data cell evaluation and `set!`, pagination with unfolded containers | `npm test` count goes up | Log | open |
-| D12 | Events: brief 2 isn't built, so a tab changing, a section opening or closing and a shape being clicked all go through one obvious place (`session.raise`, kinds declared in `src/core/events.ts`) | code + a scripted check of `raised` | Log | open |
-| D13 | Documents made before this change open unchanged; `canvas` and the `hidden` prop behave as before | existing tests + sweep of existing templates | Log | open |
-| D14 | README and the guide describe the five kinds | read the text | Log | open |
+| G1 | Typecheck, all tests and the production build pass, no chunk warning | `gates.sh` | Log | pass — 132 tests, typecheck, build, no chunk warning (Editor chunk 399 kB) |
+| G2 | Zero console/network problems on every screen at 1440×900 and 390×844, plus tablet 820×1180 and dark | `sweep.sh` + `cdp.mjs --dark` | Log | pass — sweep of all 6 templates + containers doc: 0 problems; tablet, dark, phone-dark shots 0 CONSOLE |
+| G3 | A showcase template using all five kinds in one realistic document, verified on desktop, phone and print | sweep + reading the images | `docs/showcase/new-elements/` | pass — `docs/showcase/new-elements/` (template `elements`, Order desk) |
+| D1 | Collapsible: click on the heading, Enter or Space folds and unfolds; the state survives a reload; it can start folded; the heading has `aria-expanded` | `cdp.mjs --js` click + key events, reload, read `aria-expanded` | `collapsible.png`, Log | pass — `collapsible.png`; trusted Enter/Space, aria-expanded false→true→(reload) true→false |
+| D2 | Accordion: one-at-a-time closes the open section when another opens; "any number" keeps them independent; a section holds a table and a chart | scripted clicks in both modes, screenshot | `accordion.png` | pass — `accordion.png`, `containers.test.ts` |
+| D3 | Tabs: click and arrow keys change the tab; the open tab is the value and a formula elsewhere reacts; a button with `set!` changes it; at 390px the tab bar scrolls inside itself with no page overflow; formulas in hidden panels still evaluate | scripted clicks/keys + `GET /read`; phone shot + `scrollWidth` check | `tabs.png`, `tabs-phone.png`, Log | pass — `tabs.png`, `tabs-phone.png` (bar 576>346, page 390) |
+| D4 | Inside containers cells split, merge, move, duplicate and are removed; tabs and sections are added, renamed, reordered and removed from the designer and on the page; undo restores each step; a container with one child survives `normalize` | unit tests + scripted UI run with undo | `containers-edit.png`, Log | pass — `containers-edit.png`, `panels.png`, `containers.test.ts` (inverses checked) |
+| D5 | Paper: collapsibles and accordions print unfolded; tabs print every panel in order under its title; no cell is cut between pages | PDF rendered to PNG, read | `new-elements.pdf`, `printed.png` | pass — `new-elements.pdf` (3 pages), `printed.png`, `paginate.test.ts` |
+| D6 | Diagram by hand: draw three shapes, connect them with arrows, label them; move a shape and arrows follow; resize, delete; undo/redo each step; persists after reload; works by touch at 390×844; dark mode reads well; prints as vector | scripted pointer/touch events, reload, dark shot, PDF | `diagram-hand.png`, `diagram-touch.png`, `diagram-dark.png` | pass — `diagram-hand.png`, `diagram-touch.png`, `diagram-dark.png` (9 undo / 9 redo) |
+| D7 | Diagram as data: one ops POST builds a five-node flowchart from notation and it renders as written; a shape whose text is `{{total \| currency}}` updates when `total` changes; a formula counts the shapes | curl + screenshot + `GET /read` | `diagram-data.png`, Log | pass — `diagram-data.png`; formula counts 5; label $2,450.50 |
+| D8 | Data cell: invisible and taking no space in Live, Page view and PDF; a chip in Edit; a button's `set!` changes it and a `hidden` rule reacts; its value shows in the outline; the showcase wizard's Next and Back run on one | DOM size check in Live/Page, screenshots, `GET /read` | `data-chip.png`, `wizard.png` | pass — `data-chip.png`, `wizard.png`; 0 data elements drawn in Live/Page |
+| D9 | Each of the five: in the `/` menu, designed in the panel without code, round-trips through notation, an outline line, a minimap glyph, described in `/api/guide` | screenshots of menu, each designer, home minimap; tests; curl guide | `menu.png`, `panel-*.png`, `minimap.png` | pass — `menu.png`, `panels.png`, `minimap.png`, round-trip tests, guide text |
+| D10 | Ask AI answers a sentence about each kind ("a button that opens the Details tab", "go to the next step", and one each for accordion, collapsible, diagram) on the offline composer and the Claude path (mocked fetch) | compose tests + one run through the studio | `ask-ai.png`, tests | pass — `ask-ai.txt` (offline, via API), compose tests offline + mocked Claude; live Claude not checked (no key) |
+| D11 | New tests cover notation and ops round trips of each kind, `normalize` with containers, tab and accordion state, arrow geometry, data cell evaluation and `set!`, pagination with unfolded containers | `npm test` count goes up | Log | pass — 99 → 132 tests |
+| D12 | Events: brief 2 isn't built, so a tab changing, a section opening or closing and a shape being clicked all go through one obvious place (`session.raise`, kinds declared in `src/core/events.ts`) | code + a scripted check of `raised` | Log | pass — `session.raise`; shoot.sh prints click/change/close/open |
+| D13 | Documents made before this change open unchanged; `canvas` and the `hidden` prop behave as before | existing tests + sweep of existing templates | Log | pass — old templates untouched in source; sweep 0 problems; data-tables PDF still 5 pages |
+| D14 | README and the guide describe the five kinds | read the text | Log | pass — README section, guide in `src/core/reference.ts` |
 
 Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 
@@ -39,11 +39,11 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 
 1. [x] **Core model**: kinds, notation, ops inside containers, values, diagram geometry/layout/draw/erase ops, data cell, outline, guide, events registry, tests (D4 core, D7 core, D11 part, D12 core)
 2. [x] **Containers and data UI** (lead): tabs/accordion/collapsible/panel rendering in Edit/Live/Page, keyboard and ARIA, on-page add/rename/reorder/remove, data chip and invisibility, print rules and pagination test (D1–D5, D8)
-3. [ ] **Diagram editor** (agent): `src/web/kinds/Diagram.tsx` — draw, select, move, resize, connect, label, duplicate, delete, colours, touch, undo, print (D6, D7)
+3. [x] **Diagram editor** (agent): `src/web/kinds/Diagram.tsx` — draw, select, move, resize, connect, label, duplicate, delete, colours, touch, undo, print (D6, D7)
 4. [x] **Designers and metadata** (agent): inspector panels for the five kinds, empty-cell tiles, minimap glyphs, studio icons/labels/code props, Blocks (D9)
 5. [x] **Ask AI** (agent): compose offline rules + Claude prompt for the new kinds, tests (D10)
-6. [ ] **Integration**: end-to-end runs in the browser, fixes (D1–D10, D12, D13)
-7. [ ] **Showcase**: template + evidence in `docs/showcase/new-elements/` (G3)
+6. [x] **Integration**: end-to-end runs in the browser, fixes (D1–D10, D12, D13)
+7. [x] **Showcase**: template + evidence in `docs/showcase/new-elements/` (G3)
 8. [ ] **Final audit**: code review, clean build, empty data, all gates, full sweep, every contract item checked
 
 ## Decisions
@@ -82,3 +82,6 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 - 2026-10-02: M2 containers UI: tabs/accordion/collapsible render in Edit/Live/Page; checked by scripted clicks and trusted keys (Enter folds a collapsible, ArrowRight moves tab and focus), button `set!` opens a tab and a hidden rule reacts, accordion one-at-a-time with a table and a chart, phone tab bar scrolls inside (459 > 346 px) with page scrollWidth 390, PDF prints all panels under titles (2 pages). On-page rename/add/move/remove + 5 undos each restored. `keepWithNext` pagination test. cdp.mjs gained `--press` for trusted keys.
 - 2026-10-02: M5 Ask AI (agent): offline + mocked Claude for all five kinds; compose tests 12 → 17; full suite 130 pass (checked by lead with `npm test`).
 - 2026-10-02: M4 designers (agent): panels for tabs/accordion/collapsible/panel/data/diagram, empty-cell tiles, minimap, studio icons, Blocks value choices; driven from the panel only by the agent; lead re-shot each designer on the Order desk template (0 console). Fixes: toolbar above a selected panel's container; data chip capped to the sheet width; panels drop sizes in normalize. 130 tests.
+- 2026-10-02: M3 diagram editor (agent) verified by the lead: touch scenario at 390×844 (3 shapes, 2 arrows, label, move, resize, delete, 9 undo/9 redo), one-POST flowchart + live label + shape count. Parallel connectors offset.
+- 2026-10-02: code review (fresh reviewer): fixed Escape saving in inspector inputs, compose taking tabs for form lines, `$` titles read as references (compose + Blocks), keyboard crash when nothing is shown, O(n²) parallel-connector scan (memoised). Rejected: "undo of draw/erase can throw on an invalid old value" — old values were validated when written. 132 tests.
+- 2026-10-02: M7 showcase evidence in `docs/showcase/new-elements/` from `shoot.sh` (fresh server); all images read; sweep of every template 0 problems.

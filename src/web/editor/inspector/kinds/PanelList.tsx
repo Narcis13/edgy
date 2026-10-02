@@ -1,7 +1,7 @@
 // The panels of tabs or an accordion as a list: rename in place, reorder,
 // copy, remove, and pick which are open. Shared by both designers.
 
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState, useRef } from 'react';
 import { ChevronDown, ChevronUp, Copy, Plus, Trash2 } from 'lucide-react';
 import type { Cell } from '../../../../core/types';
 import { cx, useS, useSession } from '../../ctx';
@@ -82,6 +82,7 @@ export function TitleInput({ value, label, onCommit, placeholder }: { value: str
       setBad(false);
     }
   }, [value, focused]);
+  const cancelled = useRef(false);
   const save = () => {
     const ok = onCommit(text);
     setBad(!ok);
@@ -93,12 +94,15 @@ export function TitleInput({ value, label, onCommit, placeholder }: { value: str
       onChange={(ev) => setText(ev.target.value)}
       onBlur={() => {
         setFocused(false);
-        save();
+        // Escape blurs before React has put the old text back, so it says not to save.
+        if (cancelled.current) cancelled.current = false;
+        else save();
       }}
       onKeyDown={(ev) => {
         ev.stopPropagation();
         if (ev.key === 'Enter') ev.currentTarget.blur();
         if (ev.key === 'Escape') {
+          cancelled.current = true;
           setText(value);
           setBad(false);
           ev.currentTarget.blur();

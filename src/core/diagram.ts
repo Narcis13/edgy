@@ -181,12 +181,25 @@ export const PARALLEL_GAP = 28;
  * The order in the list decides who goes which side, so it stays put. The
  * side is measured from the box with the smaller id, so a→b and b→a part.
  */
+const pairsOf = new WeakMap<object, Map<string, string[]>>();
+const pairKey = (x: DiagramEl) => (x.from! < x.to! ? x.from + '\u0000' + x.to : x.to + '\u0000' + x.from);
+
 export function parallelOffset(e: DiagramEl, els: Iterable<DiagramEl>): number {
   if (!isConnector(e) || !e.from || !e.to || e.from === e.to) return 0;
-  const pair = (x: DiagramEl) => [x.from, x.to].sort().join('\u0000');
-  const key = pair(e);
-  const same: string[] = [];
-  for (const x of els) if (isConnector(x) && x.from && x.to && pair(x) === key) same.push(x.id);
+  // Grouped once per list (or map) of elements: drawing asks this for every connector, many times a frame.
+  let pairs = pairsOf.get(els);
+  if (!pairs) {
+    pairs = new Map();
+    for (const x of els) {
+      if (!isConnector(x) || !x.from || !x.to) continue;
+      const k = pairKey(x);
+      const list = pairs.get(k);
+      if (list) list.push(x.id);
+      else pairs.set(k, [x.id]);
+    }
+    pairsOf.set(els, pairs);
+  }
+  const same = pairs.get(pairKey(e)) ?? [];
   if (same.length < 2) return 0;
   return (same.indexOf(e.id) - (same.length - 1) / 2) * PARALLEL_GAP;
 }

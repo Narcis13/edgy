@@ -685,3 +685,20 @@ test('composeClaude gives up after two answers that do not fit', async () => {
     mock.restore();
   }
 });
+
+test('tabs and sections are not lines of a form, and a title starting with $ stays text', () => {
+  // A named tabs cell before the invoice lines must not be taken for them.
+  const doc = applyOps(newDoc('t'), [['put', 'c1', ['col',
+    ['tabs', { name: 'view' }, ['panel', { title: '$ Pricing' }, ['text', 'p']], ['panel', { title: 'Terms' }, ['text', 't']]],
+    ['col', { name: 'lines' }, line('Widget', 2, 10), line('Gadget', 1, 25)],
+    ['button', { name: 'go' }, 'Go']]]]).doc;
+  const c = (target: Target) => context(doc, noData, [], { target, cell: 'go' });
+  assert.equal(print(composeLocal(c('do'), 'add a line')!.expr), '(dup! (child lines -1))');
+  // Written as a cell reference, "$ Pricing" would look for a cell called " Pricing".
+  const reset = composeLocal(c('do'), 'reset view')!;
+  assert.deepEqual(reset.expr, ['set!', 'view', ['quote', '$ Pricing']]);
+  const next = composeLocal(c('do'), 'next tab')!;
+  const moved = click(doc, 'go', next.expr);
+  assert.equal(valueOf(moved, 'view'), 'Terms');
+  assert.equal(valueOf(click(moved, 'go', reset.expr), 'view'), '$ Pricing');
+});
