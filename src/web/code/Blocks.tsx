@@ -11,7 +11,7 @@ import { print, read } from '../../core/sx';
 import { cx } from '../editor/ctx';
 import {
   type Path, PLACE_HEADS, addField, blankCall, fixedSlots, getAt, headOf, insertArg, isShort, kindOf, localsAt, removeAt,
-  renameKey, setAt, slotHint, slotLabel, swapHead, wrapAt, ITERATORS_LABELS,
+  renameKey, setAt, setTargetAt, slotHint, slotLabel, swapHead, valueChoices, wrapAt, ITERATORS_LABELS,
 } from './edits';
 import { ENTRIES, GROUP_COLOR, GROUPS, docFor, formFor } from './docs';
 import { cellIcon, useDocInfo, type DocInfo } from './info';
@@ -513,12 +513,20 @@ function BlockMenu({ menu, ctx, put, close }: { menu: Menu; ctx: Ctx; put: (path
   const { path, add } = m;
   const call = getAt(ctx.root, path);
   const len = Array.isArray(call) ? call.length : 1;
+  // Setting tabs, an accordion or a collapsible: offer the values it takes.
+  const target = add ? null : setTargetAt(ctx.root, path);
+  const choices = valueChoices(target ? ctx.info.cellOf(target) : undefined).map((ch, i): PickItem => ({
+    key: 'v' + i, text: ch.label + ' ' + ch.detail, group: `Values of ${target}`, onPick: () => put(path, add, ch.value),
+    icon: typeof ch.value === 'string' ? <Quote size={15} /> : <ToggleLeft size={15} />, label: ch.label, detail: ch.detail,
+  }));
+  const other = choices.length ? 'Or' : undefined;
   const items: PickItem[] = [
-    { key: 'cell', text: 'cell', icon: <Braces size={15} />, label: 'A cell…', detail: 'Another cell’s value', onPick: () => setSub({ kind: 'cell', el: m.el, title: 'Choose a cell', at: add ? [...path, len] : path, onCell: (n) => put(path, add, '$' + n) }) },
-    { key: 'number', text: 'number', icon: <Calculator size={15} />, label: 'A number', onPick: () => put(path, add, 0, true) },
-    { key: 'text', text: 'text', icon: <Quote size={15} />, label: 'Some text', onPick: () => put(path, add, '', true) },
-    { key: 'fn', text: 'function', icon: <FunctionSquare size={15} />, label: 'A function…', detail: 'Add, compare, choose, count…', onPick: () => setSub({ kind: 'fn', el: m.el, title: 'Choose a function', onFn: (n) => put(path, add, blankCall(n)) }) },
-    { key: 'bool', text: 'true false yes no', icon: <ToggleLeft size={15} />, label: 'Yes or no', detail: 'true or false', onPick: () => put(path, add, true) },
+    ...choices,
+    { key: 'cell', text: 'cell', group: other, icon: <Braces size={15} />, label: 'A cell…', detail: 'Another cell’s value', onPick: () => setSub({ kind: 'cell', el: m.el, title: 'Choose a cell', at: add ? [...path, len] : path, onCell: (n) => put(path, add, '$' + n) }) },
+    { key: 'number', text: 'number', group: other, icon: <Calculator size={15} />, label: 'A number', onPick: () => put(path, add, 0, true) },
+    { key: 'text', text: 'text', group: other, icon: <Quote size={15} />, label: 'Some text', onPick: () => put(path, add, '', true) },
+    { key: 'fn', text: 'function', group: other, icon: <FunctionSquare size={15} />, label: 'A function…', detail: 'Add, compare, choose, count…', onPick: () => setSub({ kind: 'fn', el: m.el, title: 'Choose a function', onFn: (n) => put(path, add, blankCall(n)) }) },
+    { key: 'bool', text: 'true false yes no', group: other, icon: <ToggleLeft size={15} />, label: 'Yes or no', detail: 'true or false', onPick: () => put(path, add, true) },
     ...(add ? [{ key: 'nil', text: 'nothing', icon: <CircleSlash size={15} />, label: 'Nothing', detail: 'An empty value (nil)', onPick: () => put(path, add, null) }] : []),
     ...(!add && getAt(ctx.root, path) === null && ITERATORS_LABELS[String(headOf(getAt(ctx.root, path.slice(0, -1))))] && path.at(-1) === 1
       ? [{ key: 'it', text: 'it item', icon: <span className="pm-local">x</span>, label: <code>it</code>, detail: 'The item itself', onPick: () => put(path, add, '$it') }]

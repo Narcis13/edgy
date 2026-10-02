@@ -3,11 +3,12 @@
 
 import { Columns2, Minus, Plus, Rows2 } from 'lucide-react';
 import type { Cell, Json } from '../../../../core/types';
+import { flowOf } from '../../../../core/types';
 import { toNotation } from '../../../../core/notation';
 import { NumberField } from '../../fields';
 import { useSession } from '../../ctx';
 import { Chips, Hint, Prop, Tiles } from '../controls';
-import { num } from '../edit';
+import { type Edit, num } from '../edit';
 import type { KindProps } from './types';
 
 const groupProps = (c: Cell): Record<string, Json> => {
@@ -21,11 +22,34 @@ const groupProps = (c: Cell): Record<string, Json> => {
 
 const GAPS = [0, 4, 8, 16];
 
-export function GroupPanel({ e }: KindProps) {
+/**
+ * How many cells a group holds: add an empty one at the end, or take away the
+ * last while it is empty. A row or column keeps two; a panel or collapsible one.
+ */
+export function CellCount({ e }: { e: Edit }) {
   const session = useSession();
   const c = e.cell;
   const kids = c.children ?? [];
   const last = kids.at(-1);
+  const dir = flowOf(c) ?? 'col';
+  return (
+    <Prop label="Cells" inline>
+      <div className="ins-stepper">
+        <button type="button" className="icon-btn" aria-label="Remove the last cell" disabled={kids.length <= (c.kind === 'row' || c.kind === 'col' ? 2 : 1) || last?.kind !== 'empty'}
+          title={last?.kind !== 'empty' ? 'The last cell has something in it; delete it on the sheet' : 'Remove the last, empty cell'}
+          onClick={() => last && session.dispatch(['remove', last.id])}><Minus size={15} /></button>
+        <span className="ins-count" aria-live="polite">{kids.length}</span>
+        <button type="button" className="icon-btn" aria-label="Add a cell at the end" title="Add an empty cell at the end"
+          onClick={() => last && session.dispatch(['split', last.id, dir])}><Plus size={15} /></button>
+      </div>
+    </Prop>
+  );
+}
+
+export function GroupPanel({ e }: KindProps) {
+  const session = useSession();
+  const c = e.cell;
+  const kids = c.children ?? [];
   const gap = num(c.style?.gap);
   const stack = typeof c.style?.stack === 'string' ? c.style.stack : 'auto';
   return (
@@ -37,16 +61,7 @@ export function GroupPanel({ e }: KindProps) {
             { value: 'col', label: 'Stacked', art: <Rows2 size={20} strokeWidth={1.75} /> },
           ]} />
       </Prop>
-      <Prop label="Cells" inline>
-        <div className="ins-stepper">
-          <button type="button" className="icon-btn" aria-label="Remove the last cell" disabled={kids.length <= 2 || last?.kind !== 'empty'}
-            title={last?.kind !== 'empty' ? 'The last cell has something in it; delete it on the sheet' : 'Remove the last, empty cell'}
-            onClick={() => last && session.dispatch(['remove', last.id])}><Minus size={15} /></button>
-          <span className="ins-count" aria-live="polite">{kids.length}</span>
-          <button type="button" className="icon-btn" aria-label="Add a cell at the end" title="Add an empty cell at the end"
-            onClick={() => last && session.dispatch(['split', last.id, c.kind])}><Plus size={15} /></button>
-        </div>
-      </Prop>
+      <CellCount e={e} />
       <Prop label="Gap between cells" onReset={gap != null ? () => e.style({ gap: null }) : undefined}>
         <Chips label="Gap" cols={4} value={gap ?? 0} onChange={(v) => e.style({ gap: v || null })}
           options={GAPS.map((g) => ({ value: g, label: g ? String(g) : 'None', title: `${g}px` }))} />

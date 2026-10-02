@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { Link2, Unlink2 } from 'lucide-react';
 import type { Cell, Json } from '../../../core/types';
+import { flowOf } from '../../../core/types';
 import { NumberField } from '../fields';
 import { cx } from '../ctx';
 import { Chips, ColorPick, Hint, Prop, Swatches, colorName } from './controls';
@@ -88,13 +89,14 @@ export function PadEditor({ value, fallback, onChange }: { value: unknown; fallb
 
 export function SpacingSection({ e, parent, group }: { e: Edit; parent: Cell | null; group: boolean }) {
   const s = e.cell.style ?? {};
-  const size = e.cell.size;
+  const size = parent && flowOf(parent) ? e.cell.size : undefined;
   const summary = [size === 'hug' ? 'Hug' : typeof size === 'string' ? size : typeof size === 'number' ? `${size} shares` : null, s.pad != null ? `padding ${String(s.pad)}` : null]
     .filter(Boolean).join(' · ');
   return (
     <Section name="spacing" title="Spacing and size" summary={summary}>
-      {parent && (
-        <Prop label={parent.kind === 'row' ? 'Width' : 'Height'} hint="Fill shares the space; Hug fits the content; Fixed is exact."
+      {/* A panel's size means nothing: its tabs or accordion shows it whole. */}
+      {parent && flowOf(parent) && (
+        <Prop label={flowOf(parent) === 'row' ? 'Width' : 'Height'} hint="Fill shares the space; Hug fits the content; Fixed is exact."
           onReset={size != null ? () => e.set('size', null) : undefined}>
           <SizeControl cell={e.cell} set={(p, v) => e.set(p, v)} />
         </Prop>

@@ -1,12 +1,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { Cell } from '../../../core/types';
+import type { Cell, Json } from '../../../core/types';
 import { borderSides, borderValue, formatPad, parsePad } from './box';
 import { TABLE_LOOKS, TEXT_PRESETS, lookOps, matchLook, matchPreset, presetPatch } from './presets';
 import {
   addColumnOps, addRowOps, changeFieldDo, collectionOf, copyDo, deleteDo, deleteFieldOps, distinctValues, freeName, literal, missingColumns, moved, pickingOps, withoutColumns,
   renameFieldOps, tableSource, toSavedOps, toTypedOps,
 } from './tableOps';
+import {
+  accordionMode, addPanel, convertData, dataType, freeCellName, linesToList, listToLines, movePanel, openPanel, panelPlace, panelRows, parseJson,
+  plainList, renamePanel, setExample, tidyDiagram,
+} from './sections';
 
 const preset = (id: string) => TEXT_PRESETS.find((p) => p.id === id)!;
 const look = (id: string) => TABLE_LOOKS.find((l) => l.id === id)!;
@@ -159,4 +163,111 @@ test('a field is never renamed or added over one that exists, so no values are l
   assert.deepEqual(renameFieldOps(cell, 'price', 'qty'), []);
   assert.deepEqual(addColumnOps(cell, 'price'), []);
   assert.equal(renameFieldOps(cell, 'price', 'cost').length, 2);
+});
+
+const panel = (id: string, title?: string): Cell => ({ id, kind: 'panel', ...(title ? { title } : {}), children: [{ id: id + 'x', kind: 'empty' }] });
+const tabs: Cell = { id: 't', kind: 'tabs', name: 'view', value: 'Details', children: [panel('p1', 'Overview'), panel('p2', 'Details'), panel('p3')] };
+const acc: Cell = { id: 'a', kind: 'accordion', value: ['Returns'], children: [panel('s1', 'Shipping'), panel('s2', 'Returns')] };
+
+test('panel rows key untitled panels and mark the open ones', () => {
+  assert.deepEqual(panelRows(tabs), [
+    { id: 'p1', title: 'Overview', open: false }, { id: 'p2', title: 'Details', open: true }, { id: 'p3', title: 'Tab 3', open: false },
+  ]);
+  assert.deepEqual(panelRows(acc).map((r) => r.open), [false, true]);
+  assert.deepEqual(panelRows({ ...tabs, value: undefined }).map((r) => r.open), [true, false, false]);
+  assert.equal(panelPlace(tabs, 'p2'), 'Tab 2 of 3');
+  assert.equal(panelPlace(acc, 's1'), 'Section 1 of 2');
+});
+
+test('renaming a panel refuses empty titles and ones already taken, in any case', () => {
+  assert.deepEqual(renamePanel(tabs, 'p1', '  Summary '), { op: ['set', 'p1', 'title', 'Summary'] });
+  assert.equal(renamePanel(tabs, 'p1', 'Overview'), null);
+  assert.deepEqual(renamePanel(tabs, 'p1', ' '), { error: 'A tab needs a title.' });
+  assert.deepEqual(renamePanel(tabs, 'p1', 'details'), { error: 'There is already a tab called “details”.' });
+  assert.ok('error' in (renamePanel(tabs, 'p1', 'Tab 3') ?? {}));
+  assert.ok('error' in (renamePanel(acc, 's1', 'Returns') ?? {}));
+  assert.equal(renamePanel(tabs, 'nope', 'X'), null);
+});
+
+test('moving, adding and opening panels', () => {
+  assert.deepEqual(movePanel(tabs, 'p2', -1), ['move', 'p2', 'p1', 'before']);
+  assert.deepEqual(movePanel(tabs, 'p2', 1), ['move', 'p2', 'p3', 'after']);
+  assert.equal(movePanel(tabs, 'p1', -1), null);
+  assert.equal(movePanel(tabs, 'p3', 1), null);
+  assert.deepEqual(addPanel(tabs), ['split', 'p3', 'col']);
+  assert.deepEqual(openPanel(tabs, 'Overview'), ['set', 't', 'value', 'Overview']);
+  assert.equal(openPanel(tabs, 'Overview', false), null);
+  // One at a time: opening one closes the other.
+  assert.deepEqual(openPanel(acc, 'Shipping'), ['set', 'a', 'value', ['Shipping']]);
+  assert.deepEqual(openPanel(acc, 'Returns', false), ['set', 'a', 'value', []]);
+  assert.deepEqual(openPanel({ ...acc, multiple: true }, 'Shipping'), ['set', 'a', 'value', ['Shipping', 'Returns']]);
+});
+
+test('switching an accordion to one at a time keeps only the first open section', () => {
+  const many: Cell = { ...acc, multiple: true, value: ['Shipping', 'Returns'] };
+  assert.deepEqual(accordionMode(many, false), [['set', 'a', 'multiple', null], ['set', 'a', 'value', ['Shipping']]]);
+  assert.deepEqual(accordionMode(acc, true), [['set', 'a', 'multiple', true]]);
+  assert.deepEqual(accordionMode(acc, false), []);
+});
+
+test('a free cell name skips names in use and reserved words', () => {
+  const root: Cell = { id: 'c1', kind: 'col', children: [{ ...tabs }, { id: 'd', kind: 'data', name: 'view2' }] };
+  assert.equal(freeCellName(root, 'view'), 'view3');
+  assert.equal(freeCellName(root, 'faq'), 'faq');
+  assert.equal(freeCellName(root, 'true'), 'cell');
+});
+
+test('data values change type keeping what they can', () => {
+  assert.equal(dataType(1), 'number');
+  assert.equal(dataType(''), 'text');
+  assert.equal(dataType(false), 'bool');
+  assert.equal(dataType([]), 'list');
+  assert.equal(dataType({}), 'record');
+  assert.equal(dataType(null), null);
+  assert.equal(dataType(undefined), null);
+  assert.equal(convertData('12,5', 'number'), 12.5);
+  assert.equal(convertData('abc', 'number'), 0);
+  assert.equal(convertData(3, 'text'), '3');
+  assert.equal(convertData(['a'], 'text'), '["a"]');
+  assert.equal(convertData('0', 'bool'), false);
+  assert.equal(convertData('yes', 'bool'), true);
+  assert.equal(convertData([], 'bool'), false);
+  assert.deepEqual(convertData(5, 'list'), [5]);
+  assert.deepEqual(convertData(undefined, 'list'), []);
+  assert.deepEqual(convertData({ a: 1, b: 2 }, 'list'), [1, 2]);
+  assert.deepEqual(convertData(['x', 'y'], 'record'), { item1: 'x', item2: 'y' });
+  assert.deepEqual(convertData(7, 'record'), { value: 7 });
+  assert.deepEqual(convertData(undefined, 'record'), {});
+});
+
+test('a plain list goes to lines and back; numbers stay numbers only when they read the same', () => {
+  assert.equal(plainList(['a', 1, true]), true);
+  assert.equal(plainList([{ a: 1 }]), false);
+  assert.equal(listToLines(['North', 2]), 'North\n2');
+  assert.deepEqual(linesToList('North\n 2 \n\n007\n1e3\n0.5\ntrue'), ['North', 2, '007', '1e3', 0.5, true]);
+});
+
+test('JSON typed by a person is checked for its shape', () => {
+  assert.deepEqual(parseJson('["a", 1]', 'list'), { value: ['a', 1] });
+  assert.deepEqual(parseJson('{"vat": 0.2}', 'record'), { value: { vat: 0.2 } });
+  assert.ok('error' in parseJson('[1, 2', 'list'));
+  assert.ok('error' in parseJson('{"a": 1}', 'list'));
+  assert.ok('error' in parseJson('[1]', 'record'));
+  assert.equal(setExample('step', 1), '(set! step (+ step 1))');
+  assert.equal(setExample('flag', true), '(set! flag (not flag))');
+});
+
+test('tidying a diagram forgets where the boxes are, not the arrows or sizes', () => {
+  const els: Json[] = [
+    { id: 'a', type: 'rect', text: 'A', x: 10, y: 20, w: 100, h: 50 },
+    { id: 'l', type: 'line', x1: 0, y1: 0, x2: 5, y2: 5 },
+    { id: 'r', type: 'arrow', from: 'a', to: 'b' },
+    { nope: true },
+  ];
+  assert.deepEqual(tidyDiagram(els), [
+    { id: 'a', type: 'rect', text: 'A', w: 100, h: 50 },
+    { id: 'l', type: 'line', x1: 0, y1: 0, x2: 5, y2: 5 },
+    { id: 'r', type: 'arrow', from: 'a', to: 'b' },
+  ]);
+  assert.deepEqual(tidyDiagram(null), []);
 });

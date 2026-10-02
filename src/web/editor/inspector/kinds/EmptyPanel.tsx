@@ -9,7 +9,8 @@ const GROUPS: { title: string; pick: (o: KindOption) => boolean }[] = [
   { title: 'Things people fill in', pick: (o) => o.kind === 'input' },
   { title: 'Lists, tables and dates', pick: (o) => ['table', 'list', 'calendar'].includes(o.kind) },
   { title: 'Charts', pick: (o) => o.kind === 'chart' },
-  { title: 'Pictures and actions', pick: (o) => ['button', 'image', 'icon', 'canvas'].includes(o.kind) },
+  { title: 'Pictures and actions', pick: (o) => ['button', 'image', 'icon', 'canvas', 'diagram'].includes(o.kind) },
+  { title: 'Sections and hidden values', pick: (o) => ['tabs', 'accordion', 'collapsible', 'data'].includes(o.kind) },
   { title: 'Printing', pick: (o) => o.kind === 'break' },
 ];
 

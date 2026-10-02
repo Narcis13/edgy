@@ -282,6 +282,30 @@ select.text-field { appearance: auto; }
 .mm-leaf.canvas { background: linear-gradient(to top, transparent 22%, var(--line-strong) 22% 26%, transparent 26%), var(--paper); }
 .mm-leaf.stat { background: linear-gradient(var(--accent), var(--accent)) 4px 55% / 45% 3px no-repeat, var(--accent-soft); }
 .mm-leaf.break { background: repeating-linear-gradient(to right, var(--guide) 0 3px, transparent 3px 6px) center / 100% 1px no-repeat; box-shadow: none; }
+.mm-group.panel,
+.mm-group.collapsible,
+.mm-group.tabs,
+.mm-group.accordion,
+.mm-section { flex-direction: column; }
+.mm-group.tabs { gap: 0; }
+.mm-group.tabs > .mm-group.panel { flex: 1 1 auto; padding-top: 3px; border-top: 1px solid var(--line-strong); }
+.mm-tabbar { display: flex; gap: 2px; flex: 0 0 5px; }
+.mm-tabbar > span { flex: 0 1 18%; border-radius: 2px 2px 0 0; background: var(--line-strong); }
+.mm-tabbar > .is-on { background: var(--accent); }
+.mm-group.accordion { gap: 2px; }
+.mm-section { display: flex; gap: 3px; flex: 0 0 auto; min-height: 0; }
+.mm-section.is-open { flex: 1 1 auto; }
+.mm-section > .mm-group.panel { flex: 1 1 auto; }
+.mm-head { flex: 0 0 5px; border-radius: 2px; background: var(--line-strong); }
+.mm-section.is-open > .mm-head { background: var(--accent); }
+.mm-group.collapsible > .mm-head { background: linear-gradient(var(--muted), var(--muted)) 0 50% / 45% 2px no-repeat; }
+.mm-leaf.diagram {
+  background:
+    linear-gradient(var(--accent), var(--accent)) 22% 28% / 24% 24% no-repeat,
+    linear-gradient(var(--accent), var(--accent)) 78% 72% / 24% 24% no-repeat,
+    linear-gradient(var(--muted), var(--muted)) 50% 50% / 34% 1.5px no-repeat,
+    var(--paper);
+}
 .mm-group.col > .mm-group.row[style*='0 0 auto'] { flex: 0 0 14px; }
 .mm-group.col > .mm-leaf[style*='0 0 auto'] { flex: 0 0 10px; }
 

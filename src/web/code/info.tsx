@@ -3,10 +3,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  CalendarDays, CircleDashed, Columns3, List, type LucideIcon, PenLine, Rows3, SeparatorHorizontal, TrendingUp, Type,
+  CalendarDays, ChevronsDownUp, CircleDashed, Columns3, List, ListCollapse, type LucideIcon, PanelTop, PanelTopOpen, PenLine, Rows3,
+  SeparatorHorizontal, TrendingUp, Type, Variable, Workflow,
 } from 'lucide-react';
 import type { Cell, Doc } from '../../core/types';
 import { show } from '../../core/sx';
+import { describeDiagram, elementsOf } from '../../core/diagram';
 import { type Computed, display, plainValue } from '../../core/engine';
 import { walk } from '../../core/tree';
 import { api } from '../lib/api';
@@ -17,6 +19,7 @@ import type { Known } from './lexer';
 
 const OWN_ICONS: Record<string, LucideIcon> = {
   stat: TrendingUp, calendar: CalendarDays, list: List, canvas: PenLine, break: SeparatorHorizontal, text: Type, empty: CircleDashed,
+  tabs: PanelTop, accordion: ListCollapse, collapsible: ChevronsDownUp, panel: PanelTopOpen, diagram: Workflow, data: Variable,
 };
 
 /** The icon the kind menu uses for a cell, with fallbacks for kinds it may not list. */
@@ -30,6 +33,7 @@ export function cellIcon(cell: Cell): LucideIcon {
 export const KIND_NAMES: Record<string, string> = {
   row: 'Row', col: 'Column', empty: 'Empty', text: 'Text', formula: 'Formula', input: 'Input', button: 'Button', image: 'Picture',
   icon: 'Icon', chart: 'Chart', table: 'Table', list: 'List', calendar: 'Calendar', canvas: 'Drawing', stat: 'Stat', break: 'Page break',
+  tabs: 'Tabs', accordion: 'Accordion', collapsible: 'Collapsible', panel: 'Panel', diagram: 'Diagram', data: 'Data',
 };
 
 const clip = (s: string, n = 40) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
@@ -40,6 +44,8 @@ export function preview(cell: Cell, computed: Computed | null, doc: Doc): string
   if (!st) return '';
   if (st.error) return '⚠ ' + clip(st.error, 36);
   if (typeof st.value === 'function') return 'ƒ function';
+  if (cell.kind === 'diagram') return describeDiagram(elementsOf(st.value));
+  if (cell.kind === 'collapsible') return st.value === false ? 'folded' : 'open';
   const text = display(cell, st, doc) || show(plainValue(st.value));
   return clip(text.replace(/\s+/g, ' '));
 }

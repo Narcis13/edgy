@@ -17,4 +17,10 @@ export const KIND_ABOUT: Record<string, string> = {
   break: 'Starts a new page when the document is printed.',
   row: 'Holds cells side by side.',
   col: 'Holds cells one under another.',
+  tabs: 'Panels behind a tab bar; one shows at a time. Its value is the open tab’s title.',
+  accordion: 'Sections that fold open and shut. Its value is the list of open titles.',
+  collapsible: 'A heading that folds the cells under it. Its value is true while open.',
+  panel: 'One tab or section: a title and the cells under it.',
+  diagram: 'Shapes, text and arrows that stay joined when you move them.',
+  data: 'A value for formulas and buttons to use. Readers never see it.',
 };

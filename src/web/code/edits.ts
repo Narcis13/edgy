@@ -1,8 +1,9 @@
 // The pure side of the Blocks editor: reading an expression as blocks and
 // changing it by path. Every function returns new JSON and never mutates.
 
-import type { Sx } from '../../core/types';
+import type { Cell, Sx } from '../../core/types';
 import { read } from '../../core/sx';
+import { panelTitles } from '../../core/containers';
 import { formFor, itemsOf } from './docs';
 
 /** What the arguments of the list functions read as, so a block reads like a sentence. */
@@ -225,4 +226,35 @@ export function localsAt(x: Sx, path: Path): string[] {
     cur = getAt(cur ?? null, [step]);
   }
   return [...new Set(out)];
+}
+
+/** The cell a (set! place …) changes, when the path is its value slot. */
+export function setTargetAt(x: Sx, path: Path): string | null {
+  if (path.at(-1) !== 2) return null;
+  const call = getAt(x, path.slice(0, -1));
+  return headOf(call) === 'set!' && Array.isArray(call) && typeof call[1] === 'string' ? call[1] : null;
+}
+
+export interface ValueChoice {
+  label: string;
+  value: Sx;
+  detail: string;
+}
+
+/**
+ * The values a cell takes when it takes a known few: a tab's titles, an
+ * accordion's sections (or none open), a collapsible open or folded.
+ */
+export function valueChoices(target: Cell | undefined): ValueChoice[] {
+  if (!target) return [];
+  if (target.kind === 'tabs') return panelTitles(target).map((t) => ({ label: t, value: t, detail: 'Show this tab' }));
+  if (target.kind === 'accordion') {
+    return [
+      ...panelTitles(target).map((t) => ({ label: t, value: t, detail: target.multiple ? 'Open only this section' : 'Open this section' })),
+      ...(target.multiple ? [{ label: 'All open', value: true, detail: 'Open every section' }] : []),
+      { label: 'All closed', value: ['list'], detail: 'Close every section' },
+    ];
+  }
+  if (target.kind === 'collapsible') return [{ label: 'Open', value: true, detail: 'Unfold it' }, { label: 'Folded', value: false, detail: 'Fold it' }];
+  return [];
 }

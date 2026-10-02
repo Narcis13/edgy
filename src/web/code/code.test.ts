@@ -4,8 +4,10 @@ import { print, read } from '../../core/sx';
 import { type Known, indentAt, insertionPoint, lex, matchAt, spotAt } from './lexer';
 import { acceptText, argToShow, complete, formFor, signature, templateFor } from './docs';
 import {
-  addField, blankCall, getAt, insertArg, isShort, kindOf, localsAt, removeAt, renameKey, setAt, slotHint, slotLabel, swapHead, wrapAt,
+  addField, blankCall, getAt, insertArg, isShort, kindOf, localsAt, removeAt, renameKey, setAt, setTargetAt, slotHint, slotLabel, swapHead,
+  valueChoices, wrapAt,
 } from './edits';
+import type { Cell } from '../../core/types';
 
 const known: Known = (n) => (n === 'qty' || n === 'price' || n === 'total' ? 'cell' : n === 'balance' ? 'fn' : null);
 const kinds = (src: string) => lex(src, known).map((t) => `${t.text}:${t.kind}`);
@@ -209,4 +211,21 @@ test('edits: slot labels, hints and local names', () => {
   assert.deepEqual(localsAt(x, [2, 2, 2]), ['k', 'a']);
   assert.deepEqual(localsAt(x, [1, 1]), []);
   assert.deepEqual(localsAt(read('(reduce (+ acc it) 0 xs)'), [1, 1]), ['acc', 'it', 'i']);
+});
+
+test('blocks: a set! on tabs, an accordion or a collapsible offers the values it takes', () => {
+  const x = read('(do (set! view nil) (set! count 1))');
+  assert.equal(setTargetAt(x, [1, 2]), 'view');
+  assert.equal(setTargetAt(x, [2, 2]), 'count');
+  assert.equal(setTargetAt(x, [1, 1]), null);
+  assert.equal(setTargetAt(x, [1]), null);
+  const p = (title: string): Cell => ({ id: title, kind: 'panel', title, children: [{ id: title + 'x', kind: 'empty' }] });
+  const tabs: Cell = { id: 't', kind: 'tabs', children: [p('Overview'), p('Details')] };
+  assert.deepEqual(valueChoices(tabs).map((c) => c.value), ['Overview', 'Details']);
+  const acc: Cell = { id: 'a', kind: 'accordion', children: [p('Shipping')] };
+  assert.deepEqual(valueChoices(acc).map((c) => c.value), ['Shipping', ['list']]);
+  assert.deepEqual(valueChoices({ ...acc, multiple: true }).map((c) => c.label), ['Shipping', 'All open', 'All closed']);
+  assert.deepEqual(valueChoices({ id: 'c', kind: 'collapsible' }).map((c) => c.value), [true, false]);
+  assert.deepEqual(valueChoices({ id: 'n', kind: 'input' }), []);
+  assert.deepEqual(valueChoices(undefined), []);
 });

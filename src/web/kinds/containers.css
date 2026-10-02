@@ -83,11 +83,11 @@
 .group.kind-collapsible.on-paper > .kfold-head { border-bottom: 0; }
 
 /* data: only while designing, a chip that takes as little room as it can */
-.leaf.kind-data { flex: 0 0 auto !important; align-self: flex-start; padding: 6px 12px; }
+.leaf.kind-data { flex: 0 0 auto !important; align-self: flex-start; max-width: 100%; padding: 6px 12px; }
 .group.kind-row > .leaf.kind-data { align-self: center; }
 .kdata-chip {
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 3px 9px; border: 1px dashed var(--line-strong); border-radius: 999px;
   background: var(--sunken); color: var(--muted); font-size: 12px; line-height: 1.4; font-variation-settings: 'MONO' 1; white-space: nowrap;
 }
 .kdata-chip b { color: var(--ink); font-weight: 600; }
-.kdata-val { overflow: hidden; text-overflow: ellipsis; }
+.kdata-val { min-width: 0; overflow: hidden; text-overflow: ellipsis; }

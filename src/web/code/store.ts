@@ -68,6 +68,7 @@ export function codeProps(cell: Cell): string[] {
     case 'button': return ['do', 'hidden'];
     case 'input': return cell.type === 'select' ? ['options', 'hidden'] : ['hidden'];
     case 'empty': return [];
+    // Containers, panels, data and diagrams hold no code of their own; they can still hide.
     default: return ['hidden'];
   }
 }

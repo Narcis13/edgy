@@ -3,13 +3,26 @@
 
 import { Maximize2, Sparkles } from 'lucide-react';
 import type { Json } from '../../core/types';
-import { isGroup } from '../../core/types';
 import { show } from '../../core/sx';
 import { display, plainValue } from '../../core/engine';
 import { openStudio } from '../code/store';
 import { SxField, TextField } from './fields';
 import { KIND_LABEL, cx, useS, useSession } from './ctx';
 import { kindOption } from './KindMenu';
+import { isOpen, openSections, openTab } from '../../core/containers';
+import { describeDiagram, elementsOf } from '../../core/diagram';
+import { renamePanel } from './inspector/sections';
+
+/** What is typed for a data cell: JSON when it reads as JSON, else plain text. */
+function dataValue(v: string): Json {
+  const t = v.trim();
+  if (!t) return null;
+  try {
+    return JSON.parse(t) as Json;
+  } catch {
+    return v;
+  }
+}
 
 const PLACEHOLDER: Record<string, string> = {
   formula: '(* qty price)', chart: '(list 3 5 2)', table: '(rows "orders")', stat: '(sum (column (rows "orders") "total"))',
@@ -33,7 +46,7 @@ export function FormulaBar() {
       </div>
     );
   }
-  const opt = isGroup(cell) ? undefined : kindOption(cell.kind, cell.type);
+  const opt = cell.kind === 'row' || cell.kind === 'col' || cell.kind === 'panel' ? undefined : kindOption(cell.kind, cell.type);
   let source: React.ReactNode;
   let result: React.ReactNode = null;
   /** The property the code buttons open, when the cell holds code. */
@@ -85,6 +98,33 @@ export function FormulaBar() {
       break;
     case 'empty':
       source = <span className="fbar-hint">Type into the cell, or press / to choose what it holds.</span>;
+      break;
+    case 'data':
+      source = <TextField key={cell.id} value={cell.value === undefined ? '' : JSON.stringify(cell.value)} mono placeholder='1, "text", ["a", "b"] or {"vat": 0.2}' label="Value"
+        onCommit={(v) => set('value', dataValue(v))} />;
+      break;
+    case 'diagram':
+      source = <span className="fbar-hint">Draw in the cell. {describeDiagram(elementsOf(cell.value))}.</span>;
+      break;
+    case 'tabs':
+      source = <span className="fbar-hint">{cell.children?.length} tabs, showing “{openTab(cell)}”</span>;
+      break;
+    case 'accordion': {
+      const open = openSections(cell);
+      source = <span className="fbar-hint">{cell.children?.length} sections, {open.length ? `open: ${open.join(', ')}` : 'all closed'}</span>;
+      break;
+    }
+    case 'collapsible':
+      source = <TextField key={cell.id} value={cell.title ?? ''} placeholder="Heading" label="Heading" onCommit={(v) => set('title', v.trim() || null)} />;
+      result = <span className="fbar-result">{isOpen(cell) ? 'open' : 'folded'}</span>;
+      break;
+    case 'panel':
+      source = <TextField key={cell.id} value={cell.title ?? ''} placeholder="Title" label="Title" onCommit={(v) => {
+        const parent = session.parent(cell.id);
+        const r = parent && renamePanel(parent, cell.id, v);
+        if (r && 'error' in r) session.toast(r.error);
+        else if (r) session.dispatch(r.op);
+      }} />;
       break;
     default:
       source = <span className="fbar-hint">{KIND_LABEL[cell.kind] ?? cell.kind} of {cell.children?.length} cells. Select one inside to edit it.</span>;

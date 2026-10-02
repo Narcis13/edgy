@@ -99,7 +99,8 @@ export const isPlain = (c: Cell) => (c.kind === 'row' || c.kind === 'col') && !c
  */
 export function normalize(node: Cell): Cell {
   if (!isGroup(node)) return node;
-  const kids = node.children!.map(normalize);
+  // Panels are shown whole, one at a time or folded, so a size means nothing on them.
+  const kids = node.children!.map((ch) => (ch.kind === 'panel' && ch.size !== undefined ? withSize(normalize(ch), undefined) : normalize(ch)));
   let changed = kids.some((k, i) => k !== node.children![i]);
   const flow = flowOf(node);
   const flat: Cell[] = [];

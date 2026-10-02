@@ -297,10 +297,30 @@
 .ins-mini.b-grid,
 .ins-mini.b-outer { box-shadow: 0 0 0 1px var(--line-strong); }
 
+/* ── tabs, accordion, collapsible, data, diagram ── */
+
+.ins-panels .ins-col-row { gap: 1px; padding-left: 7px; }
+.ins-panels .ins-col-row input[type='radio'] { flex: none; margin: 0 5px 0 0; accent-color: var(--accent); width: 15px; height: 15px; }
+.ins-panels .ins-col.is-current { background: var(--accent-soft); }
+.ins-panels .ins-title-input { flex: 1; min-width: 0; padding: 4px 7px; border-color: transparent; background: transparent; font-size: 13px; }
+.ins-panels .ins-title-input:hover { border-color: var(--line); }
+.ins-panels .is-current .ins-title-input { color: var(--accent); font-weight: 600; }
+.text-field.is-invalid { border-color: var(--bad); }
+.ins-del:hover:not(:disabled) { color: var(--bad) !important; background: var(--bad-soft) !important; }
+.ins-error { color: var(--bad); }
+.ins-add-btn,
+.ins-up { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; }
+.ins-formula-hint { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 9px 10px; border-radius: 9px; background: var(--sunken); }
+.ins-formula-hint code { padding: 0 3px; border-radius: 4px; background: var(--raised); color: var(--ink); overflow-wrap: anywhere; }
+.ins-formula-hint .btn code { background: none; padding: 0; }
+.ins-code-area { resize: vertical; font-size: 12.5px; line-height: 1.45; }
+.ins-code-area.mono { font-variation-settings: 'MONO' 1; }
+
 @media (pointer: coarse) {
   .ins-chip { min-height: 34px; }
   .ins-sec-head { padding-top: 13px; padding-bottom: 13px; }
   .ins-col-row { min-height: 38px; }
+  .ins-panels .ins-col-row .icon-btn { width: 30px; height: 30px; }
 }
 
 .ins-warn { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 9px 10px; border-radius: 9px; background: var(--warn-soft); }

@@ -2,9 +2,11 @@
 // sections from its content to its look.
 
 import { useState } from 'react';
-import { ChevronRight, Columns2, Rows2 } from 'lucide-react';
+import { ChevronRight, Columns2, PanelTopOpen, Rows2 } from 'lucide-react';
 import type { Cell } from '../../../core/types';
-import { isGroup } from '../../../core/types';
+import { isContainer, isGroup } from '../../../core/types';
+import { containerValue, panelTitles } from '../../../core/containers';
+import { describeDiagram, elementsOf } from '../../../core/diagram';
 import { show } from '../../../core/sx';
 import { plainValue } from '../../../core/engine';
 import { SxField, TextField } from '../fields';
@@ -20,7 +22,31 @@ import { Source } from './Source';
 import { TextSection } from './TextSection';
 
 /** Kinds whose text settings change nothing. */
-const NO_TEXT = new Set(['break', 'image', 'canvas']);
+const NO_TEXT = new Set(['break', 'image', 'canvas', 'diagram', 'data']);
+/** Kinds that take no room on the page, so spacing and a box mean nothing. */
+const NO_BOX = new Set(['break', 'data']);
+
+/** The heading: the kind, and for groups how many they hold. */
+function titleOf(cell: Cell, parent: Cell | null, label: string | undefined): string {
+  const n = cell.children?.length ?? 0;
+  if (cell.kind === 'row' || cell.kind === 'col') return `${KIND_LABEL[cell.kind]} of ${n}`;
+  if (cell.kind === 'tabs') return `Tabs, ${n} ${n === 1 ? 'tab' : 'tabs'}`;
+  if (cell.kind === 'accordion') return `Accordion, ${n} ${n === 1 ? 'section' : 'sections'}`;
+  if (cell.kind === 'panel' && parent) {
+    const i = parent.children?.findIndex((k) => k.id === cell.id) ?? -1;
+    return `${parent.kind === 'tabs' ? 'Tab' : 'Section'}: ${panelTitles(parent)[i] ?? ''}`;
+  }
+  return label ?? KIND_LABEL[cell.kind] ?? cell.kind;
+}
+
+/** What a container holds right now, in words. */
+function stateOf(cell: Cell): string {
+  const value = containerValue(cell);
+  if (cell.kind === 'collapsible') return value === false ? 'Folded' : 'Open';
+  if (cell.kind === 'tabs') return typeof value === 'string' ? `Showing “${value}”` : '—';
+  const open = Array.isArray(value) ? value.map(String) : [];
+  return open.length ? `Open: ${open.join(', ')}` : 'All closed';
+}
 
 export function CellPanel({ cell, ids }: { cell: Cell; ids: string[] }) {
   const session = useSession();
@@ -30,8 +56,8 @@ export function CellPanel({ cell, ids }: { cell: Cell; ids: string[] }) {
   const e = useEdit(cell, ids);
   const group = isGroup(cell);
   const multi = ids.length > 1;
-  const opt = !group ? kindOption(cell.kind, cell.type) : undefined;
-  const Icon = opt?.icon ?? (cell.kind === 'row' ? Columns2 : Rows2);
+  const opt = cell.kind !== 'row' && cell.kind !== 'col' && cell.kind !== 'panel' ? kindOption(cell.kind, cell.type) : undefined;
+  const Icon = opt?.icon ?? (cell.kind === 'row' ? Columns2 : cell.kind === 'panel' ? PanelTopOpen : Rows2);
   const crumbs: Cell[] = [];
   for (let p = parent; p; p = session.parent(p.id)) crumbs.unshift(p);
 
@@ -39,13 +65,13 @@ export function CellPanel({ cell, ids }: { cell: Cell; ids: string[] }) {
     <>
       <div className="crumbs">
         {crumbs.map((c) => (
-          <button key={c.id} onClick={() => session.select(c.id)}>{c.name ?? KIND_LABEL[c.kind]}<ChevronRight size={12} /></button>
+          <button key={c.id} onClick={() => session.select(c.id)}>{c.name ?? ((c.kind === 'panel' && c.title) || KIND_LABEL[c.kind])}<ChevronRight size={12} /></button>
         ))}
         <span>{cell.name ?? cell.id}</span>
       </div>
       <h2 className="panel-title">
         <Icon size={16} strokeWidth={1.75} aria-hidden />
-        {multi ? `${ids.length} cells` : opt?.label ?? `${KIND_LABEL[cell.kind]} of ${cell.children?.length ?? 0}`}
+        {multi ? `${ids.length} cells` : titleOf(cell, parent, opt?.label)}
         <code className="id">{cell.id}</code>
       </h2>
       <p className="ins-about">{multi ? 'Changes to text, spacing and the box apply to every selected cell.' : KIND_ABOUT[cell.kind]}</p>
@@ -61,13 +87,13 @@ export function CellPanel({ cell, ids }: { cell: Cell; ids: string[] }) {
           {multi ? <Picked ids={ids} /> : <Content e={e} st={st} />}
         </Section>
         {!NO_TEXT.has(cell.kind) && <TextSection e={e} open={cell.kind === 'text'} />}
-        {cell.kind !== 'break' && (
+        {!NO_BOX.has(cell.kind) && (
           <>
             <SpacingSection e={e} parent={parent} group={group} />
             <BoxSection e={e} />
           </>
         )}
-        {!multi && <Visibility e={e} />}
+        {!multi && cell.kind !== 'data' && <Visibility e={e} />}
       </div>
 
       {!multi && (st?.reads?.length || feeds?.length) ? (
@@ -78,16 +104,23 @@ export function CellPanel({ cell, ids }: { cell: Cell; ids: string[] }) {
         </>
       ) : null}
 
-      {!group && !multi && (
+      {(!group || isContainer(cell)) && !multi && (
         <>
           <h3 className="panel-h">Value</h3>
-          <p className={cx('value-preview', st?.error && 'is-error')}>{st?.error ? st.error : cell.kind === 'canvas' ? strokeCount(st?.value) : show(plainValue(st?.value)) || '—'}</p>
+          <p className={cx('value-preview', st?.error && 'is-error')}>{st?.error ? st.error : valueText(cell, st?.value)}</p>
         </>
       )}
 
       {!multi && <Source cell={cell} />}
     </>
   );
+}
+
+function valueText(cell: Cell, v: unknown): string {
+  if (cell.kind === 'canvas') return strokeCount(v);
+  if (cell.kind === 'diagram') return elementsOf(v).length ? describeDiagram(elementsOf(v)) : 'Nothing drawn yet';
+  if (isContainer(cell)) return stateOf(cell);
+  return show(plainValue(v)) || '—';
 }
 
 const strokeCount = (v: unknown) => {

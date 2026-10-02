@@ -75,10 +75,12 @@ export function Overlay({ host }: { host: RefObject<HTMLDivElement | null> }) {
   const primary = primaryId ? session.cell(primaryId) : undefined;
   const reads = (primary && links && computed?.cells[primary.id]?.reads) || [];
   const feeds = (primary && links && computed?.feeds[primary.id]) || [];
+  // A selected panel sits under its tab bar or heading; the toolbar goes above the whole container so it hides neither.
+  const holder = primary?.kind === 'panel' ? session.parent(primary.id) : null;
 
   useLayoutEffect(() => {
     if (!host.current) return;
-    const ids = new Set<string>([...selection, ...reads, ...feeds, ...Object.keys(flashes)]);
+    const ids = new Set<string>([...selection, ...reads, ...feeds, ...Object.keys(flashes), ...(holder ? [holder.id] : [])]);
     const next = measure(host.current, ids);
     setRects((prev) => (sameRects(prev, next) ? prev : next));
   });
@@ -152,7 +154,7 @@ export function Overlay({ host }: { host: RefObject<HTMLDivElement | null> }) {
       )}
 
       {box && primary && !editing && (
-        <div className="toolbar" role="toolbar" aria-label="Cell tools" style={{ left: Math.max(0, Math.min(box.x, hostW - 400)), top: Math.max(4, box.y - 44) }}>
+        <div className="toolbar" role="toolbar" aria-label="Cell tools" style={{ left: Math.max(0, Math.min(box.x, hostW - 400)), top: Math.max(4, Math.min(box.y, holder && rects[holder.id] ? rects[holder.id].y : box.y) - 44) }}>
           <button title="Split into left and right (⌥→)" onClick={() => session.split(primary.id, 'row')}><SquareSplitHorizontal size={16} /></button>
           <button title="Split into top and bottom (⌥↓)" onClick={() => session.split(primary.id, 'col')}><SquareSplitVertical size={16} /></button>
           <button title={canMerge ? 'Merge into one cell (⌘M)' : 'Select neighbouring cells to merge them'} disabled={!canMerge} onClick={() => session.merge()}><TableCellsMerge size={16} /></button>
