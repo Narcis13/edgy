@@ -6,11 +6,19 @@ export type Json = null | boolean | number | string | Json[] | { [k: string]: Js
 export type Sx = Json;
 
 export type Dir = 'row' | 'col';
+/**
+ * Cells that hold cells. A row or col lays its children side by side or
+ * stacked; tabs and an accordion hold panels (titled sections, one shown at a
+ * time or folded); a collapsible is a stack under a heading that folds.
+ */
+export const GROUP_KINDS = ['row', 'col', 'tabs', 'accordion', 'collapsible', 'panel'] as const;
+export type GroupKind = (typeof GROUP_KINDS)[number];
 export const LEAF_KINDS = [
   'empty', 'text', 'formula', 'input', 'button', 'image', 'icon', 'chart', 'table', 'list', 'calendar', 'canvas', 'stat', 'break',
+  'diagram', 'data',
 ] as const;
 export type LeafKind = (typeof LEAF_KINDS)[number];
-export type Kind = Dir | LeafKind;
+export type Kind = GroupKind | LeafKind;
 
 /** A weight (shares free space), "hug" (as small as the content) or a fixed "120px". */
 export type Size = number | string;
@@ -87,6 +95,10 @@ export interface Cell {
   better?: string;
   /** button, row action: a question asked before it runs. */
   confirm?: string;
+  /** panel: the tab or section heading; collapsible: its heading. Keys the container's value. */
+  title?: string;
+  /** accordion: true lets any number of sections be open; unset, one at a time. */
+  multiple?: boolean;
 }
 
 export interface DocMeta {
@@ -122,7 +134,15 @@ export interface Actor {
   id?: string;
 }
 
-export const isGroup = (c: Cell): boolean => c.kind === 'row' || c.kind === 'col';
+const GROUPS = new Set<string>(GROUP_KINDS);
+export const isGroup = (c: Cell): boolean => GROUPS.has(c.kind);
+/** Tabs and accordions: their children are panels, and only panels. */
+export const holdsPanels = (c: Cell | null | undefined): boolean => c?.kind === 'tabs' || c?.kind === 'accordion';
+/** The tabs, accordion and collapsible: groups whose state (what is open) is their value. */
+export const isContainer = (c: Cell | null | undefined): boolean => holdsPanels(c) || c?.kind === 'collapsible';
+/** How a group lays out its children: side by side, stacked, or (tabs, accordion) as panels. */
+export const flowOf = (c: Cell): Dir | null =>
+  c.kind === 'row' ? 'row' : c.kind === 'col' || c.kind === 'panel' || c.kind === 'collapsible' ? 'col' : null;
 
 export const NAME_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 export const RESERVED_NAMES = new Set(['true', 'false', 'nil', 'null', 'it', 'i', 'acc']);

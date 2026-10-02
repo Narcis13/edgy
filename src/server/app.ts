@@ -5,7 +5,7 @@ import { streamSSE } from 'hono/streaming';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { type Actor, type Doc, type Json, type Op, type Sx, isGroup, newDoc } from '../core/types';
+import { type Actor, type Doc, type Json, type Op, type Sx, isContainer, isGroup, newDoc } from '../core/types';
 import { OpError, applyOps } from '../core/ops';
 import { type Computed, type World, evalIn, evaluate, plainValue } from '../core/engine';
 import { toNotation } from '../core/notation';
@@ -47,7 +47,8 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string) {
     const errors: Record<string, string> = {};
     for (const [id, st] of Object.entries(computed.cells)) {
       const cell = idx.byId.get(id)!;
-      if (isGroup(cell)) continue;
+      // Groups are only their children, except tabs, accordions and collapsibles, whose value is what is open.
+      if (isGroup(cell) && !isContainer(cell)) continue;
       if (st.error) errors[cell.name ?? id] = st.error;
       else if (cell.name) values[cell.name] = plainValue(st.value);
     }

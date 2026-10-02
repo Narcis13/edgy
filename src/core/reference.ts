@@ -44,7 +44,7 @@ export const FUNCTIONS: FnDoc[] = [
   { group: 'Cells', name: 'a cell holding (fn …)', use: '(balance 10)', does: 'A formula cell can hold a function; call it by the cell\'s name.' },
   { group: 'Cells', name: 'rows', use: '(rows "orders")', does: 'The records saved in a collection, each with id and at.' },
   { group: 'Cells', name: 'selected', use: '(selected orders)', does: 'The rows picked in a table (one with a select prop), as records.' },
-  { group: 'Actions', name: 'set! toggle!', use: '(set! count (+ count 1))', does: 'Change an input\'s value.' },
+  { group: 'Actions', name: 'set! toggle!', use: '(set! count (+ count 1))', does: 'Change the value of an input, a data cell, tabs (the open title), an accordion (the open titles) or a collapsible (open or not).' },
   { group: 'Actions', name: 'insert! delete! clear!', use: '(insert! "orders" {qty qty})', does: 'Save a record to a collection, delete one by id, or empty it.' },
   { group: 'Actions', name: 'update!', use: '(update! "orders" (get row "id") {status "paid"})', does: 'Change some fields of a saved record. In a table\'s row action, row is that row\'s record.' },
   { group: 'Actions', name: 'dup! remove!', use: '(dup! (child lines -1))', does: 'Copy or remove a cell, e.g. add a row. (child group n) picks the nth cell of a row or column; -1 is the last.' },
@@ -68,6 +68,13 @@ A cell is written [kind, props?, ...body]:
 
 Kinds and their body:
 - row, col: child cells. A bare string child is a text cell.
+- tabs: panels behind a tab bar, one shown at a time: ["tabs", {"name": "view", "value": "Details"}, ["panel", {"title": "Overview"}, …cells], ["panel", {"title": "Details"}, …cells]]. Its value is the open tab's title, so other cells read it, (= view "Details"), and a button opens one, (set! view "Details"). Unset, the first tab is open. On paper every panel prints, in order, under its title.
+- accordion: sections that fold, the same panels as tabs: ["accordion", {"name": "faq"}, ["panel", {"title": "Shipping"}, …], …]. Props: multiple (true lets any number be open; unset, opening one closes the other). Its value is the list of open titles, e.g. ["Shipping"]; set it with a list, one title, or [] to close all: (set! faq "Returns"). (includes? faq "Shipping") tells whether one is open. Prints unfolded.
+- panel: a titled section, only directly inside tabs or an accordion. Prop: title (unique within its container; it is the key the container's value uses). Body: its cells, stacked like a col. Splitting a panel adds a panel beside it; dup copies it as a new tab; move reorders panels; the last panel can't be removed (remove the tabs instead).
+- collapsible: a heading that folds the cells under it: ["collapsible", {"name": "more", "title": "More details", "value": false}, …cells]. Its value is true while open (the default) and false while folded, so (toggle! more) folds and unfolds it and (if more …) reads it. Prints unfolded.
+  Inside any of these, cells split, merge, move and duplicate as in a col; the last cell of a panel leaves an empty cell behind.
+- data: a value for the document's own use, never shown to readers and taking no space (in Edit it is a small chip): ["data", {"name": "step"}, 1], ["data", {"name": "regions"}, ["North", "South"]], ["data", {"name": "cfg"}, {"vat": 0.2}]. Formulas read it by name; actions change it: (set! step (+ step 1)). Use it for a wizard's current step, a flag, a lookup list. Unlike hidden, nothing ever shows it.
+- diagram: shapes, text and arrows, drawn by people (in Edit) or written as data. The body is the elements: ["diagram", {"name": "flow"}, {"id": "a", "type": "rect", "text": "Order placed"}, {"id": "b", "type": "diamond", "text": "Paid?"}, {"type": "arrow", "from": "a", "to": "b", "text": "check"}]. Element fields: id (yours, or e1, e2… given for you), type (rect, ellipse, diamond, text, arrow, line), x y w h (px; leave out x and y and the boxes are laid out top to bottom along the arrows), text (may carry {{templates}}, e.g. "Total {{total | currency}}", shown live), color (a token for outline and text), fill (a token, e.g. "accent-soft"), size (font px), dash (true). Arrows and lines take from/to (element ids: the end stays attached when that shape moves) or x1 y1 / x2 y2 for a free end. Its value is the list of elements, so (count-if (!= (get it "type") "arrow") flow) counts the boxes. Change one element with the draw op instead of rewriting the list.
 - text: markdown (#, ##, ###, **bold**, *italic*, \`code\`, - lists, [links](url)) with {{expr}} or {{expr | format}} templates in Lisp syntax, e.g. "Total {{(* qty price) | currency}}".
 - formula: an expression. Prop: format.
 - input: no body. Props: type (text, number, slider, checkbox, toggle, select, date, textarea, rating), value, label, placeholder, min, max, step, options (an expression such as ["list", "S", "M", "L"]).
@@ -121,6 +128,8 @@ ${['Math', 'Logic', 'Lists', 'Records', 'Text', 'Dates', 'Cells', 'Actions']
   ["put", cell, notation]     give a cell new content, keeping its id, name and size. The fastest way to build: put a whole row/col tree into one cell.
   ["set", cell, prop, value]  one property: "value", "text", "expr", "name", "size", "style.bg", … (null removes)
   ["style", cell, {…}]        several style properties at once
+  ["draw", diagram, element, …]   add elements to a diagram, or change those whose id exists (a field set to null is removed); new boxes without x/y are placed below the box an arrow comes from
+  ["erase", diagram, id, …]   remove diagram elements and the arrows attached to them
   ["meta", "title"|"width"|"minHeight"|"currency"|"page"|"orientation"|"margin"|"footer"|"font"|"headFont"|"fontSize", value]
                               page: "A4" (default), "A5", "Letter", "Legal"; orientation: "portrait" or "landscape";
                               margin: millimetres (default 16); footer: "number", "title" or "none" — used by the printed pages;

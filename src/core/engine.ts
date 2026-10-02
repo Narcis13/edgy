@@ -2,7 +2,9 @@
 // and remember which cells each one reads so links can be drawn.
 
 import type { Cell, Doc, Sx } from './types';
-import { isGroup } from './types';
+import { isContainer, isGroup } from './types';
+import { containerValue } from './containers';
+import { elementsOf } from './diagram';
 import { type Index, indexTree, walk } from './tree';
 import { type Effect, type Host, Interp, SxError, deepEqual, formatValue, hasTemplate, parseTemplate, truthy } from './sx';
 import { pickRows } from './table';
@@ -167,6 +169,8 @@ class Evaluator {
   }
 
   private compute(cell: Cell): unknown {
+    // Tabs give the open tab's title, an accordion the open sections', a collapsible whether it is open.
+    if (isContainer(cell)) return containerValue(cell);
     if (isGroup(cell)) return cell.children!.map((ch) => this.valueOf(ch));
     switch (cell.kind) {
       case 'text': return this.template(cell, cell.text ?? '');
@@ -179,6 +183,10 @@ class Evaluator {
       // A calendar is worth the day picked on it; its events are worked out with the other props.
       case 'calendar': return typeof cell.value === 'string' && cell.value ? cell.value : null;
       case 'canvas': return Array.isArray(cell.value) ? cell.value : [];
+      // A diagram is worth its elements, so formulas can count and read them.
+      case 'diagram': return elementsOf(cell.value);
+      // A data cell holds a value for the document's own use; readers never see it.
+      case 'data': return cell.value ?? null;
       case 'input': {
         const v = cell.value ?? null;
         const t = cell.type ?? 'text';
@@ -212,7 +220,7 @@ class Evaluator {
       else st.hidden = truthy(cell.hidden);
     }
     const props: Record<string, unknown> = {};
-    for (const k of ['label', 'placeholder', 'src', 'alt'] as const) {
+    for (const k of ['label', 'placeholder', 'src', 'alt', 'title'] as const) {
       const v = cell[k];
       if (typeof v === 'string' && hasTemplate(v)) guard(() => { props[k] = this.template(cell, v); });
     }
@@ -221,6 +229,14 @@ class Evaluator {
       if (isExpr(v)) guard(() => { props[k] = this.evalIn(cell, v); });
     }
     if (cell.kind === 'calendar' && cell.expr !== undefined) guard(() => { props.events = this.evalIn(cell, cell.expr!); });
+    if (cell.kind === 'diagram') {
+      // Labels with {{templates}} show live values: {element id: the text as shown}.
+      const texts: Record<string, string> = {};
+      for (const el of elementsOf(cell.value)) {
+        if (typeof el.text === 'string' && hasTemplate(el.text)) guard(() => { texts[el.id] = this.template(cell, el.text!); });
+      }
+      if (Object.keys(texts).length) props.texts = texts;
+    }
     if (Object.keys(props).length) st.props = props;
     const reads = this.reads.get(cell.id);
     if (reads?.size) st.reads = [...reads];

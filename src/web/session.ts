@@ -6,6 +6,8 @@ import { flushSync } from 'react-dom';
 import type { Actor, Cell, Doc, Json, Op, Sx } from '../core/types';
 import { isGroup } from '../core/types';
 import { type Applied, applyOps } from '../core/ops';
+import { toNotation } from '../core/notation';
+import type { Raised } from '../core/events';
 import { type Computed, evaluate, runAction } from '../core/engine';
 import { indexTree, leaves } from '../core/tree';
 import { type LogEntry, type Message, type Row, ApiError, api } from './lib/api';
@@ -102,6 +104,8 @@ export class Session {
   readonly store: Store<SessionState>;
   /** While a formula is being typed, clicking another cell inserts a reference to it. */
   pick: ((ref: string) => void) | null = null;
+  /** The events cells raised lately, newest last (see `raise`). */
+  raised: Raised[] = [];
 
   private s: SessionState;
   private confirmed: Doc | null = null;
@@ -618,6 +622,36 @@ export class Session {
         ];
         break;
       case 'break': cell = ['break']; break;
+      case 'tabs':
+      case 'accordion':
+      case 'collapsible': {
+        if (same) return;
+        // What the cell held goes inside, keeping its own look; the container starts open so it can be edited.
+        const inner: Json[] = c.kind === 'empty' ? [] : [toNotation(c, false)];
+        const preset = props ?? {};
+        if (kind === 'collapsible') cell = ['collapsible', { title: 'Details', ...preset }, ...inner];
+        else {
+          const word = kind === 'tabs' ? 'Tab' : 'Section';
+          cell = [kind, { ...(kind === 'accordion' ? { value: [`${word} 1`] } : {}), ...preset },
+            ['panel', { title: `${word} 1` }, ...inner], ['panel', { title: `${word} 2` }]];
+        }
+        break;
+      }
+      case 'data': {
+        // A data cell is read by name, so it gets one; it keeps what an input or text held.
+        const v: Json = same ? c.value ?? null : c.kind === 'input' ? c.value ?? null : c.kind === 'text' ? c.text ?? '' : 0;
+        const names = new Set(indexTree(this.s.doc!.root).byName.keys());
+        let name = c.name;
+        if (!name) for (let n = 1; !name; n++) if (!names.has(n === 1 ? 'data' : `data${n}`)) name = n === 1 ? 'data' : `data${n}`;
+        cell = ['data', { name, ...props }, v];
+        break;
+      }
+      case 'diagram':
+        cell = same ? ['diagram', { ...own('label', 'value'), ...keep }] : ['diagram', keep,
+          { id: 'a', type: 'rect', text: 'Start', fill: 'accent-soft', color: 'accent' },
+          { id: 'b', type: 'rect', text: 'Next step' },
+          { type: 'arrow', from: 'a', to: 'b' }];
+        break;
       default: cell = ['empty', keep];
     }
     this.dispatch(['put', id, cell]);
@@ -648,6 +682,16 @@ export class Session {
     } catch (e) {
       this.toast(e instanceof Error ? `That button failed: ${e.message}.` : 'That button failed.');
     }
+  }
+
+  /**
+   * A cell raised an event: a tab changed, a section opened, a shape was
+   * clicked (each kind declares its events in core/events.ts). Nothing handles
+   * events yet; the events brief connects handlers here. The last few are kept
+   * so they can be looked at.
+   */
+  raise(cell: string, name: string, data: Record<string, unknown> = {}): void {
+    this.raised = [...this.raised.slice(-19), { cell, name, data }];
   }
 
   async say(text: string): Promise<void> {

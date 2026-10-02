@@ -5,6 +5,8 @@ import type { Cell, Doc } from './types';
 import { isGroup } from './types';
 import { type Computed, plainValue } from './engine';
 import { print } from './sx';
+import { openSections, openTab } from './containers';
+import { describeDiagram, elementsOf } from './diagram';
 
 const clip = (s: string, n = 64) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
 const lit = (v: unknown) => clip(JSON.stringify(plainValue(v)) ?? 'null', 80);
@@ -29,6 +31,12 @@ function line(cell: Cell, computed?: Computed): string {
     case 'list': parts.push(cell.expr !== undefined ? '= ' + clip(print(cell.expr, 10_000), 90) : `${Array.isArray(cell.value) ? cell.value.length : 0} items`); break;
     case 'calendar': parts.push('events ' + clip(print(cell.expr ?? null, 10_000), 80), 'picked ' + lit(cell.value ?? null)); break;
     case 'canvas': parts.push(`${Array.isArray(cell.value) ? cell.value.length : 0} strokes`); break;
+    case 'tabs': parts.push(`${cell.children?.length ?? 0} tabs, open ${lit(openTab(cell))}`); break;
+    case 'accordion': parts.push(`${cell.children?.length ?? 0} sections, ${cell.multiple ? 'any number open' : 'one open at a time'}, open ${lit(openSections(cell))}`); break;
+    case 'collapsible': parts.push(JSON.stringify(cell.title ?? ''), st?.value === false ? 'folded' : 'open'); break;
+    case 'panel': parts.push(JSON.stringify(cell.title ?? '')); break;
+    case 'diagram': parts.push(describeDiagram(elementsOf(cell.value))); break;
+    case 'data': parts.push('(never shown) = ' + lit(cell.value ?? null)); break;
     case 'input': parts.push('= ' + lit(cell.value ?? null)); break;
     case 'button': parts.push(JSON.stringify(cell.label ?? ''), 'do ' + clip(print(cell.do ?? null, 10_000), 90)); break;
     case 'image': parts.push(clip(cell.src ?? '')); break;

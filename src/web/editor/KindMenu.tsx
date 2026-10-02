@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Calendar, CalendarDays, ChartArea, ChartColumn, ChartLine, ChartPie, CircleDashed, Gauge, Hash, Image, List, ListChecks, ListOrdered,
   type LucideIcon, MousePointerClick, PenTool, SeparatorHorizontal, Sigma, Signature, SlidersHorizontal, Smile, SquareCheck, Star, Table2,
-  TextCursorInput, ToggleLeft, TrendingUp, Type, ListFilter, Text,
+  TextCursorInput, ToggleLeft, TrendingUp, Type, ListFilter, Text, PanelTop, ListCollapse, ChevronsDownUp, Workflow, Variable,
 } from 'lucide-react';
 import type { Json } from '../../core/types';
 import { cx, useSession } from './ctx';
@@ -49,6 +49,11 @@ export const KIND_OPTIONS: KindOption[] = [
   { kind: 'calendar', label: 'Calendar', hint: 'A month of events; pick a day', icon: CalendarDays },
   { kind: 'canvas', label: 'Drawing', hint: 'Sketch with a mouse, pen or finger', icon: PenTool },
   { kind: 'canvas', label: 'Signature', hint: 'A line to sign on', icon: Signature, props: { label: 'Sign here' }, preset: true },
+  { kind: 'diagram', label: 'Diagram', hint: 'Shapes and arrows that stay joined', icon: Workflow },
+  { kind: 'tabs', label: 'Tabs', hint: 'Panels behind a tab bar, one shown at a time', icon: PanelTop },
+  { kind: 'accordion', label: 'Accordion', hint: 'Sections that fold open and shut', icon: ListCollapse },
+  { kind: 'collapsible', label: 'Collapsible', hint: 'A heading that folds what is under it', icon: ChevronsDownUp },
+  { kind: 'data', label: 'Data (hidden)', hint: 'A value for formulas and buttons; readers never see it', icon: Variable },
   { kind: 'break', label: 'Page break', hint: 'Start a new page when printed', icon: SeparatorHorizontal },
   { kind: 'empty', label: 'Empty', hint: 'Clear the cell', icon: CircleDashed },
 ];

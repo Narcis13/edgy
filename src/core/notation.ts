@@ -9,20 +9,26 @@
 // Shape: [kind, props?, ...body]. The body is the children of a row/col, the
 // text of a text cell, the expression of a formula/chart/table, the label
 // (and optional action) of a button, the source of an image, the name of an
-// icon, the items of a list. A bare string among children is a text cell.
+// icon, the items of a list, the elements of a diagram, the value of a data
+// cell. A bare string among children is a text cell.
+//
+//   ["tabs", {"name": "view"},
+//     ["panel", {"title": "Overview"}, ["text", "…"]],
+//     ["panel", {"title": "Details"}, ["table", …]]]
 
-import { type Cell, type Json, type Kind, LEAF_KINDS, NAME_RE, RESERVED_NAMES, isGroup } from './types';
+import { type Cell, type Json, type Kind, GROUP_KINDS, LEAF_KINDS, NAME_RE, RESERVED_NAMES, holdsPanels, isGroup } from './types';
 import { validSize } from './tree';
+import { DiagramError, prepareDiagram } from './diagram';
 
 export class NotationError extends Error {}
 
-const KINDS = new Set<string>(['row', 'col', ...LEAF_KINDS]);
+const KINDS = new Set<string>([...GROUP_KINDS, ...LEAF_KINDS]);
 
 const PROPS = [
   'name', 'size', 'style', 'hidden', 'text', 'expr', 'format', 'type', 'value', 'label', 'placeholder',
   'min', 'max', 'step', 'options', 'do', 'variant', 'src', 'fit', 'alt', 'icon', 'compare', 'trend', 'columns',
   'selected', 'select', 'group', 'actions', 'borders', 'stripes', 'density', 'header', 'search',
-  'paper', 'color', 'marker', 'progress', 'week', 'better', 'confirm',
+  'paper', 'color', 'marker', 'progress', 'week', 'better', 'confirm', 'title', 'multiple',
 ] as const;
 export const SETTABLE = new Set<string>(PROPS);
 
@@ -33,7 +39,7 @@ export const STYLE_KEYS = new Set([
 
 const BODY: Partial<Record<Kind, keyof Cell>> = {
   text: 'text', formula: 'expr', chart: 'expr', table: 'expr', button: 'label', image: 'src', icon: 'icon',
-  calendar: 'expr', stat: 'expr',
+  calendar: 'expr', stat: 'expr', data: 'value',
 };
 
 const isObject = (v: unknown): v is Record<string, Json> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -106,8 +112,30 @@ export function build(n: Json, ctx: BuildCtx): Cell {
     } else (cell as unknown as Record<string, Json>)[k] = v;
   }
 
-  if (kind === 'row' || kind === 'col') {
+  if (holdsPanels(cell)) {
+    // Tabs and accordions hold panels; with none written, two to start from.
+    const word = kind === 'tabs' ? 'Tab' : 'Section';
+    const panels = body.length ? body : [['panel', { title: `${word} 1` }], ['panel', { title: `${word} 2` }]];
+    cell.children = panels.map((b, i) => {
+      const p = build(b, ctx);
+      if (p.kind !== 'panel') {
+        throw new NotationError(`${kind} hold panels, each with a title: ["panel", {"title": "${word} ${i + 1}"}, …cells]`);
+      }
+      return p.title == null ? { ...p, title: `${word} ${i + 1}` } : p;
+    });
+  } else if (isGroup(cell)) {
     cell.children = body.map((b) => build(b, ctx));
+    // A panel or collapsible always holds something, even if only an empty cell.
+    if (!cell.children.length && (kind === 'panel' || kind === 'collapsible')) cell.children = [{ id: ctx.gen(), kind: 'empty' }];
+  } else if (kind === 'diagram') {
+    // The body is the elements: ["diagram", {}, {"id": "a", "type": "rect", "text": "Start"}, …]
+    if (body.length && cell.value === undefined) cell.value = body.filter((b) => b != null);
+    try {
+      if (cell.value !== undefined) cell.value = prepareDiagram(cell.value) as unknown as Json;
+    } catch (e) {
+      if (e instanceof DiagramError) throw new NotationError(e.message);
+      throw e;
+    }
   } else if (kind === 'list') {
     // The body is the items themselves: ["list", {"type": "check"}, "Milk", {"text": "Eggs", "done": true}]
     if (body.length && cell.value === undefined) cell.value = body.filter((b) => b != null);
@@ -132,7 +160,7 @@ export function toNotation(cell: Cell, withIds = true): Json {
   for (const [k, v] of Object.entries(rest)) if (k !== key && v !== undefined) props[k] = v as Json;
   let body: Json[] = [];
   if (isGroup(cell)) body = children!.map((ch) => toNotation(ch, withIds));
-  else if (kind === 'list' && Array.isArray(rest.value) && rest.value.length) {
+  else if ((kind === 'list' || kind === 'diagram') && Array.isArray(rest.value) && rest.value.length) {
     delete props.value;
     body = rest.value as Json[];
   } else if (key && (rest as Record<string, Json>)[key] !== undefined) body = [(rest as Record<string, Json>)[key]];

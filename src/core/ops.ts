@@ -11,18 +11,22 @@
 //   ["replace", cell, notation]                              swap the whole subtree
 //   ["set", cell, "path.to.prop", value]                     one property (null removes it)
 //   ["style", cell, {bg: …}]                                 several style properties
+//   ["draw", diagram, element, …]                            add or change diagram elements
+//   ["erase", diagram, elementId, …]                         remove diagram elements
 //   ["meta", key, value]                                     document settings
 //   ["do", op, op, …]                                        all or nothing
 //
 // `cell` is an id or a name. Applying returns the op with every new id filled
 // in (so replaying it is deterministic) and the op that undoes it.
 
-import { type Cell, type Doc, type Json, type Op, type Sx, isGroup } from './types';
+import { type Cell, type Doc, type Json, type Op, type Sx, flowOf, holdsPanels, isGroup } from './types';
 import {
   cloneTree, indexTree, isPlain, leaves, normalize, pathTo, resolve, rewrite, round4, validSize, weight, withSize,
 } from './tree';
 import { type BuildCtx, NotationError, SETTABLE, build, checkName, checkStyle, toNotation } from './notation';
 import { mapTemplate } from './sx';
+import { freeTitle, renamedValue } from './containers';
+import { DiagramError, elementsOf, eraseElements, prepareDiagram, upsertElements } from './diagram';
 
 export class OpError extends Error {}
 
@@ -86,9 +90,17 @@ function split(w: Work, op: Op): Result {
   else fresh = { id: w.ctx.gen(), kind: 'empty' };
 
   const parent = parentOf(w.root, target.id);
+  if (target.kind === 'panel' && parent) {
+    // Panels sit one after another, so splitting one adds a panel beside it.
+    if (opts.cell == null) {
+      fresh = { id: fresh.id, kind: 'panel', title: freeTitle(parent), children: [{ id: w.ctx.gen(), kind: 'empty' }] };
+    } else if (fresh.kind !== 'panel') throw new OpError('beside a panel goes another panel: ["panel", {"title": "…"}, …cells]');
+  }
   const out: Record<string, Json> = { ...(before ? { before: true } : {}), ...(ratio !== 0.5 ? { ratio } : {}), cell: toNotation(fresh) };
   let root: Cell;
-  if (parent && parent.kind === dir) {
+  if (target.kind === 'panel' && parent) {
+    root = swapRoot(rewrite(w.root, target.id, (c) => (before ? [fresh, c] : [c, fresh])));
+  } else if (parent && flowOf(parent) === dir) {
     const tw = weight(target);
     const [a, b] = before ? [1 - ratio, ratio] : [ratio, 1 - ratio];
     const kept = tw == null ? target : withSize(target, round4(tw * a));
@@ -134,6 +146,7 @@ function merge(w: Work, op: Op): Result {
   while (paths.every((p) => p[depth] && p[depth] === paths[0][depth])) depth++;
   let lca = paths[0][depth - 1];
   if (!isGroup(lca)) lca = paths[0][depth - 2];
+  if (holdsPanels(lca)) throw new OpError(`cells in different ${lca.kind === 'tabs' ? 'tabs' : 'sections'} can't be merged; move them into one first`);
 
   const inOrder = leaves(w.root).filter((c) => sel.has(c.id));
   const merged = fuse(inOrder);
@@ -149,15 +162,17 @@ function merge(w: Work, op: Op): Result {
   if (state.slice(first, last + 1).includes('none')) throw new OpError('those cells are not next to each other');
 
   let next: Cell;
+  const flow = flowOf(lca) ?? 'col';
   if (!state.includes('part')) {
+    // A whole row or col becomes the merged cell; a panel or collapsible keeps its heading and holds it.
     next = first === 0 && last === kids.length - 1
-      ? withSize(merged, lca.size)
+      ? lca.kind === 'row' || lca.kind === 'col' ? withSize(merged, lca.size) : { ...lca, children: [withSize(merged, undefined)] }
       : { ...lca, children: [...kids.slice(0, first), withSize(merged, sumSize(kids.slice(first, last + 1))), ...kids.slice(last + 1)] };
   } else {
     // The selection crosses several rows of a grid: rebuild that band so the
     // merged block spans them.
     const band = kids.slice(first, last + 1);
-    const cross = lca.kind === 'row' ? 'col' : 'row';
+    const cross = flow === 'row' ? 'col' : 'row';
     const n = band[0].children?.length ?? 0;
     const fractions = (g: Cell) => {
       const ws = g.children!.map(weight);
@@ -183,7 +198,7 @@ function merge(w: Work, op: Op): Result {
       if (j === c0) columns.push(withSize(merged, sumSize(band[0].children!.slice(c0, c1 + 1))));
       if (j >= c0 && j <= c1) continue;
       columns.push(withSize(
-        { id: w.ctx.gen(), kind: lca.kind, children: band.map((g) => withSize(g.children![j], g.size)) },
+        { id: w.ctx.gen(), kind: flow, children: band.map((g) => withSize(g.children![j], g.size)) },
         band[0].children![j].size,
       ));
     }
@@ -194,11 +209,21 @@ function merge(w: Work, op: Op): Result {
   return { root, op: ['merge', ...inOrder.map((c) => c.id)], touched: [merged.id], anchors: [lca, ...ancestors(w.root, lca.id)] };
 }
 
-/** Take a cell out of its parent, handing its share of space to a neighbour. */
-function detach(root: Cell, target: Cell): Cell {
+/**
+ * Take a cell out of its parent, handing its share of space to a neighbour.
+ * The last cell of a panel or collapsible leaves an empty cell (`hole`) behind,
+ * as the root does; the last panel of tabs or an accordion can't go.
+ */
+function detach(root: Cell, target: Cell, hole = target.id): Cell {
   const parent = parentOf(root, target.id);
-  if (!parent) return { id: target.id, kind: 'empty' };
+  if (!parent) return { id: hole, kind: 'empty' };
   const kids = parent.children!;
+  if (kids.length === 1 && holdsPanels(parent)) {
+    throw new OpError(`${parent.kind} keep at least one panel; remove the ${parent.kind} instead`);
+  }
+  if (kids.length === 1 && (parent.kind === 'panel' || parent.kind === 'collapsible')) {
+    return swapRoot(rewrite(root, target.id, () => ({ id: hole, kind: 'empty' })));
+  }
   const i = kids.indexOf(target);
   const tw = weight(target);
   const heir = tw == null ? -1 : i > 0 && weight(kids[i - 1]) != null ? i - 1 : i + 1 < kids.length && weight(kids[i + 1]) != null ? i + 1 : -1;
@@ -224,8 +249,9 @@ function dup(w: Work, op: Op): Result {
     return id;
   };
   const made: string[] = [];
-  const copy = cloneTree(target, () => { const id = gen(); made.push(id); return id; }, w.ctx.names);
+  let copy = cloneTree(target, () => { const id = gen(); made.push(id); return id; }, w.ctx.names);
   const parent = parentOf(w.root, target.id);
+  if (target.kind === 'panel' && parent) copy = { ...copy, title: freeTitle(parent, target.title) };
   let root: Cell;
   const out: Record<string, Json> = { ids: made };
   if (parent) {
@@ -243,6 +269,7 @@ function swap(w: Work, op: Op): Result {
   const b = must(w.root, op[2]);
   if (a === b) throw new OpError('swap needs two different cells');
   if (pathTo(w.root, a.id)!.includes(b) || pathTo(w.root, b.id)!.includes(a)) throw new OpError("a cell can't swap with one inside it");
+  if ((a.kind === 'panel') !== (b.kind === 'panel')) throw new OpError('a panel only swaps with another panel');
   const hole: Cell = { id: '\u0000', kind: 'empty' };
   let root = swapRoot(rewrite(w.root, a.id, () => hole));
   root = swapRoot(rewrite(root, b.id, () => withSize(a, b.size)));
@@ -257,11 +284,13 @@ function move(w: Work, op: Op): Result {
   if (where !== 'before' && where !== 'after') throw new OpError('move places a cell "before" or "after" another');
   if (pathTo(w.root, ref.id)!.includes(target)) throw new OpError("a cell can't move next to something inside it");
   if (!parentOf(w.root, ref.id)) throw new OpError('nothing can sit beside the root; split it instead');
+  if (target.kind === 'panel' && ref.kind !== 'panel') throw new OpError('a panel moves beside another panel');
+  if (target.kind !== 'panel' && ref.kind === 'panel') throw new OpError('only panels sit in tabs and accordions; move it beside a cell inside the panel');
   const pa = pathTo(w.root, target.id)!;
   const pb = pathTo(w.root, ref.id)!;
   let d = 0;
   while (pa[d] && pa[d] === pb[d]) d++;
-  let root = detach(w.root, target);
+  let root = detach(w.root, target, w.ctx.gen());
   const stillRef = resolve(root, ref.id)!;
   const moved = withSize(target, weight(stillRef) == null ? stillRef.size : weight(target) == null ? undefined : target.size);
   root = swapRoot(rewrite(root, ref.id, (c) => (where === 'before' ? [moved, c] : [c, moved])));
@@ -342,7 +371,7 @@ function renameSx(x: Sx, from: string, to: string): Sx {
 }
 
 const SX_PROPS = ['expr', 'do', 'hidden', 'options', 'min', 'max', 'step', 'style', 'compare', 'trend', 'actions'] as const;
-const TEXT_PROPS = ['text', 'label', 'placeholder', 'src', 'alt'] as const;
+const TEXT_PROPS = ['text', 'label', 'placeholder', 'src', 'alt', 'title'] as const;
 
 /** Point every reference to `from` at `to`, in formulas, actions, styles and templates. */
 export function renameRefs(node: Cell, from: string, to: string): Cell {
@@ -362,6 +391,19 @@ export function renameRefs(node: Cell, from: string, to: string): Cell {
     if (typeof v !== 'string' || !v.includes('{{')) continue;
     const r = mapTemplate(v, (x) => renameSx(x, from, to));
     if (r !== v) setProp(k, r);
+  }
+  if (node.kind === 'diagram' && Array.isArray(node.value)) {
+    // A diagram's labels can carry templates too.
+    let changed = false;
+    const els = node.value.map((e) => {
+      const t = (e as { text?: unknown }).text;
+      if (typeof t !== 'string' || !t.includes('{{')) return e;
+      const r = mapTemplate(t, (x) => renameSx(x, from, to));
+      if (r === t) return e;
+      changed = true;
+      return { ...(e as Record<string, Json>), text: r };
+    });
+    if (changed) setProp('value', els);
   }
   if (node.children) {
     const kids = node.children.map((ch) => renameRefs(ch, from, to));
@@ -413,9 +455,21 @@ function set(w: Work, op: Op): Result {
     if (path.length === 2) checkStyle({ [path[1]]: value });
   } else if (path[0] === 'text' && value !== null && typeof value !== 'string') {
     throw new OpError('text must be a string');
+  } else if (path[0] === 'title' && value !== null && typeof value !== 'string') {
+    throw new OpError('a title is text');
   }
-  const stored = path[0] === 'size' && value === 1 ? null : value;
+  let stored = path[0] === 'size' && value === 1 ? null : value;
+  if (path[0] === 'value' && target.kind === 'diagram' && value !== null) stored = diagramValue(value);
   root = swapRoot(rewrite(root, target.id, (c) => setPath(c, path, stored)));
+  const parent = parentOf(w.root, target.id);
+  if (path[0] === 'title' && target.kind === 'panel' && holdsPanels(parent) && typeof target.title === 'string' && typeof value === 'string') {
+    // Renaming the open panel keeps it open.
+    const follow = renamedValue(parent!, target.title, value);
+    if (follow !== undefined) {
+      root = swapRoot(rewrite(root, parent!.id, (p) => setPath(p, ['value'], follow)));
+      return { root, op: ['set', target.id, op[2], value], touched: [target.id, parent!.id], anchors: ancestors(w.root, target.id) };
+    }
+  }
   return { root, op: ['set', target.id, op[2], value], touched: [target.id], inverse: ['set', target.id, op[2], old] };
 }
 
@@ -437,6 +491,72 @@ function style(w: Work, op: Op): Result {
   return { root, op: ['style', target.id, patch], touched: [target.id], inverse: ['style', target.id, before] };
 }
 
+// ───────────────────────────── diagrams ─────────────────────────────
+
+function diagramValue(v: Json): Json {
+  try {
+    return prepareDiagram(v) as unknown as Json;
+  } catch (e) {
+    if (e instanceof DiagramError) throw new OpError(e.message);
+    throw e;
+  }
+}
+
+function mustDiagram(w: Work, ref: Json): Cell {
+  const target = must(w.root, ref);
+  if (target.kind !== 'diagram') throw new OpError(`"${target.name ?? target.id}" is not a diagram`);
+  return target;
+}
+
+function draw(w: Work, op: Op): Result {
+  const target = mustDiagram(w, op[1]);
+  const patch = op.slice(2).flatMap((x) => (Array.isArray(x) ? x : [x])) as Json[];
+  if (!patch.length) throw new OpError('draw needs elements: ["draw", diagram, {"type": "rect", "text": "Start"}, …]');
+  let els;
+  try {
+    els = upsertElements(elementsOf(target.value), patch);
+  } catch (e) {
+    if (e instanceof DiagramError) throw new OpError(e.message);
+    throw e;
+  }
+  const root = swapRoot(rewrite(w.root, target.id, (c) => ({ ...c, value: els as unknown as Json })));
+  // Replaying the filled-in version gives the same ids and positions: whole
+  // elements, with the fields that were taken away written as null.
+  const old = new Map(elementsOf(target.value).map((e) => [e.id, e]));
+  const made = els
+    .filter((e) => !old.has(e.id) || patch.some((p) => (p as { id?: unknown })?.id === e.id))
+    .map((e) => {
+      const full: Record<string, Json> = { ...(e as unknown as Record<string, Json>) };
+      for (const k of Object.keys(old.get(e.id) ?? {})) if (!(k in full)) full[k] = null;
+      return full;
+    });
+  return { root, op: ['draw', target.id, ...made], touched: [target.id], inverse: ['set', target.id, 'value', target.value ?? null] };
+}
+
+function erase(w: Work, op: Op): Result {
+  const target = mustDiagram(w, op[1]);
+  const ids = op.slice(2).flatMap((x) => (Array.isArray(x) ? x : [x])).map(String);
+  const els = elementsOf(target.value);
+  for (const id of ids) if (!els.some((e) => e.id === id)) throw new OpError(`the diagram has no element "${id}"`);
+  const next = eraseElements(els, ids);
+  const root = swapRoot(rewrite(w.root, target.id, (c) => ({ ...c, value: next as unknown as Json })));
+  return { root, op: ['erase', target.id, ...ids], touched: [target.id], inverse: ['set', target.id, 'value', target.value ?? null] };
+}
+
+/** Tabs and accordions hold panels, and panels sit only in them. */
+function checkPanels(root: Cell): void {
+  (function visit(c: Cell, parent: Cell | null) {
+    if (c.kind === 'panel' && !holdsPanels(parent)) throw new OpError('a panel only sits directly in tabs or an accordion');
+    if (holdsPanels(c)) {
+      if (!c.children?.length) throw new OpError(`${c.kind} keep at least one panel`);
+      for (const ch of c.children) {
+        if (ch.kind !== 'panel') throw new OpError(`${c.kind} hold only panels: ["panel", {"title": "…"}, …cells]`);
+      }
+    }
+    c.children?.forEach((ch) => visit(ch, c));
+  })(root, null);
+}
+
 // ───────────────────────────── apply ─────────────────────────────
 
 function run(w: Work, op: Op): Result {
@@ -452,8 +572,10 @@ function run(w: Work, op: Op): Result {
     case 'set': return set(w, op);
     case 'name': return set(w, ['set', op[1], 'name', op[2] ?? null]);
     case 'style': return style(w, op);
+    case 'draw': return draw(w, op);
+    case 'erase': return erase(w, op);
     default:
-      throw new OpError(`unknown op "${op[0]}"; known: split, merge, remove, dup, swap, move, put, replace, set, style, meta, do`);
+      throw new OpError(`unknown op "${op[0]}"; known: split, merge, remove, dup, swap, move, put, replace, set, style, draw, erase, meta, do`);
   }
 }
 
@@ -508,6 +630,7 @@ export function applyOp(doc: Doc, op: Op): Applied {
     const w = workOn(doc);
     const r = run(w, op);
     const root = normalize(r.root);
+    checkPanels(root);
     const live = indexTree(root).byId;
     return {
       doc: { ...doc, root, nextId: w.next() },

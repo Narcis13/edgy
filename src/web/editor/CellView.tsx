@@ -3,7 +3,7 @@
 import { Fragment, memo, useEffect, useRef, useState } from 'react';
 import { CircleHelp, ImagePlus, Star } from 'lucide-react';
 import type { Cell, Dir, Json, Op } from '../../core/types';
-import { isGroup } from '../../core/types';
+import { flowOf, isGroup } from '../../core/types';
 import type { CellState } from '../../core/engine';
 import { display } from '../../core/engine';
 import { read, show } from '../../core/sx';
@@ -13,6 +13,7 @@ import { Chart } from './Chart';
 import { BreakView } from '../kinds/Break';
 import { CalendarView } from '../kinds/Calendar';
 import { CanvasView } from '../kinds/Canvas';
+import { DiagramView } from '../kinds/Diagram';
 import { ListView } from '../kinds/List';
 import { StatView } from '../kinds/Stat';
 import { TableView } from '../kinds/Table';
@@ -55,7 +56,7 @@ export const CellView = memo(function CellView({ cell, dir }: Props) {
           return (
             <Fragment key={ch.id}>
               {prev && <Divider group={cell} index={i} />}
-              <CellView cell={ch} dir={cell.kind as Dir} />
+              <CellView cell={ch} dir={flowOf(cell)} />
             </Fragment>
           );
         })}
@@ -107,6 +108,8 @@ function Leaf({ cell, st, editing, live }: { cell: Cell; st: CellState | undefin
       return <StatView cell={cell} st={st} />;
     case 'break':
       return <BreakView />;
+    case 'diagram':
+      return <DiagramView cell={cell} st={st} />;
     default:
       return null;
   }
