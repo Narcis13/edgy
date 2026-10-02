@@ -40,7 +40,7 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 1. [x] **Core model**: kinds, notation, ops inside containers, values, diagram geometry/layout/draw/erase ops, data cell, outline, guide, events registry, tests (D4 core, D7 core, D11 part, D12 core)
 2. [x] **Containers and data UI** (lead): tabs/accordion/collapsible/panel rendering in Edit/Live/Page, keyboard and ARIA, on-page add/rename/reorder/remove, data chip and invisibility, print rules and pagination test (D1–D5, D8)
 3. [ ] **Diagram editor** (agent): `src/web/kinds/Diagram.tsx` — draw, select, move, resize, connect, label, duplicate, delete, colours, touch, undo, print (D6, D7)
-4. [ ] **Designers and metadata** (agent): inspector panels for the five kinds, empty-cell tiles, minimap glyphs, studio icons/labels/code props, Blocks (D9)
+4. [x] **Designers and metadata** (agent): inspector panels for the five kinds, empty-cell tiles, minimap glyphs, studio icons/labels/code props, Blocks (D9)
 5. [x] **Ask AI** (agent): compose offline rules + Claude prompt for the new kinds, tests (D10)
 6. [ ] **Integration**: end-to-end runs in the browser, fixes (D1–D10, D12, D13)
 7. [ ] **Showcase**: template + evidence in `docs/showcase/new-elements/` (G3)
@@ -81,3 +81,4 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 - 2026-10-02: M1 core: kinds, notation, ops, engine, diagram geometry/layout, outline, guide, events registry. 99 → 112 tests.
 - 2026-10-02: M2 containers UI: tabs/accordion/collapsible render in Edit/Live/Page; checked by scripted clicks and trusted keys (Enter folds a collapsible, ArrowRight moves tab and focus), button `set!` opens a tab and a hidden rule reacts, accordion one-at-a-time with a table and a chart, phone tab bar scrolls inside (459 > 346 px) with page scrollWidth 390, PDF prints all panels under titles (2 pages). On-page rename/add/move/remove + 5 undos each restored. `keepWithNext` pagination test. cdp.mjs gained `--press` for trusted keys.
 - 2026-10-02: M5 Ask AI (agent): offline + mocked Claude for all five kinds; compose tests 12 → 17; full suite 130 pass (checked by lead with `npm test`).
+- 2026-10-02: M4 designers (agent): panels for tabs/accordion/collapsible/panel/data/diagram, empty-cell tiles, minimap, studio icons, Blocks value choices; driven from the panel only by the agent; lead re-shot each designer on the Order desk template (0 console). Fixes: toolbar above a selected panel's container; data chip capped to the sheet width; panels drop sizes in normalize. 130 tests.
