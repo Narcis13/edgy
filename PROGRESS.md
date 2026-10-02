@@ -9,7 +9,7 @@ designer, notation, outline, minimap, guide, Blocks, Ask AI.
 
 Started 2026-10-02 on branch `main` at `50bf912`. Brief: Brief 4 in `FEATURES_PROMPTS.md`.
 
-**Next:** final audit — fresh build, empty data, gates, sweep, re-read evidence, stop servers, final commit.
+**Next:** nothing — every contract item passes (final audit 2026-10-02).
 
 ## Contract (Done means)
 
@@ -44,7 +44,7 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 5. [x] **Ask AI** (agent): compose offline rules + Claude prompt for the new kinds, tests (D10)
 6. [x] **Integration**: end-to-end runs in the browser, fixes (D1–D10, D12, D13)
 7. [x] **Showcase**: template + evidence in `docs/showcase/new-elements/` (G3)
-8. [ ] **Final audit**: code review, clean build, empty data, all gates, full sweep, every contract item checked
+8. [x] **Final audit**: code review, clean build, empty data, all gates, full sweep, every contract item checked
 
 ## Decisions
 
@@ -85,3 +85,4 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 - 2026-10-02: M3 diagram editor (agent) verified by the lead: touch scenario at 390×844 (3 shapes, 2 arrows, label, move, resize, delete, 9 undo/9 redo), one-POST flowchart + live label + shape count. Parallel connectors offset.
 - 2026-10-02: code review (fresh reviewer): fixed Escape saving in inspector inputs, compose taking tabs for form lines, `$` titles read as references (compose + Blocks), keyboard crash when nothing is shown, O(n²) parallel-connector scan (memoised). Rejected: "undo of draw/erase can throw on an invalid old value" — old values were validated when written. 132 tests.
 - 2026-10-02: M7 showcase evidence in `docs/showcase/new-elements/` from `shoot.sh` (fresh server); all images read; sweep of every template 0 problems.
+- 2026-10-02: final audit: fresh build and empty data on 8791, gates 132/132, sweep of all six templates and a containers doc 0 problems, evidence re-read, `/api/guide` describes the six kinds and draw/erase, servers stopped, tree clean.
