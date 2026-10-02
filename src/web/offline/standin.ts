@@ -133,6 +133,7 @@ export class StandIn {
       }));
       return json({ ...deck, createdAt: 0, updatedAt: 0, pinned: null, archivedAt: null, items });
     }
+    if ((m = /^\/api\/library\/([^/]+)$/.exec(path))) return json({ entry: this.docs.has(decodeURIComponent(m[1])) ? { archivedAt: null } : null });
     if (path === '/api/health') return json({ ok: true, name: 'edgy', offline: true });
     return json({ error: 'not in this offline copy' }, 404);
   }

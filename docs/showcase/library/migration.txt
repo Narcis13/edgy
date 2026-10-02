@@ -1,0 +1,19 @@
+Migration check, 2026-10-02T15:53Z: a database written by commit 40b398d (schema 1), copied, opened by this version.
+
+Before (old code):
+  doc 2knhzkwk: 5d15aa256f51 log 3087f14cdc2a messages cd0d4cc32346 (1 changes)
+  doc cn9cvl8a: 2a8d6d860044 log f2b04e7a8bb5 messages cd0d4cc32346 (2 changes)
+  doc ttcmwsvf: a587bd1b7b9f log c86876c6f562 messages cd0d4cc32346 (1 changes)
+  doc xevhr4yb: d0d6f9ba4f71 log e5446fdd0929 messages 93d09cb5bab0 (3 changes)
+  collection offsite-events: eecc975176de (1 records)
+After (new code, same file):
+  doc 2knhzkwk: 5d15aa256f51 log 3087f14cdc2a messages cd0d4cc32346 (1 changes)
+  doc cn9cvl8a: 2a8d6d860044 log f2b04e7a8bb5 messages cd0d4cc32346 (2 changes)
+  doc ttcmwsvf: a587bd1b7b9f log c86876c6f562 messages cd0d4cc32346 (1 changes)
+  doc xevhr4yb: d0d6f9ba4f71 log e5446fdd0929 messages 93d09cb5bab0 (3 changes)
+  collection offsite-events: eecc975176de (1 records)
+
+Identical: every document, its history, its messages and every collection.
+
+Library on the migrated file: 4 entries; titles: Team offsite, Kept notes, edited, Market stall, Start here
+Search "harbour" (text inside an old document): Kept notes, edited (in the text)

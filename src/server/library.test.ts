@@ -177,12 +177,16 @@ test('share links: long random tokens; view reads only its document; edit change
 
   await call('DELETE', `/api/shares/${view.token}`);
   assert.ok(seen.includes('unshared'));
+  // The page the link opens asks what it opens, and is told; everything else is refused.
   const off = await call('GET', '/api/shared', undefined, as(view.token));
-  assert.deepEqual([off.status, off.json.reason], [410, 'revoked']);
+  assert.deepEqual([off.status, off.json.refused], [200, 'revoked']);
+  const gone = await call('GET', `/api/docs/${id}`, undefined, as(view.token));
+  assert.deepEqual([gone.status, gone.json.reason], [410, 'revoked']);
   assert.equal((await call('GET', `/api/docs/${id}`, undefined, as('x'.repeat(43)))).json.reason, 'unknown');
+  assert.equal((await call('GET', '/api/shared', undefined, as('x'.repeat(43)))).json.refused, 'unknown');
   const again = (await call('POST', `/api/docs/${id}/shares`, { access: 'view' })).json;
   assert.notEqual(again.token, view.token, 'turning it on again makes a new link');
-  assert.equal((await call('GET', '/api/shared', undefined, as(view.token))).status, 410, 'the old one stays off');
+  assert.equal((await call('GET', `/api/docs/${id}`, undefined, as(view.token))).status, 410, 'the old one stays off');
 });
 
 test('the access rules on their own', () => {

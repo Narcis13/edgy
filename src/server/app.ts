@@ -80,6 +80,8 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   // Every request passes here first: a share link reaches its own document and nothing else (see access.ts).
   app.use('/api/*', async (c, next) => {
     const grant = grantFor(store, c.req.header(SHARE_HEADER) ?? c.req.query('share') ?? undefined);
+    // The page a link opens asks first what it opens; "nothing any more" is an answer, not a failure.
+    if ('status' in grant && c.req.path === '/api/shared') return c.json({ refused: grant.reason, error: grant.error });
     if ('status' in grant) return c.json({ error: grant.error, reason: grant.reason }, grant.status);
     const ok = allows(grant, c.req.method, c.req.path, () => (grant.level === 'owner' ? [] : reads(grant.doc)));
     if (ok !== true) return c.json({ error: ok.error, reason: ok.reason }, ok.status);
@@ -421,6 +423,9 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     return c.json({ action: body.action, done, skipped });
   });
 
+  /** One document's card, or null: how the editor learns that a document is gone, or archived, before opening it. */
+  app.get('/api/library/:id', (c) => c.json({ entry: store.summary(c.req.param('id')) }));
+
   app.get('/api/decks', (c) => c.json(store.decks()));
 
   /** Group documents into a deck, in this order. */
@@ -480,7 +485,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const grant = c.get('grant');
     if (grant.level === 'owner') return c.json({ error: `send the link's token in the ${SHARE_HEADER} header` }, 400);
     const doc = store.getDoc(grant.doc);
-    return doc ? c.json({ id: doc.id, title: doc.meta.title, access: grant.level }) : c.json({ error: 'this link does not open anything', reason: 'unknown' }, 404);
+    return c.json(doc ? { id: doc.id, title: doc.meta.title, access: grant.level } : { refused: 'unknown', error: 'this link does not open anything' });
   });
 
   /** The links that are on. */

@@ -229,8 +229,8 @@ const RANK: Record<Field, number> = { title: 0, description: 1, text: 2 };
 /**
  * What the home page shows: the entries that pass the filter (and match, when
  * searching), pinned ones first in their own order, the rest in the chosen
- * sort. Without a search, documents inside a deck are inside its card; a
- * search finds them on their own. Archived entries show only under Archived.
+ * sort. Without a search, documents inside a deck are inside its card (unless
+ * pinned); a search finds them on their own. Archived entries show only under Archived.
  */
 export function arrange<E extends Entry>(entries: E[], o: { filter?: Filter; sort?: Sort; searching?: boolean } = {}): Arranged<E> {
   const filter = o.filter ?? 'all';
@@ -238,7 +238,8 @@ export function arrange<E extends Entry>(entries: E[], o: { filter?: Filter; sor
     if (filter === 'archived') return e.archivedAt != null;
     if (e.archivedAt != null) return false;
     if (filter === 'decks') return e.type === 'deck';
-    if (!o.searching && e.type === 'doc' && e.deck) return false;
+    // A pinned document stays pinned when it joins a deck.
+    if (!o.searching && e.type === 'doc' && e.deck && e.pinned == null) return false;
     if (filter === 'pinned') return e.pinned != null;
     if (filter === 'shared') return e.type === 'doc' && !!(e.shared?.view || e.shared?.edit);
     return true;

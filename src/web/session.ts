@@ -55,6 +55,8 @@ export interface SessionOptions {
 export interface SessionState {
   /** unshared: opened with a share link that has been turned off. */
   status: 'loading' | 'ready' | 'missing' | 'failed' | 'unshared';
+  /** When the library archived this document, or null. */
+  archivedAt: number | null;
   online: boolean;
   doc: Doc | null;
   computed: Computed | null;
@@ -170,7 +172,7 @@ export class Session {
     this.s = {
       status: 'loading', online: true, doc: null, computed: null, unsaved: 0, selection: [], editing: null, seed: null,
       menu: null, mode: options.mode ?? initialMode(), printing: false, links: true, log: [], messages: [], presence: [], flashes: {}, collections: {},
-      toast: null, fetched: {}, trace: [], canUndo: false, canRedo: false, now: Date.now(),
+      toast: null, fetched: {}, trace: [], canUndo: false, canRedo: false, now: Date.now(), archivedAt: null,
     };
     this.store = createStore(this.s);
   }
@@ -187,6 +189,13 @@ export class Session {
     try {
       // Someone with a link sees the document as it is now, not its history or the conversation.
       const guest = !!this.options.guest;
+      // The library says whether there is such a document at all, so a gone one asks for nothing else.
+      if (!guest) {
+        const { entry } = await api<{ entry: { archivedAt: number | null } | null }>('GET', `/api/library/${this.id}`);
+        if (this.closed || generation !== this.generation) return;
+        if (!entry) return this.patch({ status: 'missing' });
+        this.s = { ...this.s, archivedAt: entry.archivedAt };
+      }
       const [doc, log, messages, fetched] = await Promise.all([
         api<Doc>('GET', `/api/docs/${this.id}`),
         guest ? [] : api<LogEntry[]>('GET', `/api/docs/${this.id}/log?limit=80`),
@@ -207,6 +216,16 @@ export class Session {
       this.opening();
     } catch (e) {
       this.patch({ status: e instanceof ApiError && e.reason === 'revoked' ? 'unshared' : e instanceof ApiError && (e.status === 404 || e.status === 403) ? 'missing' : 'failed' });
+    }
+  }
+
+  /** Bring an archived document back into the library's list. */
+  async restore(): Promise<void> {
+    try {
+      await api('PATCH', `/api/docs/${this.id}`, { archived: false });
+      this.patch({ archivedAt: null });
+    } catch (e) {
+      this.toast(e instanceof Error ? sentence(e.message) : 'It could not be restored.');
     }
   }
 

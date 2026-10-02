@@ -69,15 +69,16 @@ test('archived entries leave every list but Archived; documents in a deck sit in
     entry('a'),
     entry('gone', { archivedAt: 5, pinned: null }),
     entry('in', { deck: 'deck-1' }),
+    entry('pinnedIn', { deck: 'deck-1', pinned: 1 }),
     entry('deck-1', { type: 'deck' }),
     entry('s', { shared: { view: true, edit: false } }),
   ];
   const ids = (o: Parameters<typeof arrange>[1]) => { const r = arrange(entries, o); return [...r.pinned, ...r.rest].map((e) => e.id).sort(); };
-  assert.deepEqual(ids({}), ['a', 'deck-1', 's']);
+  assert.deepEqual(ids({}), ['a', 'deck-1', 'pinnedIn', 's'], 'a pinned document in a deck stays pinned');
   assert.deepEqual(ids({ filter: 'archived' }), ['gone']);
   assert.deepEqual(ids({ filter: 'decks' }), ['deck-1']);
   assert.deepEqual(ids({ filter: 'shared' }), ['s']);
-  assert.deepEqual(ids({ searching: true }), ['a', 'deck-1', 'in', 's']);
+  assert.deepEqual(ids({ searching: true }), ['a', 'deck-1', 'in', 'pinnedIn', 's']);
 });
 
 test('search results put title matches before description and text matches', () => {

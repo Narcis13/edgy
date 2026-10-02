@@ -18,7 +18,7 @@ export function SharedPage({ token }: { token: string }) {
   const [opened, setOpened] = useState<Opened | null>(null);
   useEffect(() => {
     setShareToken(token);
-    api<{ id: string; title: string; access: 'view' | 'edit' }>('GET', '/api/shared')
+    api<{ id: string; title: string; access: 'view' | 'edit' } | { refused: 'unknown' | 'revoked' }>('GET', '/api/shared')
       .then(setOpened)
       .catch((e) => setOpened({ refused: e instanceof ApiError ? (e.reason === 'revoked' ? 'revoked' : e.status === 404 || e.status === 403 ? 'unknown' : 'failed') : 'failed' }));
     return () => setShareToken(null);

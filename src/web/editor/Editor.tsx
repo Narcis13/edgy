@@ -81,6 +81,19 @@ function Screen({ navigate }: { navigate: (path: string) => void }) {
   );
 }
 
+/** An archived document still opens; it says so, and can come back to the list. */
+function Archived() {
+  const session = useSession();
+  const archivedAt = useS((s) => s.archivedAt);
+  if (archivedAt == null) return null;
+  return (
+    <div className="archived-bar" role="status">
+      This document is archived: it is out of your list, and nothing in it is lost.
+      <button className="btn soft small" onClick={() => void session.restore()}>Restore</button>
+    </div>
+  );
+}
+
 function Header(props: { navigate: (p: string) => void; showActivity: boolean; setShowActivity: (v: boolean) => void; showInspector: boolean; setShowInspector: (v: boolean) => void }) {
   const session = useSession();
   const title = useS((s) => s.doc?.meta.title ?? '');
@@ -258,6 +271,7 @@ function Desk() {
 
   return (
     <main className={cx('desk', mode)} onPointerDown={onPointerDown} onClick={onClick} onDoubleClick={onDoubleClick} onDragOver={onDragOver} onDragLeave={() => setDropping(null)} onDrop={(e) => void onDrop(e)}>
+      <Archived />
       <div className="desk-inner" ref={host}>
         <div className={cx('sheet', dropping && 'is-dropping')} style={sheetStyle(meta)}>
           <CellView cell={doc.root} dir={null} />

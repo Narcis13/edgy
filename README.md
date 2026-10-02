@@ -28,6 +28,8 @@ Other scripts:
 | `npm run build` then `npm start` | one production process serving the app and the API on 8787 |
 | `npm run mcp` | the MCP server for agents (started by Claude Code from `.mcp.json`) |
 | `docs/showcase/data-tables/shoot.sh` | rebuilds the data-table showcase screenshots and PDF from a fresh server |
+| `docs/showcase/library/shoot.sh` | rebuilds the library showcase (search, pins, decks, Play, sharing, exports) from a fresh server |
+| `node scripts/seed-library.mjs <url> 300` | fills a running edgy with 300 documents, to see the library at scale |
 
 Requires Node 22.13 or newer (it uses `node:sqlite`).
 
@@ -55,6 +57,17 @@ Rows typed into a table are edited in place in Edit view: double-click a cell, E
 - A **data** cell holds a value — a number, text, a list, a record — that readers never see and that takes no room, in Live, on the pages or on paper. While designing it is a small chip. It is the place for a document's own state and settings: a wizard's step, a flag, a lookup list. Formulas read it by name; buttons change it: `(set! step (+ step 1))`.
 
 The **Order desk** template uses all five: a flowchart with live numbers, tabs opened from buttons, a three-step order form run on a hidden step counter, folding questions with a table and a chart inside, and notes that start folded.
+
+## Your documents: a library
+
+The home page keeps up with hundreds of documents. **Search** finds words in titles, descriptions and the text inside documents (every word must appear; case and accents don't matter) and says where it matched. **Sort** by last changed, created or title; **filter** to Pinned, Shared, Decks or Archived; switch between a grid and a list. The view and the sort are remembered.
+
+- **Describe** a document from its card or from the Document panel inside it; the description shows on the card and is searchable. It is part of the document (`["meta", "description", "…"]`), with its history.
+- **Pin** what you use most: pinned documents sit in their own section on top, in the order you give them (drag them, or Move up and down in the card's menu).
+- **Archive** takes a document out of the list without losing anything; the Archived filter shows it and Restore brings it back as it was. **Delete** is permanent and asks first. Select several cards (their checkboxes, or Space on a focused card) to pin, archive, delete or group them at once.
+- **Share** a document by link from its editor (Share) or its card: a **can view** link and a **can edit** link, each turned on or off. A link opens the document in Live and nothing else: no editor, no way to other documents. With a view link people can try the inputs but nothing is saved; with an edit link their changes are saved and appear for you as they happen. A link turned off says so. edgy listens on 127.0.0.1, so a link reaches other people once edgy is hosted where they can open it.
+- **Decks**: select two or more documents and **Group** them. A deck is an ordered set with its own title and description, shown as one card; its documents stay separate documents. On the deck's page reorder them, add more or take some out, and **Ungroup** to put them back in the list. **Play** shows the deck as slides, one live document per slide (inputs and buttons work; each evaluates on its own): → and ← (or a click beside the slide, or a swipe) move between them, ↓ ↑ and Space scroll a slide taller than the screen, F is full screen and Esc goes back to where you started. A slide is laid out at the document's width (or the screen's, so a phone gets the phone layout) and scaled to fill the screen, down to a readable size; a longer one scrolls.
+- **Export** a document or a deck as **one .html file** (the download button in the editor, a card's menu, or a deck's page). It opens from disk with no server and no network: fonts, pictures and icons are inside, formulas, inputs and buttons work, a deck plays as slides, and the records it reads are included as they were at the moment of export. What you change in the file, saved records included, stays in that page until you close it; a note says it is an offline copy. The file holds only that document (or deck), the records it reads and the font files its text needs; fetch addresses and keys are left out.
 
 ## Events: documents that react
 
@@ -93,7 +106,10 @@ The project ships an MCP server (`src/mcp/server.ts`) and a `.mcp.json`, so Clau
 | tool | purpose |
 | --- | --- |
 | `edgy_guide` | the notation, the language, the ops — read once |
-| `edgy_docs`, `edgy_create` | list documents, start one (blank, from notation, or from a template) |
+| `edgy_docs`, `edgy_create` | list or search the library (pinned first; filters and sorts), start a document (blank, from notation, or from a template) |
+| `edgy_organize` | describe, pin, unpin, archive, restore documents, and set the order of the pinned |
+| `edgy_deck` | create a deck, reorder it, add or take out documents, describe it, ungroup it |
+| `edgy_share`, `edgy_export` | turn a view or edit link on or off; save a document or deck as one offline .html file |
 | `edgy_read` | an outline of every cell with its id, name, source and current value, plus errors |
 | `edgy_apply` | change a document with ops, atomically; returns the new outline |
 | `edgy_eval` | try an expression against a document without changing it |
@@ -181,3 +197,5 @@ Style tokens that follow the theme: `ink`, `muted`, `faint`, `paper`, `sunken`, 
 | Tab | next cell |
 
 While a formula is being edited, clicking another cell inserts its name.
+
+Playing a deck: → ← next and previous slide, ↓ ↑ Space PgDn PgUp scroll a long slide, Home and End the first and last, F full screen, Esc leave.
