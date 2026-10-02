@@ -213,7 +213,7 @@ function Editable({ cell, type, items, label, List }: { cell: Cell; type: string
         style={drag ? { transform: `translateY(${shift(i)}px)` } : undefined}>
         <Mark type={type} i={i} done={done} text={text} onToggle={() => setValue(toggled(items, i))} />
         {editing ? field(editing) : (
-          <button type="button" className="klist-text" onClick={() => start({ at: i, fresh: false }, text)}>
+          <button type="button" className="klist-text" data-ev-part onClick={() => start({ at: i, fresh: false }, text)}>
             {text || <span className="hint">Empty</span>}
           </button>
         )}

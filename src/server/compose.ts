@@ -16,6 +16,7 @@ import { type Computed, type World, actionProblems, customAction, evalIn, evalua
 import { panelTitles } from '../core/containers';
 import { BUILTIN_EVENTS, EVENT_NAME_RE, customEvents, durationMs, eventsOf } from '../core/events';
 import { FUNCTIONS } from '../core/reference';
+import { toNotation } from '../core/notation';
 import { applyOps } from '../core/ops';
 import { outline } from '../core/outline';
 import { SxError, deepEqual, formatValue, isBuiltin, print, read } from '../core/sx';
@@ -2472,6 +2473,13 @@ export function validateOps(ctx: Ctx, code: unknown): { ops: Op[]; changes: Chan
     const was = handlersOf(isNew ? undefined : old!.on);
     const on = Object.entries(handlersOf(c.on)).filter(([k, a]) => !deepEqual(was[k], a));
     const timed = !isNew && (!deepEqual(c.every ?? null, old!.every ?? null) || !deepEqual(c.after ?? null, old!.after ?? null));
+    // Where a fetch reads and what it sends are shown before anything is applied: an answer must not hide an address or a secret's name.
+    if (c.kind === 'fetch' && (isNew || c.url !== old!.url || !deepEqual(c.headers ?? null, old!.headers ?? null))) {
+      const n = c.name ?? c.id;
+      const sends = c.headers && typeof c.headers === 'object' ? ` with headers ${JSON.stringify(c.headers)}` : '';
+      changes.push({ cell: n, label: `${isNew ? 'New fetch' : 'Fetch'} ${n} reads ${c.url ?? 'nothing yet'}${sends}`, code: print(toNotation(c, false), 60) });
+      says.push(`${n} fetches ${c.url ?? 'nothing yet'}${sends}.`);
+    }
     for (const [event, a] of on) handler(c, event, a, isNew);
     if (on.length || !(isNew || timed)) return;
     const n = c.name ?? c.id;

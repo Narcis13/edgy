@@ -26,6 +26,7 @@ import {
 import {
   type BuildCtx, NotationError, SETTABLE, build, checkDuration, checkEventName, checkHeaders, checkName, checkOn, checkStyle, toNotation,
 } from './notation';
+import { boundNames } from './duration';
 import { PLACE_FORMS, isBuiltin, mapTemplate } from './sx';
 import { freeTitle, renamedValue } from './containers';
 import { DiagramError, elementsOf, eraseElements, prepareDiagram, upsertElements } from './diagram';
@@ -351,6 +352,9 @@ function renameSx(x: Sx, from: string, to: string): Sx {
   if (typeof x === 'string') return x === '$' + from ? '$' + to : x;
   if (Array.isArray(x)) {
     if (x[0] === 'quote') return x;
+    // Inside (fn (who) …) or (let (who …) …) the name is the variable, not the cell.
+    if ((x[0] === 'fn' || x[0] === 'let') && Array.isArray(x[1]) && x[1].some((p, i) => (x[0] === 'fn' || i % 2 === 0) && String(p).replace(/^\$/, '') === from)) return x;
+    if (x[0] === 'fn' && typeof x[1] === 'string' && x[1].replace(/^\$/, '') === from) return x;
     let changed = false;
     const out = x.map((item, i) => {
       const isPlace = i === 1 && typeof x[0] === 'string' && PLACE_FORMS.has(x[0]) && typeof item === 'string';
@@ -372,6 +376,18 @@ function renameSx(x: Sx, from: string, to: string): Sx {
   return x;
 }
 
+/** Handlers follow a renamed cell, except where the event binds that name itself (a fail handler's status). */
+function renameHandlers(on: Sx, from: string, to: string): Sx {
+  if (!isObject(on)) return renameSx(on, from, to);
+  let changed = false;
+  const out: Record<string, Sx> = {};
+  for (const [event, action] of Object.entries(on)) {
+    out[event] = boundNames(event).includes(from) ? action : renameSx(action, from, to);
+    if (out[event] !== action) changed = true;
+  }
+  return changed ? out : on;
+}
+
 const SX_PROPS = ['expr', 'do', 'hidden', 'options', 'min', 'max', 'step', 'style', 'compare', 'trend', 'actions', 'on'] as const;
 const TEXT_PROPS = ['text', 'label', 'placeholder', 'src', 'alt', 'title'] as const;
 
@@ -385,7 +401,7 @@ export function renameRefs(node: Cell, from: string, to: string): Cell {
   for (const k of SX_PROPS) {
     const v = node[k];
     if (v === undefined) continue;
-    const r = renameSx(v as Sx, from, to);
+    const r = k === 'on' ? renameHandlers(v as Sx, from, to) : renameSx(v as Sx, from, to);
     if (r !== v) setProp(k, r);
   }
   for (const k of TEXT_PROPS) {
@@ -697,7 +713,7 @@ function renameInMeta(m: Doc['meta'], from: string, to: string): Doc['meta'] {
   for (const k of ['on', 'actions'] as const) {
     const v = m[k];
     if (v === undefined) continue;
-    const r = renameSx(v as Sx, from, to);
+    const r = k === 'on' ? renameHandlers(v as Sx, from, to) : renameSx(v as Sx, from, to);
     if (r !== v) next = { ...next, [k]: r as Record<string, Sx> };
   }
   return next;

@@ -7,6 +7,7 @@ import { type AppOptions, createApp } from './app';
 import { Store } from './store';
 import { type Clock, FetchError, type Getter, getGuarded, isPrivateAddress } from './runner';
 import { read } from '../core/sx';
+import { build } from '../core/notation';
 import type { Json } from '../core/types';
 
 /** A clock that only moves when told to, running due timers in order. */
@@ -186,6 +187,24 @@ test('an agent changing a value sets off its handler on the server, but only whi
   assert.equal((await values(id)).doubled, 10);
 });
 
+test('a fetch on this server reads only records and the demo answers, never a stream', async () => {
+  const { runner, make, values } = setup();
+  const id = await make(['col',
+    ['fetch', { name: 'ok', on: { load: sx('(set! n (count data))') } }, '/api/data/things'],
+    ['fetch', { name: 'stream', on: { fail: sx('(set! why message)') } }, '/api/docs/x/events?client=ghost&mode=live'],
+    ['data', { name: 'n' }, -1], ['data', { name: 'why' }, '']]);
+  runner.join(id, 'a', 'live');
+  await runner.settled();
+  const v = await values(id);
+  assert.equal(v.n, 0);
+  assert.match(String(v.why), /\/api\/data\/<collection> or \/api\/demo/);
+  assert.equal(runner.isLive('x'), false, 'no one was made to look at another document');
+});
+
+test('a timer longer than a day is refused instead of firing all the time', () => {
+  assert.throws(() => build(['timer', { every: 2592000 }], { gen: () => 't1', used: new Set(), names: new Set() }), /at most a day/);
+});
+
 test('viewers switch modes over HTTP, and the demo answers work', async () => {
   const { runner, make, call } = setup();
   const id = await make(['timer', { name: 't', every: 5 }]);
@@ -200,10 +219,13 @@ test('viewers switch modes over HTTP, and the demo answers work', async () => {
 });
 
 test('private and local addresses are refused before connecting', async () => {
-  for (const ip of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254', '0.0.0.0', '100.64.0.1', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1']) {
+  for (const ip of ['127.0.0.1', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254', '0.0.0.0', '100.64.0.1', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1',
+    // the same addresses as the URL parser writes them
+    '::ffff:7f00:1', '::7f00:1', '::ffff:a9fe:a9fe', '64:ff9b::7f00:1', '0:0:0:0:0:ffff:7f00:1']) {
     assert.ok(isPrivateAddress(ip), ip);
   }
-  for (const ip of ['93.184.216.34', '1.1.1.1', '2606:4700::1111']) assert.ok(!isPrivateAddress(ip), ip);
+  for (const ip of ['93.184.216.34', '1.1.1.1', '2606:4700::1111', '::ffff:5db8:d822']) assert.ok(!isPrivateAddress(ip), ip);
+  await assert.rejects(getGuarded('http://[::ffff:127.0.0.1]:9/x', {}, { ms: 1000, bytes: 1000 }), /private or local address/);
   await assert.rejects(getGuarded('http://127.0.0.1:9/x', {}, { ms: 1000, bytes: 1000 }), /private or local address/);
   await assert.rejects(getGuarded('http://[::1]:9/x', {}, { ms: 1000, bytes: 1000 }), /private or local address/);
 });

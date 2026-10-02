@@ -8,7 +8,7 @@ import { isGroup } from '../core/types';
 import { type Applied, applyOps } from '../core/ops';
 import { toNotation } from '../core/notation';
 import { shownLeaves } from '../core/containers';
-import { type Fired, type Raised, type Reaction, type Start, type TraceEntry, react, sampleData } from '../core/events';
+import { type Fired, type Raised, type Reaction, type TraceEntry, collectionsUsed, react, sampleData } from '../core/events';
 import { type Computed, type World, evaluate, runAction } from '../core/engine';
 import type { Effect, FetchState } from '../core/sx';
 import { indexTree, leaves } from '../core/tree';
@@ -146,6 +146,10 @@ export class Session {
   /** The document's open handler ran for this open; close runs only after it. */
   private opened = false;
   private onPageHide = () => this.leaving(true);
+  /** Back from the browser's page cache: that is opening it again. */
+  private onPageShow = (e: PageTransitionEvent) => {
+    if (e.persisted) this.opening();
+  };
 
   constructor(readonly id: string) {
     this.s = {
@@ -176,7 +180,13 @@ export class Session {
       this.confirmed = doc;
       this.patch({ status: 'ready', doc, messages, fetched, log: log.map((e) => ({ ...e, mine: false })) });
       this.connect();
-      if (typeof window !== 'undefined') window.addEventListener('pagehide', this.onPageHide);
+      if (typeof window !== 'undefined') {
+        window.addEventListener('pagehide', this.onPageHide);
+        window.addEventListener('pageshow', this.onPageShow);
+      }
+      // The open handler sees the records it reads.
+      await Promise.all(collectionsUsed(doc).map((name) => this.loadCollection(name)));
+      if (this.closed || generation !== this.generation) return;
       this.opening();
     } catch (e) {
       this.patch({ status: e instanceof ApiError && e.status === 404 ? 'missing' : 'failed' });
@@ -185,7 +195,10 @@ export class Session {
 
   close(): void {
     this.leaving(false);
-    if (typeof window !== 'undefined') window.removeEventListener('pagehide', this.onPageHide);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('pagehide', this.onPageHide);
+      window.removeEventListener('pageshow', this.onPageShow);
+    }
     this.closed = true;
     this.es?.close();
     this.es = null;
@@ -215,7 +228,11 @@ export class Session {
         }
       }, 10_000);
     }
-    es.onopen = () => this.patch({ online: true });
+    es.onopen = () => {
+      this.patch({ online: true });
+      // The browser reconnects by itself with the address it first used; say which mode this really is now.
+      this.told(this.s.mode);
+    };
     es.onerror = () => this.patch({ online: false });
     on('hello', (e) => {
       if (this.confirmed && e.v !== this.confirmed.v && !this.pending.length) void this.resync();
@@ -281,6 +298,8 @@ export class Session {
     const computed = evaluate(s.doc!, this.world(s.now), s.computed ?? undefined);
     this.s = { ...s, computed };
     for (const name of computed.collections) if (!(name in s.collections)) void this.loadCollection(name);
+    // Collections only handlers read are loaded too, so a handler in this browser sees the same records the server would.
+    for (const name of collectionsUsed(s.doc!)) if (!(name in s.collections)) void this.loadCollection(name);
     if (computed.usesNow && !this.clock) this.clock = setInterval(() => this.patch({ now: Date.now() }), 1000);
     if (!computed.usesNow && this.clock) {
       clearInterval(this.clock);
@@ -340,7 +359,11 @@ export class Session {
       const top = this.undoStack.at(-1);
       const now = Date.now();
       if (!(o.key && top?.key === o.key && now - top.ts < 1500)) this.undoStack.push({ op: r.inverse, key: o.key, ts: now });
-      else top.ts = now;
+      else {
+        // Typing joins one step, but what each keystroke's handlers changed must be undone with it.
+        if (rx?.ops.length) top.op = ['do', r.inverse, top.op];
+        top.ts = now;
+      }
       if (this.undoStack.length > 200) this.undoStack.shift();
       this.redoStack = [];
     }
@@ -750,11 +773,11 @@ export class Session {
     }
     try {
       const s = this.s;
-      const effects = runAction(doc, { rows: (name) => s.collections[name] ?? [], now: Date.now() }, id, todo, action?.vars);
+      const effects = runAction(doc, this.world(), id, todo, action?.vars);
       const ops = effects.filter((e) => e.type === 'op').map((e) => (e as { op: Op }).op);
       if (ops.length) this.dispatch(ops);
       for (const e of effects) {
-        const path = "collection" in e ? `/api/data/${encodeURIComponent(e.collection)}` : "";
+        const path = 'collection' in e ? `/api/data/${encodeURIComponent(e.collection)}` : '';
         if (e.type === 'insert') await api('POST', path, { record: e.record, source: { doc: this.id, cell: id } });
         if (e.type === 'delete') await api('DELETE', `${path}/${encodeURIComponent(e.id)}`);
         if (e.type === 'update') await api('PATCH', `${path}/${encodeURIComponent(e.id)}`, { fields: e.fields });
@@ -898,6 +921,8 @@ export class Session {
     const doc = this.s.doc;
     if (!this.opened || !doc || this.closed) return;
     this.opened = false;
+    // Events don't fire while designing or on paper, leaving included.
+    if (this.s.mode !== 'live') return;
     const on = doc.meta.on;
     if (!on || typeof on !== 'object' || (on as Record<string, unknown>).close == null) return;
     const rx = react(doc, this.world(), { events: [{ cell: null, name: 'close' }] });

@@ -92,7 +92,7 @@ export function checkOn(on: unknown): Record<string, Json> {
 
 /** A timer's or a fetch's every/after: seconds, or "30s", "2m", "1h". */
 export function checkDuration(prop: string, v: unknown): Json {
-  if (durationMs(v) === null) throw new NotationError(`${prop} is a time in seconds, like 30, or "500ms", "30s", "2m", "1h"; got ${JSON.stringify(v)}`);
+  if (durationMs(v) === null) throw new NotationError(`${prop} is a time in seconds, like 30, or "500ms", "30s", "2m", "1h", at most a day; got ${JSON.stringify(v)}`);
   return v as Json;
 }
 

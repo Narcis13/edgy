@@ -74,6 +74,23 @@ function unseen(cell: Cell, live: boolean): boolean {
   return cell.kind === 'data' || cell.kind === 'timer';
 }
 
+/** Controls inside a cell do their own job (search, pick, tick, edit), so a click on one is not a click on the cell. */
+const CONTROLS = 'button, a, input, select, textarea, label, [contenteditable="true"], [role="tab"], [role="checkbox"]';
+
+/** Whether a click belongs to this cell: not to a cell inside it, not to a control, not the copy a label sends its input. */
+function ownClick(e: React.MouseEvent<HTMLElement>, cell: Cell): boolean {
+  const t = e.target instanceof Element ? e.target : null;
+  if (!t) return true;
+  if (t.closest('[data-cell]') !== e.currentTarget) return false;
+  // Clicking a label sends a second, made-up click to its input (detail 0).
+  if (e.detail === 0 && t.closest('label')) return false;
+  // An input cell is itself a control: clicking into it is clicking it.
+  if (cell.kind === 'input') return true;
+  const control = t.closest(CONTROLS);
+  // A control that is the clickable face of a part (a list item's text) still counts.
+  return !control || control.hasAttribute('data-ev-part');
+}
+
 /** Kinds whose whole cell can be pressed like a button when it handles click. */
 const PRESSABLE = new Set(['text', 'image', 'icon', 'stat', 'chart', 'formula']);
 
@@ -88,6 +105,7 @@ function usePointer(cell: Cell): React.HTMLAttributes<HTMLDivElement> {
   const press = (where: ReturnType<typeof partOf>, detail: number, key: string) =>
     clickGate.press(key, detail, double, () => click && session.pointer(cell.id, 'click', where), () => session.pointer(cell.id, 'dblclick', where));
   const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!ownClick(e, cell)) return;
     const where = partOf(e, e.currentTarget);
     press(where, e.detail || 1, cell.id + (where.index !== undefined ? ':' + where.index : ''));
   };

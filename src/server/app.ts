@@ -146,16 +146,17 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const id = c.req.param('id');
     const ok = store.deleteDoc(id);
     if (ok) {
-      runner.stop(id);
+      runner.forget(id);
       hub.publish(id, { type: 'deleted' });
     }
     return ok ? c.json({ ok }) : c.json({ error: 'no such document' }, 404);
   });
 
   app.post('/api/docs/:id/ops', async (c) => {
+    const body = (await c.req.json()) as { ops?: Op[]; actor?: unknown; client?: string; batch?: string; format?: string };
+    // Read the document after the body has arrived, so a change saved meanwhile (a timer's) is the base.
     const doc = store.getDoc(c.req.param('id'));
     if (!doc) return c.json({ error: 'no such document' }, 404);
-    const body = (await c.req.json()) as { ops?: Op[]; actor?: unknown; client?: string; batch?: string; format?: string };
     if (!Array.isArray(body.ops) || !body.ops.length) return c.json({ error: 'send {"ops": [[verb, …], …]}' }, 400);
     const actor = cleanActor(body.actor);
     const r = applyOps(doc, body.ops);

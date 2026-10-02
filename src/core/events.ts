@@ -81,8 +81,8 @@ export const KIND_EVENTS: Record<string, KindEvents> = {
   },
   table: {
     raises: [
-      { ...CLICK, data: 'row: the row clicked, as a record; index: its key' },
-      { ...DBLCLICK, data: 'row: the row double-clicked; index: its key' },
+      { ...CLICK, data: 'row: the row clicked, as a record; index: its position in the table\'s rows (from 0)' },
+      { ...DBLCLICK, data: 'row: the row double-clicked; index: its position' },
       { name: 'pick', from: 'change', data: 'rows: the picked rows, as records; value: their keys; was: the keys before' },
       CHANGE,
     ],
@@ -190,6 +190,25 @@ export function customEvents(doc: Doc): string[] {
   handlers(doc.meta.on);
   if (doc.meta.actions) scan(doc.meta.actions as Sx);
   return [...names].sort();
+}
+
+/** Collections the document's actions read with (rows "name"), so they can be loaded before a handler runs. */
+export function collectionsUsed(doc: Doc): string[] {
+  const names = new Set<string>();
+  const scan = (x: unknown): void => {
+    if (Array.isArray(x)) {
+      if (x[0] === 'rows' && typeof x[1] === 'string') names.add(x[1]);
+      x.forEach(scan);
+    } else if (x && typeof x === 'object') Object.values(x).forEach(scan);
+  };
+  walk(doc.root, (c) => {
+    scan(c.on);
+    scan(c.do);
+    scan(c.actions);
+  });
+  scan(doc.meta.on);
+  scan(doc.meta.actions);
+  return [...names];
 }
 
 // ───────────────────────────── dispatching ─────────────────────────────
@@ -312,13 +331,7 @@ function changes(before: Doc, after: Doc, a: () => Computed, b: () => Computed):
   return out;
 }
 
-/**
- * Run what a change or an event sets off. Start from `doc` and either ops a
- * person just made (`ops`: they are applied first and their consequences
- * followed) or events (`events`), or both. Every handler sees the document as
- * the handlers before it left it. Stops at MAX_DEPTH or MAX_RUNS with an error
- * in the trace, keeping what already ran.
- */
+/** Where a reaction starts: what a person did, a cell's own action, events, or a world that moved. */
 export interface Start {
   /** Ops a person just made: applied first, then what they change is followed. */
   ops?: Op[];
@@ -329,6 +342,13 @@ export interface Start {
   before?: World;
 }
 
+/**
+ * Run what a change or an event sets off. Start from `doc` and ops a person
+ * just made (`ops`: they are applied first and their consequences followed),
+ * a cell's own action (`run`), events (`events`), or any of them. Every
+ * handler sees the document as the handlers before it left it. Stops at
+ * MAX_DEPTH or MAX_RUNS with an error in the trace, keeping what already ran.
+ */
 export function react(doc: Doc, world: World, start: Start, now = world.now): Reaction {
   const cache = new Map<Doc, Computed>();
   const value = (d: Doc) => {

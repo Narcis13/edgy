@@ -56,6 +56,17 @@ export const MIN_REFRESH = 5_000;
 /** The shortest interval a timer gets. */
 export const MIN_TICK = 1_000;
 
+/** The paths on this server a fetch cell may read. */
+const LOCAL_PATHS = [/^\/api\/data\/[\w-]+(\?.*)?$/, /^\/api\/demo\/[\w-]+(\?.*)?$/];
+
+/** A promise that gives up after `ms`. */
+function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new FetchError(`no answer within ${ms / 1000} s`)), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
 export class FetchError extends Error {
   constructor(message: string, readonly status?: number) {
     super(message);
@@ -96,7 +107,7 @@ export class Runner {
   private viewers = new Map<string, Map<number, { client: string; mode: string }>>();
   private live = new Map<string, Live>();
   private fetched = new Map<string, Map<string, FetchState>>();
-  private inflight = new Map<string, Promise<FetchState>>();
+  private inflight = new Map<string, { p: Promise<FetchState>; job: { handlers: boolean } }>();
   private clock: Clock;
   private limits: Limits;
   private n = 0;
@@ -288,7 +299,13 @@ export class Runner {
 
   /** Resolves once every fetch on its way has finished (for tests). */
   async settled(): Promise<void> {
-    while (this.inflight.size) await Promise.allSettled([...this.inflight.values()]);
+    while (this.inflight.size) await Promise.allSettled([...this.inflight.values()].map((f) => f.p));
+  }
+
+  /** The document is gone: forget its fetched answers too. */
+  forget(doc: string): void {
+    this.stop(doc);
+    this.fetched.delete(doc);
   }
 
   private setState(docId: string, cell: string, st: FetchState & { url?: string }): void {
@@ -305,19 +322,36 @@ export class Runner {
   refresh(docId: string, cellId: string, handlers = true): Promise<FetchState> {
     const key = docId + '\n' + cellId;
     const running = this.inflight.get(key);
-    if (running) return running;
-    const p = this.fetchNow(docId, cellId, handlers).finally(() => this.inflight.delete(key));
-    this.inflight.set(key, p);
+    if (running) {
+      // Someone who wants load or fail joined a request that was started without them: they run once, at the end.
+      if (handlers) running.job.handlers = true;
+      return running.p;
+    }
+    const job = { handlers };
+    const p = this.fetchNow(docId, cellId, job).finally(() => {
+      this.inflight.delete(key);
+      this.recheck(docId, cellId);
+    });
+    this.inflight.set(key, { p, job });
     return p;
   }
 
-  private async fetchNow(docId: string, cellId: string, handlers: boolean): Promise<FetchState> {
+  /** The address changed while a request was on its way: fetch the new one, if someone is still looking. */
+  private recheck(docId: string, cellId: string): void {
+    const doc = this.deps.store.getDoc(docId);
+    const cell = doc && walkFind(doc, cellId);
+    const st = this.fetched.get(docId)?.get(cellId) as (FetchState & { url?: string }) | undefined;
+    if (!doc || !cell || cell.kind !== 'fetch' || !st || !this.isLive(docId)) return;
+    const url = String(evaluate(doc, this.world(docId)).cells[cellId]?.props?.url ?? cell.url ?? '');
+    if (url && st.url !== url) void this.refresh(docId, cellId);
+  }
+
+  private async fetchNow(docId: string, cellId: string, job: { handlers: boolean }): Promise<FetchState> {
     const doc = this.deps.store.getDoc(docId);
     const cell = doc && walkFind(doc, cellId);
     if (!doc || !cell || cell.kind !== 'fetch') return { state: 'failed', error: 'there is no such fetch cell' };
-    const worldBefore = this.world(docId);
     const before = this.fetched.get(docId)?.get(cellId);
-    const url = String(evaluate(doc, worldBefore).cells[cellId]?.props?.url ?? cell.url ?? '');
+    const url = String(evaluate(doc, this.world(docId)).cells[cellId]?.props?.url ?? cell.url ?? '');
     this.setState(docId, cellId, { ...before, state: 'loading', at: this.clock.now(), url } as FetchState);
     let st: FetchState & { url?: string };
     let events: Fired[];
@@ -331,10 +365,12 @@ export class Runner {
       events = [{ cell: cellId, name: 'fail', data: { message, status: e instanceof FetchError ? e.status ?? null : null } }];
     }
     this.setState(docId, cellId, st);
-    if (handlers) {
+    // Handlers run only while someone is still in Live: an answer arriving after everyone left changes nothing.
+    if (job.handlers && this.isLive(docId)) {
       // load or fail, and change for the fetch and for whatever reads it when the answer differs.
       const moved = !deepEqual(before?.data ?? null, st.data ?? null);
-      this.apply(docId, { events, ...(moved ? { before: { ...worldBefore, fetched: (id) => (id === cellId ? before : worldBefore.fetched?.(id)) } } : {}) });
+      const now = this.world(docId);
+      this.apply(docId, { events, ...(moved ? { before: { ...now, fetched: (id) => (id === cellId ? before : now.fetched?.(id)) } } : {}) });
     }
     return st;
   }
@@ -362,7 +398,9 @@ export class Runner {
     let got: Got;
     if (url.startsWith('/')) {
       if (!this.deps.local) throw new FetchError('this server cannot answer its own paths');
-      got = await this.deps.local(url, h);
+      // Only read-only answers that end: saved records and the demo answers, never streams or another document.
+      if (!LOCAL_PATHS.some((re) => re.test(url))) throw new FetchError('a path on this server can be /api/data/<collection> or /api/demo/…');
+      got = await withDeadline(this.deps.local(url, h), this.limits.ms);
     } else {
       let u: URL;
       try { u = new URL(url); } catch { throw new FetchError(`"${url}" is not an address`); }
@@ -397,18 +435,44 @@ function walkFind(doc: Doc, id: string) {
 /** Loopback, private, link-local, carrier-grade NAT, multicast and other addresses a fetch must never reach. */
 export function isPrivateAddress(ip: string): boolean {
   const v = isIP(ip);
+  if (v === 6) {
+    const b = ipv6Bytes(ip);
+    if (!b) return true;
+    const zero = (from: number, to: number) => b.slice(from, to).every((x) => x === 0);
+    const v4 = b.slice(12).join('.');
+    // IPv4 inside IPv6: mapped (::ffff:a.b.c.d), compatible (::a.b.c.d), translated (::ffff:0:a.b.c.d), NAT64 (64:ff9b::a.b.c.d).
+    if (zero(0, 10) && b[10] === 0xff && b[11] === 0xff) return isPrivateAddress(v4);
+    if (zero(0, 12)) return true;
+    if (zero(0, 8) && b[8] === 0xff && b[9] === 0xff && zero(10, 12)) return isPrivateAddress(v4);
+    if (b[0] === 0x00 && b[1] === 0x64 && b[2] === 0xff && b[3] === 0x9b) return isPrivateAddress(v4);
+    return (b[0] & 0xfe) === 0xfc || (b[0] === 0xfe && (b[1] & 0xc0) === 0x80) || b[0] === 0xff
+      || (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0x0d && b[3] === 0xb8) || (b[0] === 0x20 && b[1] === 0x02);
+  }
   if (v === 4) {
     const [a, b] = ip.split('.').map(Number);
     return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31)
       || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || (a === 192 && b === 0) || (a === 198 && (b === 18 || b === 19)) || a >= 224;
   }
-  if (v === 6) {
-    const x = ip.toLowerCase();
-    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(x);
-    if (mapped) return isPrivateAddress(mapped[1]);
-    return x === '::' || x === '::1' || /^f[cd]/.test(x) || /^fe[89ab]/.test(x) || x.startsWith('ff') || x.startsWith('64:ff9b:') || x.startsWith('2001:db8');
-  }
   return true;
+}
+
+/** An IPv6 address as its 16 bytes, whichever way it is written. */
+function ipv6Bytes(ip: string): number[] | null {
+  let s = ip.toLowerCase().split('%')[0];
+  const tail = /(\d+\.\d+\.\d+\.\d+)$/.exec(s);
+  if (tail) {
+    const q = tail[1].split('.').map(Number);
+    s = s.slice(0, -tail[1].length) + ((q[0] << 8) | q[1]).toString(16) + ':' + ((q[2] << 8) | q[3]).toString(16);
+  }
+  const [head, rest] = s.split('::');
+  const a = head ? head.split(':') : [];
+  const b = rest !== undefined && rest ? rest.split(':') : [];
+  const groups = rest === undefined ? a : [...a, ...Array(8 - a.length - b.length).fill('0'), ...b];
+  if (groups.length !== 8) return null;
+  return groups.flatMap((g) => {
+    const n = parseInt(g || '0', 16);
+    return [n >> 8, n & 0xff];
+  });
 }
 
 /** Resolve a host, refusing it when any of its addresses is private. Used at connect time, so a second lookup can't sneak past. */
@@ -422,15 +486,20 @@ async function safeLookup(host: string): Promise<{ address: string; family: numb
 }
 
 /** GET with node's http(s): the address checked when connecting, at most 3 redirects, a time and a size limit. */
-export const getGuarded: Getter = async (url, headers, limits) => {
+export const getGuarded: Getter = (url, headers, limits) => withDeadline(getHops(url, headers, limits), limits.ms);
+
+async function getHops(url: string, headers: Record<string, string>, limits: Limits): Promise<Got> {
   let current = new URL(url);
+  const origin = current.origin;
   for (let hop = 0; hop <= 3; hop++) {
     const host = current.hostname.replace(/^\[|\]$/g, '');
     const target = await safeLookup(host);
+    // The document's headers (and secrets) go only to the origin it named, not to wherever a redirect points.
+    const sent = current.origin === origin ? headers : { accept: 'application/json' };
     const got = await new Promise<Got & { location?: string }>((resolve, reject) => {
       const req = (current.protocol === 'https:' ? httpsRequest : httpRequest)(current, {
         method: 'GET',
-        headers: { ...headers, 'user-agent': 'edgy-fetch/1' },
+        headers: { ...sent, 'user-agent': 'edgy-fetch/1' },
         // Connect to the address that was checked, never to a second answer from DNS.
         lookup: ((_h: string, o: { all?: boolean }, cb: (e: Error | null, a: unknown, f?: number) => void) =>
           (o?.all ? cb(null, [{ address: target.address, family: target.family }]) : cb(null, target.address, target.family))) as never,
@@ -462,4 +531,4 @@ export const getGuarded: Getter = async (url, headers, limits) => {
     if (current.protocol !== 'http:' && current.protocol !== 'https:') throw new FetchError('a redirect left http and https');
   }
   throw new FetchError('too many redirects');
-};
+}

@@ -74,6 +74,14 @@ test('handlers are set by ops one at a time, undo, and follow a renamed cell', (
   assert.deepEqual(resolve(renamed.root, 'b')!.on, { click: ['set!', 'count', 1] });
   assert.deepEqual(renamed.meta.on, { open: ['set!', 'count', ['+', '$count', 1]] });
   assert.deepEqual(renamed.meta.actions?.bump, ['fn', ['k'], ['set!', 'count', ['+', '$count', '$k']]]);
+  // A function's parameter and an event's own variable are not the cell of the same name.
+  const shadow = applyOps(docWith(['col', ['data', { name: 'who' }, ''], ['data', { name: 'status' }, ''],
+    ['fetch', { name: 'f', on: { fail: ['set!', 'note', '$status'], load: ['set!', 'note', '$status'] } }, '/api/demo/rate'], ['data', { name: 'note' }, '']]),
+  [['meta', 'actions.hi', ['fn', ['who'], ['set!', 'note', '$who']]]]).doc;
+  const r1 = applyOp(shadow, ['set', 'who', 'name', 'guest']).doc;
+  assert.deepEqual(r1.meta.actions?.hi, ['fn', ['who'], ['set!', 'note', '$who']]);
+  const r2 = applyOp(shadow, ['set', 'status', 'name', 'banner']).doc;
+  assert.deepEqual(resolve(r2.root, 'f')!.on, { fail: ['set!', 'note', '$status'], load: ['set!', 'note', '$banner'] });
   // A plain col with a handler is not dissolved.
   const held = applyOp(docWith(['col', ['col', { on: { click: ['set!', 'x', 1] } }, ['text', 'a']], ['data', { name: 'x' }, 0]]), ['set', 'c1', 'size', 2]).doc;
   assert.equal(held.root.children![0].kind, 'col');
