@@ -1,0 +1,10 @@
+{
+  "title": "Consent",
+  "root": ["col",
+    ["text", "# Consent"],
+    ["input", {"name": "agree", "type": "checkbox", "label": "I agree to the terms", "value": false}],
+    ["data", {"name": "status"}, "Not yet"],
+    ["formula", {"name": "shown"}, ["str", "Status: ", "$status"]],
+    ["text", {"name": "thanks"}, "Thank you!"]
+  ]
+}

@@ -1,0 +1,26 @@
+## Events
+
+A cell's on prop, and the document's on (set with ["meta", "on.open", action]), map an event name to an action: the same kind of expression as a button's do, so set!, insert!, emit! and the rest work. While it runs, the event's data is bound by name (value, was, row, …) and as the record event (event.name, event.target); a bound name hides a cell of the same name, which (ref name) still reads.
+
+Events cells raise:
+- change (any cell with a value: inputs, lists, tables, calendars, canvases, data, formulas, tabs, accordions, collapsibles, timers, fetches): value, was. It follows the value, whoever changed it: a person, a button, a handler or an agent. A list also binds item and index (the item ticked, added or edited); a formula raises it when what it reads changes.
+- click, dblclick (text, image, icon, stat, chart, formula, table, list, calendar, diagram; button: click runs do, then on.click): target (the cell's name or id); a table row binds row and index, a list item item and index, a diagram shape element. When a cell handles dblclick, a single click waits 250 ms and a double-click runs only dblclick; without a dblclick handler, click runs at once.
+- pick (table): rows (the picked records), value (their keys), was.
+- open, close (accordion: title, value; collapsible: value).
+- tick (timer): count (ticks since it started), at.
+- load (fetch): data and value (the answer). fail (fetch): message, status.
+The document raises open (once each time someone opens it in Live) and close (when they leave it; best effort when a tab is closed).
+
+Custom events: (emit! "saved" {total total}) reaches every cell and the document with an on.saved handler, which see payload (what was sent) and from (the cell that emitted).
+
+Custom actions, defined once for the document and called from any action like a built-in: ["meta", "actions.greet", ["fn", ["who"], ["set!", "hello", ["str", "Hi ", "$who"]]]], then (greet "Ann"). Calling a name that is neither built in, an action nor a cell holding a function shows an error in the cell (and in the outline) before anything runs.
+
+Where things run: events fire only while someone uses the document in Live (never in Edit, never on paper). A person's clicks and changes run in that person's browser, and one gesture with everything its handlers changed undoes in one step. open and close run once per person who opens it. Timers, fetches and their handlers, and changes made by agents, run once on the server while anyone has it open in Live, so nothing runs twice. A handler that sets itself off stops after 8 levels with an error.
+
+Examples:
+  ["input", {"name": "agree", "type": "checkbox", "on": {"change": ["set!", "status", ["if", "$value", "Agreed", "Not yet"]]}}]
+  ["list", {"name": "todo", "type": "check", "on": {"change": ["when", ["every", ["get", "$it", "done"], "$value"], ["insert!", "done", {"items": "$value"}], ["show!", "thanks"]]}}, "Book", "Pack"]
+  ["table", {"name": "people", "value": […], "on": {"click": ["set!", "chosen", ["get", "$row", "name"]]}}]
+  ["timer", {"name": "every-minute", "every": 60, "on": {"tick": ["refresh!", "rate"]}}]
+  ["fetch", {"name": "rate", "on": {"load": ["set!", "warn", [">", ["get", "$data", "rate"], 5]], "fail": ["set!", "problem", "$message"]}}, "/api/demo/rate"]
+  ["meta", "on.open", ["set!", "visits", ["+", "$visits", 1]]]

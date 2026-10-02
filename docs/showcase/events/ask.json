@@ -1,0 +1,20 @@
+{
+  "title": "Ask AI for events",
+  "root": ["col",
+    ["list", {"name": "checklist", "type": "check"}, "Pack", "Book"],
+    ["text", {"name": "thanks", "hidden": true}, "Thank you for finishing!"],
+    ["text", {"name": "welcome", "hidden": true}, "Welcome back!"],
+    ["text", {"name": "error", "hidden": true}, "The rate could not be loaded."],
+    ["input", {"name": "agree", "type": "checkbox", "value": false}],
+    ["input", {"name": "qty", "type": "number", "value": 3}],
+    ["input", {"name": "note", "type": "text", "value": "hi"}],
+    ["input", {"name": "price", "type": "number", "value": 1}],
+    ["formula", {"name": "total"}, ["*", "$qty", 10]],
+    ["text", {"name": "hello"}, "Hello"],
+    ["table", {"name": "people", "select": "one", "value": [{"id": "a", "name": "Ann"}, {"id": "b", "name": "Bo"}]}],
+    ["button", {"name": "save"}, "Save"],
+    ["fetch", {"name": "rate"}, "/api/demo/rate"],
+    ["data", {"name": "visits"}, 0], ["data", {"name": "clicks"}, 0], ["data", {"name": "count"}, 5],
+    ["data", {"name": "status"}, ""], ["data", {"name": "chosen"}, ""], ["data", {"name": "saves"}, 0]
+  ]
+}
