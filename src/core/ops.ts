@@ -695,6 +695,7 @@ function meta(doc: Doc, op: Op): Applied {
   } else {
     if (path.length > 1) throw new OpError('only on and actions have parts, like "on.open" or "actions.greet"');
     if (key === 'on' && value !== null) checkOn(value);
+    if (key === 'description' && value !== null && typeof value !== 'string') throw new OpError('a description is text: ["meta", "description", "What this document is for"]');
     if (key === 'actions' && value !== null) {
       if (!isObject(value)) throw new OpError('actions is an object of names and functions');
       for (const [k, v] of Object.entries(value)) checkAction(k, v);

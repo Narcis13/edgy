@@ -166,6 +166,7 @@ Examples:
   ["style", cell, {…}]        several style properties at once
   ["draw", diagram, element, …]   add elements to a diagram, or change those whose id exists (a field set to null is removed); new boxes without x/y are placed below the box an arrow comes from
   ["erase", diagram, id, …]   remove diagram elements and the arrows attached to them
+  ["meta", "description", "What this document is for"]   shown on its card and found by search
   ["meta", "title"|"width"|"minHeight"|"currency"|"page"|"orientation"|"margin"|"footer"|"font"|"headFont"|"fontSize", value]
                               page: "A4" (default), "A5", "Letter", "Legal"; orientation: "portrait" or "landscape";
                               margin: millimetres (default 16); footer: "number", "title" or "none" — used by the printed pages;
@@ -179,6 +180,27 @@ cell is an id or a name. Ops in one call are applied atomically.
 ## Data
 
 Documents can save records into named collections and read them back: a button with ["insert!", "orders", {"qty": "$qty", "total": "$total"}] saves; ["rows", "orders"] reads (every record gets id and at). Collections are shared by all documents.
+
+## Library
+
+The home page lists documents and decks. Over HTTP (the MCP tools edgy_docs, edgy_organize, edgy_deck, edgy_share and edgy_export do the same):
+
+  GET   /api/library?q=words&filter=all|pinned|shared|decks|archived&sort=updated|created|title
+        → {pinned: [...], rest: [...], total}. Every word must appear in the title, the description or the
+          document's text (any case, accents ignored); a hit says where: match {field, snippet}.
+  GET   /api/docs                       every document's summary (no content): id, title, description, pinned, archivedAt, deck, shared
+  PATCH /api/docs/<id>  {"description": "…", "title": "…", "pinned": true|false, "archived": true|false}
+        the description is part of the document: the same as ["meta", "description", "…"]
+  POST  /api/library/pins  {"ids": [pinned ids in their new order]}
+  POST  /api/library/bulk  {"action": "pin"|"unpin"|"archive"|"restore"|"delete", "ids": [...]}
+        archive takes a document out of the list without losing anything; restore brings it back; delete is permanent
+  POST  /api/decks  {"title", "description", "docs": [ids in order]}   group documents into a deck (one deck per document)
+  PATCH /api/decks/<deck>  {"docs": [ids in the new order], "title", "description", "pinned", "archived"}
+        reorder, add (include an id) and take out (leave it out) in one; GET /api/decks/<deck> lists its documents
+  DELETE /api/decks/<deck>  ungroup: the deck goes, its documents stay
+  POST  /api/docs/<id>/shares  {"access": "view"|"edit"}   a link anyone can open: Live only, no editor, no other documents
+  DELETE /api/shares/<token>  turn a link off; GET /api/docs/<id>/shares lists those that are on
+  GET   /api/docs/<id>/export  and  /api/decks/<deck>/export   one .html file that works offline (formulas, inputs, buttons; a deck plays)
 
 ## Working well
 

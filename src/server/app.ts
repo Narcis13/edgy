@@ -14,10 +14,13 @@ import { SxError, read } from '../core/sx';
 import { indexTree } from '../core/tree';
 import { GUIDE } from '../core/reference';
 import { TEMPLATES, tour } from '../core/templates';
+import { type Entry, type Filter, type Sort, FILTERS, SORTS, arrange, match, queryWords } from '../core/library';
+import { collectionsUsed } from '../core/events';
+import { type Grant, SHARE_HEADER, allows, grantFor, guestHears } from './access';
 import { Hub } from './hub';
 import { type Clock, type Getter, Runner } from './runner';
 import { type Provider, ComposeError, Requests, TARGETS, accept, claudeConfig, compose, context, eventOf, eventProblem, isTarget } from './compose';
-import { type Store, shortId } from './store';
+import { type Access, type Deck, type DocSummary, type Share, type Store, StoreError, isDeckId, shortId } from './store';
 
 const ASSET_TYPES: Record<string, string> = {
   'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif', 'image/svg+xml': 'svg',
@@ -41,7 +44,7 @@ export interface AppOptions {
 }
 
 export function createApp(store: Store, assetsDir: string, webUrl?: string, opts: AppOptions = {}) {
-  const app = new Hono();
+  const app = new Hono<{ Variables: { grant: Grant } }>();
   const hub = new Hub();
   const requests = new Requests();
   const runner = new Runner({
@@ -55,6 +58,85 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   /** What formulas see: saved records, the time, and (for a document) its fetch cells' answers. */
   const world = (docId?: string): World => (docId ? runner.world(docId) : { rows: (name) => store.rows(name), now: Date.now() });
   const collections = () => store.collections().map((c) => c.name);
+
+  /** The collections a document reads or writes, by version: what a link to it may reach. */
+  const readsCache = new Map<string, { v: number; names: string[] }>();
+  function reads(docId: string): string[] {
+    const doc = store.getDoc(docId);
+    if (!doc) return [];
+    const hit = readsCache.get(docId);
+    if (hit && hit.v === doc.v) return hit.names;
+    const names = [...new Set([...collectionsUsed(doc), ...evaluate(doc, world(docId)).collections])];
+    readsCache.set(docId, { v: doc.v, names });
+    return names;
+  }
+
+  // Every request passes here first: a share link reaches its own document and nothing else (see access.ts).
+  app.use('/api/*', async (c, next) => {
+    const grant = grantFor(store, c.req.header(SHARE_HEADER) ?? c.req.query('share') ?? undefined);
+    if ('status' in grant) return c.json({ error: grant.error, reason: grant.reason }, grant.status);
+    const ok = allows(grant, c.req.method, c.req.path, () => (grant.level === 'owner' ? [] : reads(grant.doc)));
+    if (ok !== true) return c.json({ error: ok.error, reason: ok.reason }, ok.status);
+    c.set('grant', grant);
+    await next();
+  });
+
+  /** Apply ops as someone, save them, and tell everyone watching. */
+  function change(doc: Doc, raw: Op[], actor: Actor, o: { client?: string; batch?: string } = {}) {
+    const r = applyOps(doc, raw);
+    const next: Doc = { ...r.doc, v: doc.v + 1 };
+    const ops = raw.length === 1 ? [r.op] : (r.op.slice(1) as Op[]);
+    const ts = store.saveDoc(next, actor, ops);
+    hub.publish(doc.id, { type: 'ops', v: next.v, ts, actor, ops, touched: r.touched, client: o.client, batch: o.batch });
+    runner.changed(doc.id);
+    return { next, ops, touched: r.touched };
+  }
+
+  /** Gone for good (a deck: ungrouped), and everyone watching is told. */
+  function remove(id: string): boolean {
+    if (isDeckId(id)) return store.deleteDeck(id);
+    const ok = store.deleteDoc(id);
+    if (ok) {
+      runner.forget(id);
+      readsCache.delete(id);
+      hub.publish(id, { type: 'deleted' });
+    }
+    return ok;
+  }
+
+  /** A deck's card on the home page: what it is, how many documents, the first few to draw. */
+  function deckEntry(k: Deck, docs: Map<string, DocSummary>): Entry & Record<string, unknown> {
+    const members = k.docs.map((id) => docs.get(id)).filter((d): d is DocSummary => !!d);
+    return {
+      type: 'deck', id: k.id, title: k.title, description: k.description, createdAt: k.createdAt, updatedAt: k.updatedAt,
+      pinned: k.pinned, archivedAt: k.archivedAt, docs: k.docs, count: members.length,
+      covers: members.slice(0, 3).map((d) => ({ id: d.id, title: d.title, shape: d.shape })),
+    };
+  }
+
+  /** The home page: documents and decks, filtered, searched, pinned first, sorted. */
+  function library(q: string, filter: Filter, sort: Sort) {
+    const docs = store.listDocs();
+    const byId = new Map(docs.map((d) => [d.id, d]));
+    const decks = store.decks();
+    const deckTitle = new Map(decks.map((k) => [k.id, k.title]));
+    let entries: (Entry & Record<string, unknown>)[] = [
+      ...docs.map((d) => ({ type: 'doc' as const, ...d, ...(d.deck ? { deckTitle: deckTitle.get(d.deck) } : {}) })),
+      ...decks.map((k) => deckEntry(k, byId)),
+    ];
+    const words = queryWords(q);
+    if (words.length) {
+      const texts = new Map(store.texts().map((t) => [t.id, t]));
+      entries = entries.filter((e) => {
+        const m = match(words, e.type === 'doc' ? texts.get(e.id)! : { title: e.title, description: e.description, text: '' });
+        if (m) e.match = m;
+        return !!m;
+      });
+    }
+    return { ...arrange(entries, { filter, sort, searching: words.length > 0 }), query: q, filter, sort };
+  }
+
+  const shareView = (s: Share, origin: string) => ({ ...s, url: `${webUrl ?? origin}/s/${s.token}` });
 
   /** What an agent needs to see of a document: structure, values and what is broken. */
   function view(doc: Doc, format: string) {
@@ -143,13 +225,33 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   });
 
   app.delete('/api/docs/:id', (c) => {
-    const id = c.req.param('id');
-    const ok = store.deleteDoc(id);
-    if (ok) {
-      runner.forget(id);
-      hub.publish(id, { type: 'deleted' });
-    }
+    const ok = !isDeckId(c.req.param('id')) && remove(c.req.param('id'));
     return ok ? c.json({ ok }) : c.json({ error: 'no such document' }, 404);
+  });
+
+  /** The document's title and description (saved as ops, in its history), and its place in the library. */
+  app.patch('/api/docs/:id', async (c) => {
+    const doc = store.getDoc(c.req.param('id'));
+    if (!doc) return c.json({ error: 'no such document' }, 404);
+    const body = (await c.req.json()) as { title?: unknown; description?: unknown; pinned?: unknown; archived?: unknown; actor?: unknown };
+    const ops: Op[] = [];
+    if (body.title !== undefined) {
+      if (typeof body.title !== 'string') return c.json({ error: 'a title is text' }, 400);
+      const title = body.title.trim().slice(0, 200) || 'Untitled';
+      if (title !== doc.meta.title) ops.push(['meta', 'title', title]);
+    }
+    if (body.description !== undefined) {
+      if (body.description !== null && typeof body.description !== 'string') return c.json({ error: 'a description is text' }, 400);
+      const text = (body.description ?? '').trim().slice(0, 2000);
+      if (text !== (doc.meta.description ?? '')) ops.push(['meta', 'description', text || null]);
+    }
+    if (body.pinned && body.archived === undefined && store.summary(doc.id)?.archivedAt != null) {
+      return c.json({ error: 'an archived document can not be pinned; restore it first' }, 409);
+    }
+    if (ops.length) change(doc, ops, cleanActor(body.actor));
+    if (body.archived !== undefined) store.setArchived(doc.id, !!body.archived);
+    if (body.pinned !== undefined) store.setPinned(doc.id, !!body.pinned);
+    return c.json(store.summary(doc.id));
   });
 
   app.post('/api/docs/:id/ops', async (c) => {
@@ -158,18 +260,15 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const doc = store.getDoc(c.req.param('id'));
     if (!doc) return c.json({ error: 'no such document' }, 404);
     if (!Array.isArray(body.ops) || !body.ops.length) return c.json({ error: 'send {"ops": [[verb, …], …]}' }, 400);
-    const actor = cleanActor(body.actor);
-    const r = applyOps(doc, body.ops);
-    const next: Doc = { ...r.doc, v: doc.v + 1 };
-    const ops = body.ops.length === 1 ? [r.op] : (r.op.slice(1) as Op[]);
-    const ts = store.saveDoc(next, actor, ops);
-    hub.publish(doc.id, { type: 'ops', v: next.v, ts, actor, ops, touched: r.touched, client: body.client, batch: body.batch });
-    runner.changed(doc.id);
+    let actor = cleanActor(body.actor);
+    // Someone with a link is a person, whatever they call themselves.
+    if (c.get('grant').level !== 'owner') actor = { ...actor, kind: 'human' };
+    const { next, ops, touched } = change(doc, body.ops, actor, { client: body.client, batch: body.batch });
     // A person's browser ran its own handlers; an agent's change sets them off here, if someone is in Live.
     if (actor.kind === 'agent' && !body.client) runner.agentChanged(doc.id, doc, ops);
     const answer: Record<string, unknown> = actor.kind === 'human'
-      ? { v: next.v, ops, touched: r.touched }
-      : { ops, touched: r.touched, ...view(next, body.format ?? 'outline') };
+      ? { v: next.v, ops, touched }
+      : { ops, touched, ...view(next, body.format ?? 'outline') };
     return c.json(answer);
   });
 
@@ -196,7 +295,10 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const client = (c.req.query('client') ?? '').slice(0, 40);
     const mode = c.req.query('mode') ?? 'edit';
     return streamSSE(c, async (stream) => {
+      const grant = c.get('grant');
       const unsubscribe = hub.subscribe(id, (e) => {
+        // Someone with a link hears changes, not the conversation or the agents' work.
+        if (!guestHears(grant, e as { type: string }, () => reads(id))) return;
         stream.writeSSE({ event: e.type, data: JSON.stringify(e) }).catch(() => off());
       });
       const token = client ? runner.join(id, client, mode) : 0;
@@ -225,6 +327,131 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     if (typeof body.client !== 'string' || !['edit', 'live', 'page'].includes(body.mode ?? '')) return c.json({ error: 'send {"client", "mode": "edit"|"live"|"page"}' }, 400);
     runner.mode(id, body.client.slice(0, 40), body.mode!);
     return c.json({ live: runner.isLive(id) });
+  });
+
+  // ── the library: search, pins, archive, decks ──
+
+  app.get('/api/library', (c) => {
+    const filter = (c.req.query('filter') || 'all') as Filter;
+    const sort = (c.req.query('sort') || 'updated') as Sort;
+    if (!FILTERS.includes(filter)) return c.json({ error: `filter is one of ${FILTERS.join(', ')}` }, 400);
+    if (!SORTS.includes(sort)) return c.json({ error: `sort is one of ${SORTS.join(', ')}` }, 400);
+    return c.json(library((c.req.query('q') ?? '').slice(0, 200), filter, sort));
+  });
+
+  /** Pinned documents and decks, in this order. */
+  app.post('/api/library/pins', async (c) => {
+    const body = (await c.req.json()) as { ids?: unknown };
+    if (!Array.isArray(body.ids) || body.ids.some((x) => typeof x !== 'string')) return c.json({ error: 'send {"ids": [the pinned ids, in order]}' }, 400);
+    return c.json({ pins: store.orderPins(body.ids as string[]) });
+  });
+
+  /** One action on several documents or decks: pin, unpin, archive, restore, delete (a deck: ungroup). */
+  app.post('/api/library/bulk', async (c) => {
+    const body = (await c.req.json()) as { ids?: unknown; action?: string };
+    const actions = ['pin', 'unpin', 'archive', 'restore', 'delete'];
+    if (!Array.isArray(body.ids) || body.ids.some((x) => typeof x !== 'string') || !actions.includes(body.action ?? '')) {
+      return c.json({ error: `send {"action": one of ${actions.join(', ')}, "ids": [...]}` }, 400);
+    }
+    const done: string[] = [];
+    const skipped: string[] = [];
+    for (const id of body.ids as string[]) {
+      const ok = body.action === 'pin' ? store.setPinned(id, true)
+        : body.action === 'unpin' ? store.setPinned(id, false)
+        : body.action === 'archive' ? store.setArchived(id, true)
+        : body.action === 'restore' ? store.setArchived(id, false)
+        : remove(id);
+      (ok ? done : skipped).push(id);
+    }
+    return c.json({ action: body.action, done, skipped });
+  });
+
+  app.get('/api/decks', (c) => c.json(store.decks()));
+
+  /** Group documents into a deck, in this order. */
+  app.post('/api/decks', async (c) => {
+    const body = (await c.req.json()) as { title?: unknown; description?: unknown; docs?: unknown };
+    if (!Array.isArray(body.docs) || !body.docs.length || body.docs.some((x) => typeof x !== 'string')) {
+      return c.json({ error: 'send {"title": …, "docs": [document ids, in order]}' }, 400);
+    }
+    const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 200) : 'Untitled deck';
+    const description = typeof body.description === 'string' ? body.description.trim().slice(0, 2000) : '';
+    try {
+      return c.json(store.createDeck(title, description, body.docs as string[]), 201);
+    } catch (e) {
+      if (e instanceof StoreError) return c.json({ error: e.message }, 400);
+      throw e;
+    }
+  });
+
+  /** A deck, with its documents' summaries in order. */
+  app.get('/api/decks/:id', (c) => {
+    const deck = store.deck(c.req.param('id'));
+    if (!deck) return c.json({ error: 'no such deck' }, 404);
+    const docs = new Map(store.listDocs().map((d) => [d.id, d]));
+    return c.json({ ...deck, items: deck.docs.map((id) => docs.get(id)).filter(Boolean) });
+  });
+
+  /** Rename, describe, reorder (docs: the ids in their new order; one left out is taken out), pin, archive. */
+  app.patch('/api/decks/:id', async (c) => {
+    const id = c.req.param('id');
+    if (!store.deck(id)) return c.json({ error: 'no such deck' }, 404);
+    const body = (await c.req.json()) as { title?: unknown; description?: unknown; docs?: unknown; pinned?: unknown; archived?: unknown };
+    const fields: { title?: string; description?: string } = {};
+    if (typeof body.title === 'string') fields.title = body.title.trim().slice(0, 200) || 'Untitled deck';
+    if (typeof body.description === 'string' || body.description === null) fields.description = ((body.description as string | null) ?? '').trim().slice(0, 2000);
+    if (body.docs !== undefined) {
+      if (!Array.isArray(body.docs) || body.docs.some((x) => typeof x !== 'string')) return c.json({ error: 'docs is a list of document ids' }, 400);
+      try {
+        store.setDeckDocs(id, body.docs as string[]);
+      } catch (e) {
+        if (e instanceof StoreError) return c.json({ error: e.message }, 400);
+        throw e;
+      }
+    }
+    if (Object.keys(fields).length) store.updateDeck(id, fields);
+    if (body.archived !== undefined) store.setArchived(id, !!body.archived);
+    if (body.pinned !== undefined) store.setPinned(id, !!body.pinned);
+    return c.json(store.deck(id));
+  });
+
+  /** Ungroup: the deck goes, every document in it stays. */
+  app.delete('/api/decks/:id', (c) => (store.deleteDeck(c.req.param('id')) ? c.json({ ok: true }) : c.json({ error: 'no such deck' }, 404)));
+
+  // ── share links ──
+
+  /** For the page a link opens: which document, and what the link may do. */
+  app.get('/api/shared', (c) => {
+    const grant = c.get('grant');
+    if (grant.level === 'owner') return c.json({ error: `send the link's token in the ${SHARE_HEADER} header` }, 400);
+    const doc = store.getDoc(grant.doc);
+    return doc ? c.json({ id: doc.id, title: doc.meta.title, access: grant.level }) : c.json({ error: 'this link does not open anything', reason: 'unknown' }, 404);
+  });
+
+  /** The links that are on. */
+  app.get('/api/docs/:id/shares', (c) => {
+    const id = c.req.param('id');
+    if (!store.getDoc(id)) return c.json({ error: 'no such document' }, 404);
+    const origin = new URL(c.req.url).origin;
+    return c.json(store.shares(id).filter((s) => s.revokedAt == null).map((s) => shareView(s, origin)));
+  });
+
+  /** Turn a link on, "view" or "edit"; the one already on is returned as it is. */
+  app.post('/api/docs/:id/shares', async (c) => {
+    const id = c.req.param('id');
+    if (!store.getDoc(id)) return c.json({ error: 'no such document' }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as { access?: string };
+    const access = (body.access ?? 'view') as Access;
+    if (access !== 'view' && access !== 'edit') return c.json({ error: 'access is "view" or "edit"' }, 400);
+    return c.json(shareView(store.openShare(id, access), new URL(c.req.url).origin), 201);
+  });
+
+  /** Turn a link off. Whoever has it open sees that it is no longer shared. */
+  app.delete('/api/shares/:token', (c) => {
+    const share = store.closeShare(c.req.param('token'));
+    if (!share) return c.json({ error: 'no such link' }, 404);
+    hub.publish(share.doc, { type: 'unshared', token: share.token });
+    return c.json(shareView(share, new URL(c.req.url).origin));
   });
 
   // ── fetch cells: JSON from an address, fetched here for everyone ──

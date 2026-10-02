@@ -17,7 +17,9 @@ export type DocEvent =
   | { type: 'trace'; trace: TraceEntry[] }
   /** A fetch cell started loading, got its answer or failed. */
   | { type: 'fetch'; cell: string; state: FetchState }
-  | { type: 'deleted' };
+  | { type: 'deleted' }
+  /** A share link was turned off; whoever opened the document with it is told. */
+  | { type: 'unshared'; token: string };
 
 type Listener = (e: DocEvent) => void;
 

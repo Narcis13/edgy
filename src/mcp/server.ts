@@ -64,14 +64,132 @@ server.registerTool('edgy_guide', {
   inputSchema: {},
 }, safely(async () => text(await (await fetch(BASE + '/api/guide')).text())));
 
+/** One line per card: a document or a deck, with what the library knows of it. */
+async function entryLine(e: any): Promise<string> {
+  const flags = [e.pinned != null && `pinned #${e.pinned}`, e.archivedAt != null && 'archived', e.shared?.view && 'shared (view)', e.shared?.edit && 'shared (edit)', e.deckTitle && `in deck "${e.deckTitle}"`].filter(Boolean);
+  const head = e.type === 'deck'
+    ? `${e.id}  deck "${e.title}"  ${e.count} documents: ${(e.docs as string[]).join(', ')}`
+    : `${e.id}  "${e.title}"  version ${e.v}, changed ${new Date(e.updatedAt).toISOString()}  ${await link(e.id)}`;
+  return [head + (flags.length ? `  [${flags.join(', ')}]` : ''),
+    e.description ? `    ${e.description}` : '',
+    e.match ? `    found in the ${e.match.field === 'text' ? 'text' : e.match.field}: ${e.match.snippet}` : ''].filter(Boolean).join('\n');
+}
+
 server.registerTool('edgy_docs', {
-  description: 'List the documents, newest first, with a link a person can open.',
-  inputSchema: {},
-}, safely(async () => {
-  const docs = (await api('GET', '/api/docs')) as { id: string; title: string; v: number; updatedAt: number }[];
-  if (!docs.length) return text('No documents yet. Create one with edgy_create.');
-  const lines = await Promise.all(docs.map(async (d) => `${d.id}  "${d.title}"  version ${d.v}, changed ${new Date(d.updatedAt).toISOString()}  ${await link(d.id)}`));
-  return text(lines.join('\n'));
+  description: 'List or search the library: documents and decks, pinned first, with a link a person can open. query finds documents by words in their title, description or text (every word must appear). filter: all (default; documents in a deck show inside it), pinned, shared, decks or archived. sort: updated (default), created or title.',
+  inputSchema: {
+    query: z.string().optional(),
+    filter: z.enum(['all', 'pinned', 'shared', 'decks', 'archived']).optional(),
+    sort: z.enum(['updated', 'created', 'title']).optional(),
+  },
+}, safely(async ({ query, filter, sort }) => {
+  const params = new URLSearchParams({ q: query ?? '', filter: filter ?? 'all', sort: sort ?? 'updated' });
+  const lib = await api('GET', `/api/library?${params}`);
+  if (!lib.total) return text(query ? `Nothing matches "${query}".` : filter && filter !== 'all' ? `Nothing under ${filter}.` : 'No documents yet. Create one with edgy_create.');
+  const parts: string[] = [];
+  if (lib.pinned.length) parts.push('Pinned:', ...(await Promise.all(lib.pinned.map(entryLine))), '');
+  if (lib.rest.length) parts.push(...(lib.pinned.length ? ['Others:'] : []), ...(await Promise.all(lib.rest.map(entryLine))));
+  return text(parts.join('\n'));
+}));
+
+server.registerTool('edgy_organize', {
+  description: 'Arrange documents in the library. action: describe (set the description of docs[0]; it shows on the card and is searchable), pin, unpin, archive (out of the list, nothing lost), restore (back from the archive), order_pins (docs = every pinned id or title in the new order). docs are ids or titles.',
+  inputSchema: {
+    action: z.enum(['describe', 'pin', 'unpin', 'archive', 'restore', 'order_pins']),
+    docs: z.array(z.string()).min(1).describe('Document ids or titles (deck ids work for pin, unpin, archive, restore)'),
+    description: z.string().optional().describe('For describe: one or two sentences; empty removes it'),
+  },
+}, safely(async ({ action, docs, description }) => {
+  const ids = await Promise.all(docs.map((d) => (d.startsWith('deck-') ? d : docId(d))));
+  if (action === 'describe') {
+    const r = await api('PATCH', `/api/docs/${ids[0]}`, { description: description ?? '', actor });
+    return text(`"${r.title}" now reads: ${r.description || '(no description)'}`);
+  }
+  if (action === 'order_pins') return text(`Pinned, in order: ${(await api('POST', '/api/library/pins', { ids })).pins.join(', ')}`);
+  const r = await api('POST', '/api/library/bulk', { action, ids });
+  return text(`${action}: ${r.done.join(', ') || 'nothing'}${r.skipped.length ? `; not done: ${r.skipped.join(', ')}` : ''}.`);
+}));
+
+/** Accept a deck id or its title. */
+async function deckId(ref: string): Promise<string> {
+  const decks = (await api('GET', '/api/decks')) as { id: string; title: string }[];
+  const hit = decks.find((k) => k.id === ref) ?? decks.filter((k) => k.title.toLowerCase() === ref.toLowerCase())[0];
+  if (!hit) throw new Error(`no deck "${ref}". Known: ${decks.map((k) => `${k.id} (${k.title})`).join(', ') || 'none yet'}`);
+  return hit.id;
+}
+
+server.registerTool('edgy_deck', {
+  description: 'Decks: ordered sets of documents shown as one card and played as slides (the documents stay separate). action: create (title, description, docs in order), read, reorder (docs = all of its documents in the new order), add (docs appended, or inserted at position "at", 0 first), remove (docs taken out), describe (title and/or description), ungroup (the deck goes, its documents stay).',
+  inputSchema: {
+    action: z.enum(['create', 'read', 'reorder', 'add', 'remove', 'describe', 'ungroup']),
+    deck: z.string().optional().describe('Deck id or title (not for create)'),
+    docs: z.array(z.string()).optional().describe('Document ids or titles'),
+    at: z.number().optional(),
+    title: z.string().optional(),
+    description: z.string().optional(),
+  },
+}, safely(async ({ action, deck, docs, at, title, description }) => {
+  const ids = await Promise.all((docs ?? []).map(docId));
+  const show = async (k: any) => {
+    const full = await api('GET', `/api/decks/${k.id}`);
+    return text(`${full.id}  "${full.title}"${full.description ? ` — ${full.description}` : ''}\n${full.items.map((d: any, i: number) => `  ${i + 1}. ${d.id} "${d.title}"`).join('\n') || '  (no documents)'}\nPlay it at ${(await link(full.id)).replace('/d/', '/deck/')}/play`);
+  };
+  if (action === 'create') return show(await api('POST', '/api/decks', { title, description, docs: ids }));
+  const id = await deckId(deck ?? '');
+  if (action === 'ungroup') {
+    await api('DELETE', `/api/decks/${id}`);
+    return text(`Ungrouped ${id}; its documents are back in the list.`);
+  }
+  const cur = await api('GET', `/api/decks/${id}`);
+  if (action === 'read') return show(cur);
+  if (action === 'describe') return show(await api('PATCH', `/api/decks/${id}`, { ...(title !== undefined ? { title } : {}), ...(description !== undefined ? { description } : {}) }));
+  let order: string[] = cur.docs;
+  if (action === 'reorder') order = [...ids, ...order.filter((d) => !ids.includes(d))];
+  if (action === 'add') {
+    const rest = order.filter((d) => !ids.includes(d));
+    order = [...rest.slice(0, at ?? rest.length), ...ids, ...rest.slice(at ?? rest.length)];
+  }
+  if (action === 'remove') order = order.filter((d) => !ids.includes(d));
+  return show(await api('PATCH', `/api/decks/${id}`, { docs: order }));
+}));
+
+server.registerTool('edgy_share', {
+  description: 'Share a document by link. action: on (make the link, access view or edit; anyone with it sees the document in Live, with no editor and no way to other documents; edit lets them change it), off (turn a link off; it then says the document is no longer shared), list (the links that are on). The server listens on this computer, so a link reaches others only once edgy is hosted where they can open it.',
+  inputSchema: {
+    doc: z.string().describe('Document id or title'),
+    action: z.enum(['on', 'off', 'list']),
+    access: z.enum(['view', 'edit']).optional(),
+  },
+}, safely(async ({ doc, action, access }) => {
+  const id = await docId(doc);
+  const on = (await api('GET', `/api/docs/${id}/shares`)) as { token: string; access: string; url: string }[];
+  if (action === 'list') return text(on.length ? on.map((s) => `${s.access}: ${s.url}`).join('\n') : 'Not shared.');
+  if (action === 'on') {
+    const s = await api('POST', `/api/docs/${id}/shares`, { access: access ?? 'view' });
+    return text(`Anyone with this link can ${s.access}: ${s.url}`);
+  }
+  const off = on.filter((s) => !access || s.access === access);
+  for (const s of off) await api('DELETE', `/api/shares/${s.token}`);
+  return text(off.length ? `Turned off: ${off.map((s) => s.access).join(', ')}.` : 'There was no such link.');
+}));
+
+server.registerTool('edgy_export', {
+  description: 'Export a document or a deck as one self-contained .html file that opens from disk with no server and no network: layout, fonts, pictures and icons inside; formulas, inputs and buttons work; a deck plays as slides; records it reads are included as they are now. Give doc or deck, and file (a path to write) to save it; without file you get the address to download it.',
+  inputSchema: {
+    doc: z.string().optional().describe('Document id or title'),
+    deck: z.string().optional().describe('Deck id or title'),
+    file: z.string().optional().describe('Where to save the .html, e.g. C:/Users/me/Desktop/quote.html'),
+  },
+}, safely(async ({ doc, deck, file }) => {
+  if (!doc === !deck) throw new Error('give either doc or deck');
+  const path = doc ? `/api/docs/${await docId(doc)}/export` : `/api/decks/${await deckId(deck!)}/export`;
+  if (!file) return text(`Download it from ${BASE}${path}`);
+  const res = await fetch(BASE + path);
+  if (!res.ok) throw new Error(((await res.json().catch(() => null)) as any)?.error ?? `export failed (${res.status})`);
+  const bytes = Buffer.from(await res.arrayBuffer());
+  const { writeFile } = await import('node:fs/promises');
+  await writeFile(file, bytes);
+  return text(`Saved ${file} (${(bytes.length / 1024).toFixed(0)} KB). It opens in any browser, offline.`);
 }));
 
 server.registerTool('edgy_create', {
