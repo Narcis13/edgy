@@ -5,10 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from './app';
 import { Store } from './store';
-import { type Target, check, composeClaude, composeLocal, context, parseReply, suggestions, systemPrompt, validate } from './compose';
+import { type Target, check, compose as composeWith, composeClaude, composeLocal, context, parseReply, suggestions, systemPrompt, validate } from './compose';
 import { applyOps } from '../core/ops';
-import { type Json, newDoc } from '../core/types';
+import { type Doc, type Json, type Op, type Sx, newDoc } from '../core/types';
 import { print, read } from '../core/sx';
+import { evalIn, evaluate, runAction } from '../core/engine';
+import { indexTree } from '../core/tree';
 
 // No test talks to the network: Claude is only "set up" where a test mocks fetch.
 for (const k of ['ANTHROPIC_API_KEY', 'EDGY_AI', 'EDGY_AI_MODEL', 'EDGY_AI_BASE_URL']) delete process.env[k];
@@ -209,6 +211,194 @@ test('the built-in composer explains in plain words and admits what it does not 
   }
 });
 
+// ── tabs, accordions, collapsibles, data cells and diagrams ──
+
+/** Tabs, a step counter, two accordions (one at a time, any number), a collapsible, a diagram, and a second tabs holding a button. */
+const KINDS: Json = ['col',
+  ['tabs', { name: 'view' }, ['panel', { title: 'Overview' }, ['text', 'Hello']], ['panel', { title: 'Details' }, ['text', 'More']]],
+  ['data', { name: 'step' }, 1],
+  ['accordion', { name: 'faq' }, ['panel', { title: 'Shipping' }, ['text', 'Two days']], ['panel', { title: 'Returns' }, ['text', '30 days']]],
+  ['accordion', { name: 'topics', multiple: true }, ['panel', { title: 'Billing' }, ['text', 'b']], ['panel', { title: 'Account' }, ['text', 'a']]],
+  ['collapsible', { name: 'more', title: 'More details' }, ['text', 'Small print']],
+  ['diagram', { name: 'flow' },
+    { id: 'a', type: 'rect', text: 'Order' }, { id: 'b', type: 'diamond', text: 'Paid?' }, { id: 'c', type: 'ellipse', text: 'Done' },
+    { id: 'n', type: 'text', text: 'note' }, { type: 'arrow', from: 'a', to: 'b' }, { type: 'arrow', from: 'b', to: 'c' }],
+  ['tabs', { name: 'admin' }, ['panel', { title: 'Details' }, ['text', 'x']], ['panel', { title: 'Log' }, ['button', { name: 'onward' }, 'Next']]],
+  ['formula', { name: 'note' }, 0],
+  ['button', { name: 'go' }, 'Go']];
+
+const kindsDoc = () => applyOps(newDoc('k'), [['put', 'c1', KINDS]]).doc;
+const noData = { rows: () => [], now: Date.UTC(2026, 9, 1) };
+const kindsCtx = (target: Target = 'expr', cell?: string, doc = kindsDoc()) => context(doc, noData, [], { target, cell });
+const composeKinds = (target: Target, prompt: string, cell?: string) => {
+  const r = composeLocal(kindsCtx(target, cell), prompt);
+  return r ? print(r.expr, 1000) : null;
+};
+/** Click: run an action from a button and apply what it changes. */
+function click(doc: Doc, button: string, action: Sx): Doc {
+  const id = indexTree(doc.root).byName.get(button)!.id;
+  const ops = runAction(doc, noData, id, action).flatMap((e) => (e.type === 'op' ? [e.op as Op] : []));
+  return applyOps(doc, ops).doc;
+}
+const valueOf = (doc: Doc, name: string) => evaluate(doc, noData).cells[indexTree(doc.root).byName.get(name)!.id].value;
+
+test('the built-in composer: tabs, data cells, accordions, collapsibles and diagrams', () => {
+  const cases: [Target, string, string, string?][] = [
+    // tabs, matched by the panel's title even when the sentence does not name the tabs cell
+    ['do', 'a button that opens the Details tab', '(set! view "Details")', 'go'],
+    ['do', 'open the Details tab', '(set! view "Details")', 'go'],
+    ['do', 'show details', '(set! view "Details")', 'go'],
+    ['do', 'go to the "Details" tab', '(set! view "Details")'],
+    ['do', 'switch to the overview tab', '(set! view "Overview")'],
+    ['do', 'open Details in admin', '(set! admin "Details")'],
+    ['do', 'set view to details', '(set! view "Details")'],
+    ['do', 'next tab', '(set! view (cond (= view "Overview") "Details" view))'],
+    // a number data cell, stepped
+    ['do', 'go to the next step', '(set! step (+ step 1))'],
+    ['do', 'next step', '(set! step (+ step 1))'],
+    ['do', 'go back a step', '(set! step (- step 1))'],
+    ['do', 'previous step', '(set! step (- step 1))'],
+    ['do', 'step back', '(set! step (- step 1))'],
+    ['do', 'go forward 2 steps', '(set! step (+ step 2))'],
+    ['do', 'go to the next step, up to 4', '(set! step (min (+ step 1) 4))'],
+    ['do', 'previous step but not below 1', '(set! step (max (- step 1) 1))'],
+    ['do', 'set step to 3', '(set! step 3)'],
+    ['do', 'go to step 2', '(set! step 2)'],
+    ['do', 'reset step', '(set! step 1)'],
+    ['do', 'increase step by 2', '(set! step (+ step 2))'],
+    // accordions: one at a time takes one title, any number keeps the others open
+    ['do', 'open the Shipping section', '(set! faq "Shipping")'],
+    ['do', 'open the Billing section', '(set! topics (uniq (concat topics (list "Billing"))))'],
+    ['do', 'close the Shipping section', '(set! faq (filter (!= it "Shipping") faq))'],
+    ['do', 'close all sections', '(set! faq (list))'],
+    ['do', 'close all the sections in topics', '(set! topics (list))'],
+    ['do', 'open all sections', '(set! topics (list "Billing" "Account"))'],
+    ['do', 'toggle the Shipping section', '(set! faq (if (includes? faq "Shipping") (filter (!= it "Shipping") faq) "Shipping"))'],
+    // collapsibles, by name, by heading or by a word of the heading
+    ['do', 'fold the details', '(set! more false)'],
+    ['do', 'collapse more', '(set! more false)'],
+    ['do', 'toggle more details', '(toggle! more)'],
+    ['do', 'unfold more', '(set! more true)'],
+    ['do', 'expand the details', '(set! more true)'],
+    ['do', 'open the Details tab and go to the next step', '(do (set! view "Details") (set! step (+ step 1)))'],
+    // diagrams
+    ['expr', 'count the shapes in the flow', '(count-if (includes? (list "rect" "ellipse" "diamond") (get it "type")) flow)'],
+    ['expr', 'how many shapes', '(count-if (includes? (list "rect" "ellipse" "diamond") (get it "type")) flow)'],
+    ['expr', 'how many arrows', '(count-if (= (get it "type") "arrow") flow)'],
+    ['expr', 'number of arrows in flow', '(count-if (= (get it "type") "arrow") flow)'],
+    ['expr', 'how many elements in flow', '(len flow)'],
+    ['expr', 'step times 2', '(* step 2)'],
+    ['expr', 'if the Details tab is open then "yes" else "no"', '(if (= view "Details") "yes" "no")'],
+    // hiding: only on a tab, a step, while something is open
+    ['hidden', 'show only on the Details tab', '(!= view "Details")'],
+    ['hidden', 'only when the Details tab is open', '(!= view "Details")'],
+    ['hidden', 'hide on the Details tab', '(= view "Details")'],
+    ['hidden', 'when view is details', '(= view "Details")'],
+    ['hidden', 'hide unless step is 2', '(!= step 2)'],
+    ['hidden', 'show on step 2', '(!= step 2)'],
+    ['hidden', 'show when more is open', '(not more)'],
+    ['hidden', 'when more is folded', '(not more)'],
+    ['hidden', 'show when the Shipping section is open', '(not (includes? faq "Shipping"))'],
+    ['hidden', 'when the Billing section is not open', '(not (includes? topics "Billing"))'],
+  ];
+  const wrong = cases.map(([t, p, want, cell]) => [t, p, composeKinds(t, p, cell), want]).filter(([, , got, want]) => got !== want);
+  assert.deepEqual(wrong, []);
+
+  // Two tabs have a Details panel: the one holding the button wins, else the first in the document.
+  assert.equal(composeKinds('do', 'open the Details tab', 'onward'), '(set! admin "Details")');
+  assert.equal(composeKinds('do', 'next tab', 'onward'), '(set! admin (cond (= admin "Details") "Log" admin))');
+  // Nothing to match: no guessing.
+  assert.equal(composeKinds('do', 'open the Pricing tab'), null);
+  assert.equal(composeKinds('expr', 'how many lines'), null, '"lines" names other things too, so the diagram must be named');
+  assert.equal(composeKinds('do', 'reset note'), null, 'a formula is not something a button sets');
+});
+
+test('composed actions and conditions on the new kinds do what was asked', () => {
+  const act = (doc: Doc, prompt: string) => {
+    const r = composeLocal(kindsCtx('do', 'go', doc), prompt);
+    assert.ok(r, prompt);
+    return click(doc, 'go', r.expr);
+  };
+  const cond = (doc: Doc, target: Target, prompt: string) => {
+    const r = composeLocal(kindsCtx(target, 'note', doc), prompt);
+    assert.ok(r, prompt);
+    return evalIn(doc, noData, r.expr).value;
+  };
+  let doc = kindsDoc();
+  assert.equal(valueOf(doc, 'view'), 'Overview');
+  assert.equal(cond(doc, 'hidden', 'show only on the Details tab'), true, 'hidden while Overview is open');
+  doc = act(doc, 'a button that opens the Details tab');
+  assert.equal(valueOf(doc, 'view'), 'Details');
+  assert.equal(cond(doc, 'hidden', 'show only on the Details tab'), false, 'shown on Details');
+  doc = act(doc, 'previous tab');
+  assert.equal(valueOf(doc, 'view'), 'Overview');
+
+  doc = act(doc, 'go to the next step');
+  assert.equal(valueOf(doc, 'step'), 2);
+  assert.equal(cond(doc, 'hidden', 'show on step 2'), false);
+  doc = act(doc, 'go to the next step, up to 2');
+  assert.equal(valueOf(doc, 'step'), 2, 'clamped');
+  doc = act(doc, 'go back a step');
+  assert.equal(valueOf(doc, 'step'), 1);
+  assert.equal(cond(doc, 'hidden', 'hide unless step is 2'), true);
+  doc = act(doc, 'set step to 3');
+  assert.equal(valueOf(doc, 'step'), 3);
+  doc = act(doc, 'reset step');
+  assert.equal(valueOf(doc, 'step'), 1);
+
+  doc = act(doc, 'open the Shipping section');
+  assert.deepEqual(valueOf(doc, 'faq'), ['Shipping']);
+  assert.equal(cond(doc, 'hidden', 'show when the Shipping section is open'), false);
+  doc = act(doc, 'open the Returns section');
+  assert.deepEqual(valueOf(doc, 'faq'), ['Returns'], 'one at a time');
+  doc = act(doc, 'close all sections');
+  assert.deepEqual(valueOf(doc, 'faq'), []);
+  assert.equal(cond(doc, 'hidden', 'show when the Shipping section is open'), true);
+  doc = act(doc, 'open the Billing section');
+  doc = act(doc, 'open the Account section');
+  doc = act(doc, 'open the Billing section');
+  assert.deepEqual(valueOf(doc, 'topics'), ['Billing', 'Account'], 'any number, no repeats');
+  doc = act(doc, 'toggle the Billing section');
+  assert.deepEqual(valueOf(doc, 'topics'), ['Account']);
+
+  assert.equal(valueOf(doc, 'more'), true, 'a collapsible starts open');
+  assert.equal(cond(doc, 'hidden', 'show when more is open'), false);
+  doc = act(doc, 'fold the details');
+  assert.equal(valueOf(doc, 'more'), false);
+  assert.equal(cond(doc, 'hidden', 'show when more is open'), true);
+  doc = act(doc, 'toggle more details');
+  assert.equal(valueOf(doc, 'more'), true);
+  doc = act(doc, 'collapse more');
+  doc = act(doc, 'unfold more');
+  assert.equal(valueOf(doc, 'more'), true);
+
+  assert.equal(cond(doc, 'expr', 'how many shapes'), 3);
+  assert.equal(cond(doc, 'expr', 'how many arrows'), 2);
+  assert.equal(cond(doc, 'expr', 'number of boxes in flow'), 4, 'boxes count text too');
+});
+
+test('the new kinds are explained in their own words and suggested', () => {
+  const why = (t: Target, p: string, cell?: string) => composeLocal(kindsCtx(t, cell), p)!.explanation;
+  assert.equal(why('do', 'open the Details tab'), 'When clicked, it opens the Details tab of view.');
+  assert.equal(why('do', 'open the Billing section'), 'When clicked, it opens the Billing section of topics.');
+  assert.equal(why('do', 'close all sections'), 'When clicked, it closes every section of faq.');
+  assert.equal(why('do', 'fold the details'), 'When clicked, it folds more.');
+  assert.equal(why('do', 'toggle more'), 'When clicked, it folds or unfolds more.');
+  assert.equal(why('do', 'go to the next step'), 'When clicked, it adds 1 to step.');
+  assert.equal(why('expr', 'how many arrows'), 'Counts the arrows in flow. It updates whenever flow changes.');
+  assert.equal(why('hidden', 'show when the Shipping section is open', 'note'), 'Hides this cell while faq does not include "Shipping". It checks again whenever faq changes.');
+  for (const t of ['expr', 'do', 'hidden'] as Target[]) {
+    const c = kindsCtx(t);
+    const tips = suggestions(c);
+    assert.ok(tips.length >= 3, t);
+    for (const tip of tips) assert.ok(composeLocal(c, tip), `suggestion "${tip}" for ${t} should compose`);
+  }
+  assert.ok(suggestions(kindsCtx('do')).includes('open the Details tab'));
+  assert.ok(suggestions(kindsCtx('do')).includes('go to the next step'));
+  assert.ok(suggestions(kindsCtx('hidden')).includes('show only on the Details tab'));
+  assert.ok(suggestions(kindsCtx('expr')).includes('how many shapes in flow'));
+});
+
 test('validation rejects unknown functions and names, and actions outside a button', () => {
   const ok = (target: Target, src: string) => check(ctx(target), read(src), target);
   ok('expr', '(* qty price)');
@@ -240,6 +430,15 @@ test('a reply from Claude is split into code and explanation', () => {
   assert.match(sys, /"quotes" with fields client, total/);
   assert.match(sys, /named total \(a formula\)/);
   assert.match(sys, /Current code: \(- subtotal discount\)/);
+  assert.doesNotMatch(sys, /What these cells hold/, 'no notes for kinds the document does not have');
+
+  const kinds = systemPrompt(kindsCtx('do', 'go'));
+  assert.match(kinds, /tabs \(view\): its value is the open tab's title\. Read it with \(= view "Details"\); a button opens a tab with \(set! view "Details"\)/);
+  assert.match(kinds, /accordion \(faq\): .*\(includes\? faq "Shipping"\).*\(set! faq "Shipping"\) opens just that one.*\(set! faq \(list\)\)/);
+  assert.match(kinds, /collapsible \(more\): its value is true while open.*\(toggle! more\)/);
+  assert.match(kinds, /data \(step\): .*\(set! step \(\+ step 1\)\)/);
+  assert.match(kinds, /diagram \(flow\): .*\(count-if \(includes\? \(list "rect" "ellipse" "diamond"\) \(get it "type"\)\) flow\).*\(count-if \(= \(get it "type"\) "arrow"\) flow\)/);
+  assert.match(kinds, /c2 tabs view 2 tabs, open "Overview"/, 'the outline shows the panels');
 });
 
 // ── over HTTP ──
@@ -424,6 +623,53 @@ test('when Claude fails, the built-in composer answers with a note', async () =>
     assert.equal(r.json.provider, 'local');
     assert.equal(r.json.code, '(* qty price)');
     assert.match(r.json.notes[0], /Claude could not answer: Overloaded/);
+  } finally {
+    mock.restore();
+  }
+});
+
+const CFG = { key: 'k', model: 'claude-sonnet-5-5', base: 'https://api.anthropic.com' };
+
+test('Claude opens a tab and steps a counter, told how these kinds work', async () => {
+  const mock = mockClaude([
+    '```lisp\n(do (set! view "Details") (set! step (+ step 1)))\n```\nExplanation: Opens the Details tab and moves to the next step.',
+  ]);
+  try {
+    const c = kindsCtx('do', 'go');
+    const a = await composeClaude(c, 'open the details tab and go to the next step', CFG);
+    assert.equal(print(a.expr, 1000), '(do (set! view "Details") (set! step (+ step 1)))');
+    assert.equal(a.explanation, 'Opens the Details tab and moves to the next step.');
+    assert.match(mock.calls[0].body.system, /a button opens a tab with \(set! view "Details"\)/);
+    assert.match(mock.calls[0].body.system, /data \(step\)/);
+    const doc = click(c.doc, 'go', a.expr);
+    assert.equal(valueOf(doc, 'view'), 'Details');
+    assert.equal(valueOf(doc, 'step'), 2);
+  } finally {
+    mock.restore();
+  }
+});
+
+test('Claude hides a cell by an accordion, retried when the title is wrong, and counts a diagram', async () => {
+  const mock = mockClaude([
+    // Not a title in the document and not a cell: the retry says why.
+    '```lisp\n(not (includes? faq shipping))\n```\nExplanation: Hides it.',
+    '```lisp\n(not (includes? faq "Shipping"))\n```\nExplanation: Hidden unless the Shipping section is open.',
+    '```lisp\n(count-if (= (get it "type") "arrow") flow)\n```\nExplanation: Counts the arrows in flow.',
+  ]);
+  try {
+    let doc = kindsDoc();
+    const hidden = await composeWith(kindsCtx('hidden', 'note', doc), 'show when the shipping section is open', { claude: CFG, agent: null });
+    assert.equal(hidden.provider, 'claude');
+    assert.equal(hidden.code, '(not (includes? faq "Shipping"))');
+    assert.match(mock.calls[1].body.messages[2].content, /no cell called "shipping"/);
+    assert.equal(hidden.preview?.value, true, 'hidden while every section is closed');
+    doc = click(doc, 'go', ['set!', 'faq', 'Shipping']);
+    assert.equal(evalIn(doc, noData, hidden.expr).value, false, 'shown once Shipping is open');
+
+    const arrows = await composeWith(kindsCtx('expr', 'note', doc), 'how many arrows', { claude: CFG, agent: null });
+    assert.equal(arrows.code, '(count-if (= (get it "type") "arrow") flow)');
+    assert.equal(arrows.preview?.value, 2);
+    assert.match(mock.calls[2].body.system, /diagram \(flow\): its value is the list of its elements/);
   } finally {
     mock.restore();
   }

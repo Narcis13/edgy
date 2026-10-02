@@ -2,7 +2,7 @@
 
 Active documents grown from a single cell, for people and agents to work on together.
 
-A document starts as one cell. Press the **+** on any edge to divide it into two — side by side or stacked — and keep going: the layout is a tree of cells, so any grid, form, invoice or dashboard is reachable by splitting and merging. A cell holds text, an input, a formula, a picture, an icon, a button, a chart, a table, a list or checklist, a calendar, a drawing or signature, a headline stat, or a page break. Cells have names; formulas read other cells by name and the links are drawn on the page; buttons run actions that change cells or save records; every change is a small s-expression that a person's click and an agent's tool call both produce.
+A document starts as one cell. Press the **+** on any edge to divide it into two — side by side or stacked — and keep going: the layout is a tree of cells, so any grid, form, invoice or dashboard is reachable by splitting and merging. A cell holds text, an input, a formula, a picture, an icon, a button, a chart, a table, a list or checklist, a calendar, a drawing or signature, a diagram, a headline stat, a hidden value, or a page break; tabs, accordions and collapsibles hold other cells. Cells have names; formulas read other cells by name and the links are drawn on the page; buttons run actions that change cells or save records; every change is a small s-expression that a person's click and an agent's tool call both produce.
 
 ```
 (split c4 row)                        divide a cell
@@ -47,6 +47,14 @@ A table shows records: rows typed into the table itself, saved records (`(rows "
 - take a look: lines (rows, columns, grid, outer, none), stripes, density, header style; hide the search box.
 
 Rows typed into a table are edited in place in Edit view: double-click a cell, Enter or Tab to move on. On a phone each row becomes a card; on paper the toolbar, pick boxes and buttons are left out.
+
+## Tabs, sections, diagrams and hidden data
+
+- **Tabs** show one panel at a time behind a tab bar; an **accordion** folds sections, one open at a time or any number; a **collapsible** is a heading that folds the cells under it. Each panel holds any cells in any layout, and inside it cells split, merge, move and duplicate as anywhere else. What is open is the cell's value: `(= view "Details")` reads it, a button opens a tab with `(set! view "Details")`, and it is saved with the document. While designing, add, rename (double-click), reorder and remove tabs and sections on the page or in the panel. On paper every tab and section prints, unfolded, under its title.
+- A **diagram** holds shapes (rectangle, ellipse, diamond), text, arrows and lines, drawn in Edit with the mouse or a finger: arrows stay joined to their shapes when those move, and labels can show live values (`Total {{total | currency}}`). Its content is a list of elements in the document, so an agent can write a whole flowchart without positions (it is laid out along the arrows) and change single elements with the `draw` and `erase` ops, and formulas can read it: `(count-if (= (get it "type") "arrow") flow)`. It prints as sharp vector lines.
+- A **data** cell holds a value — a number, text, a list, a record — that readers never see and that takes no room, in Live, on the pages or on paper. While designing it is a small chip. It is the place for a document's own state and settings: a wizard's step, a flag, a lookup list. Formulas read it by name; buttons change it: `(set! step (+ step 1))`.
+
+The **Order desk** template uses all five: a flowchart with live numbers, tabs opened from buttons, a three-step order form run on a hidden step counter, folding questions with a table and a chart inside, and notes that start folded.
 
 ## Designing a cell
 
@@ -126,7 +134,7 @@ Some decisions worth knowing:
 (str "Hi " name) (fmt x "EUR") (upper s) (split s ",")
 (now) (today) (days a b) (date+ d 30)
 (sib 1) (idx) (child lines -1) (rows "orders") (selected invoices)
-(set! qty 5) (toggle! done) (insert! "orders" {…}) (update! "orders" id {…}) (delete! "orders" id) (dup! (child lines -1)) (remove! (child lines -1)) (do a b)
+(set! qty 5) (set! view "Details") (toggle! done) (insert! "orders" {…}) (update! "orders" id {…}) (delete! "orders" id) (dup! (child lines -1)) (remove! (child lines -1)) (do a b)
 ```
 
 Formats: `int`, `number`, `0.00`, `percent`, `compact`, `currency`, `USD`/`EUR`/…, `date`, `time`, `datetime`, `ago`.

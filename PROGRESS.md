@@ -9,7 +9,7 @@ designer, notation, outline, minimap, guide, Blocks, Ask AI.
 
 Started 2026-10-02 on branch `main` at `50bf912`. Brief: Brief 4 in `FEATURES_PROMPTS.md`.
 
-**Next:** M2 containers UI (CellView rendering of tabs/accordion/collapsible/panel, data chip, Edit affordances, print) while agents build the diagram editor, the designers and Ask AI.
+**Next:** integrate the three agents' work (diagram editor, designers, Ask AI) when they report; verify each; then the showcase evidence (template `elements` is written).
 
 ## Contract (Done means)
 
@@ -38,7 +38,7 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 ## Milestones
 
 1. [x] **Core model**: kinds, notation, ops inside containers, values, diagram geometry/layout/draw/erase ops, data cell, outline, guide, events registry, tests (D4 core, D7 core, D11 part, D12 core)
-2. [ ] **Containers and data UI** (lead): tabs/accordion/collapsible/panel rendering in Edit/Live/Page, keyboard and ARIA, on-page add/rename/reorder/remove, data chip and invisibility, print rules and pagination test (D1–D5, D8)
+2. [x] **Containers and data UI** (lead): tabs/accordion/collapsible/panel rendering in Edit/Live/Page, keyboard and ARIA, on-page add/rename/reorder/remove, data chip and invisibility, print rules and pagination test (D1–D5, D8)
 3. [ ] **Diagram editor** (agent): `src/web/kinds/Diagram.tsx` — draw, select, move, resize, connect, label, duplicate, delete, colours, touch, undo, print (D6, D7)
 4. [ ] **Designers and metadata** (agent): inspector panels for the five kinds, empty-cell tiles, minimap glyphs, studio icons/labels/code props, Blocks (D9)
 5. [ ] **Ask AI** (agent): compose offline rules + Claude prompt for the new kinds, tests (D10)
@@ -53,6 +53,7 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 - **`normalize`** never dissolves a tabs/accordion/collapsible/panel, even with one child (they are what the person made). Only plain row/col dissolve. A tabs or accordion with no panels is refused rather than turned into an empty cell.
 - **State as value, keyed by title**: tabs → the open title (unset or unknown → the first; matching forgives case); accordion → the list of open titles (accepts a list, one title or `true`; one-at-a-time keeps the first); collapsible → `true` while open (unset means open, so new content is visible to edit). Untitled or repeated titles get a deterministic key ("Tab 2", "Details 2"). Renaming the open panel moves the value with it. People's clicks save with `set value` like a ticked list item (undoable, coalesced per cell).
 - **Accordion default**: one at a time (`multiple: true` for any number), all closed when unset; from the `/` menu the first section starts open.
+- **Choosing a tab or opening a section is not an undo step** (it is saved in the document, but it is moving around, not editing); a button's `set!` still is, like every action.
 - **Paper**: in the Page view and the PDF collapsibles and accordions show unfolded and tabs show every panel, in order, each under its title as a heading. Headings are kept with the first cell after them.
 - **Diagram built natively in SVG**, no third-party editor: Excalidraw would add ~1 MB, bring its own colours (not our theme tokens), its own JSON (not our notation/ops) and canvas rendering (not vector print).
 - **Diagram data model**: `value` is a list of elements `{id, type: rect|ellipse|diamond|text|arrow|line, x, y, w, h, text, color, fill, size, dash, from, to, x1, y1, x2, y2}`. Boxes without x/y are laid out top to bottom along the arrows (layered, loops ignored) when written, so agents don't need coordinates. Arrows attached with from/to are drawn from the outline of one box to the other, computed on render, so they follow when a box moves. Element ids are the agent's or `e1, e2…`. New ops `draw` (upsert elements; fields set to null are removed) and `erase` (removes attached connectors too) change single elements; `set value` still replaces the whole list. Applied `draw` ops record whole elements so replay is exact.
@@ -75,3 +76,4 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 
 - 2026-10-02: baseline: 99 tests pass, typecheck clean, build passes after `npm install` (font packages had gone missing from node_modules).
 - 2026-10-02: M1 core: kinds, notation, ops, engine, diagram geometry/layout, outline, guide, events registry. 99 → 112 tests.
+- 2026-10-02: M2 containers UI: tabs/accordion/collapsible render in Edit/Live/Page; checked by scripted clicks and trusted keys (Enter folds a collapsible, ArrowRight moves tab and focus), button `set!` opens a tab and a hidden rule reacts, accordion one-at-a-time with a table and a chart, phone tab bar scrolls inside (459 > 346 px) with page scrollWidth 390, PDF prints all panels under titles (2 pages). On-page rename/add/move/remove + 5 undos each restored. `keepWithNext` pagination test. cdp.mjs gained `--press` for trusted keys.

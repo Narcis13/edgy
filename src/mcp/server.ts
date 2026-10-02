@@ -100,7 +100,7 @@ server.registerTool('edgy_read', {
 }));
 
 server.registerTool('edgy_apply', {
-  description: 'Change a document with ops, applied together or not at all. Examples: ["put", "c1", ["row", "Left", "Right"]], ["split", "c3", "col"], ["set", "qty", "value", 5], ["set", "total", "expr", ["*", "$qty", "$price"]], ["style", "c2", {"bg": "accent-soft"}], ["merge", "c4", "c5"]. Returns the new outline and errors; people watching see the change immediately.',
+  description: 'Change a document with ops, applied together or not at all. Examples: ["put", "c1", ["row", "Left", "Right"]], ["split", "c3", "col"], ["set", "qty", "value", 5], ["set", "total", "expr", ["*", "$qty", "$price"]], ["style", "c2", {"bg": "accent-soft"}], ["merge", "c4", "c5"], ["set", "view", "value", "Details"] (open a tab), ["draw", "flow", {"type": "rect", "text": "Ship"}, {"type": "arrow", "from": "pack", "to": "e7"}] (add diagram elements). Returns the new outline and errors; people watching see the change immediately.',
   inputSchema: {
     doc: z.string().describe('Document id or title'),
     ops: z.array(z.array(z.any())).min(1).describe('A list of ops, each ["verb", …args]'),

@@ -9,6 +9,7 @@
 import type { Cell, Doc, Json, Sx } from '../core/types';
 import { isGroup } from '../core/types';
 import { type Computed, type World, evalIn, evaluate, plainValue } from '../core/engine';
+import { panelTitles } from '../core/containers';
 import { FUNCTIONS } from '../core/reference';
 import { outline } from '../core/outline';
 import { SxError, formatValue, isBuiltin, print, read } from '../core/sx';
@@ -70,7 +71,7 @@ export interface Ctx {
   current: string;
   /** What "it" means in a prompt: the cell itself, or the code being edited. */
   it?: Sx;
-  /** Cells by a forgiving key: name, id or input label, lowercased without spaces, - or _. */
+  /** Cells by a forgiving key: name, id, input label or collapsible heading, lowercased without spaces, - or _. */
   names: Map<string, Cell>;
   /** Collection name → the fields its records use. */
   collections: Map<string, string[]>;
@@ -93,6 +94,9 @@ export function context(doc: Doc, world: World, collections: string[], ask: Part
   walk(doc.root, (c) => {
     if (!names.has(canon(c.id))) names.set(canon(c.id), c);
     if (c.kind === 'input' && c.label && !c.label.includes('{{') && !names.has(canon(c.label))) names.set(canon(c.label), c);
+    // "toggle more details" means the collapsible headed "More details". Panel titles are not
+    // names: they are values of their tabs or accordion, found by Local.panel.
+    if (c.kind === 'collapsible' && c.title && !c.title.includes('{{') && !names.has(canon(c.title))) names.set(canon(c.title), c);
   });
   const cols = new Map<string, string[]>();
   for (const name of new Set([...collections, ...computed.collections])) {
@@ -234,6 +238,7 @@ function src(y: Sx): string {
   if (Array.isArray(y) && y[0] === 'rows') return `the records saved in ${y[1]}`;
   if (Array.isArray(y) && y[0] === 'where') return `the records in ${String((y[1] as Sx[])[1])} whose ${y[2]} is ${say(y[3])}`;
   if (Array.isArray(y) && y[0] === 'filter' && Array.isArray(y[2]) && y[2][0] === 'rows') return `the records in ${y[2][1]} whose ${cond(y[1]).replace(/^the (.+?) of it /, '$1 ')}`;
+  if (Array.isArray(y) && y[0] === 'filter') return `the items of ${say(y[2])} for which ${cond(y[1])}`;
   if (typeof y === 'string' && y.startsWith('$')) return `the items in ${y.slice(1)}`;
   return say(y);
 }
@@ -285,8 +290,25 @@ function say(x: Sx): string {
     case 'list': return listed(a.map(say));
     case 'if': return `${say(a[1])} when ${cond(a[0])}, otherwise ${say(a[2] ?? null)}`;
     case 'get': return `the ${say(a[1]).replace(/"/g, '')} of ${say(a[0])}`;
+    case 'count-if': {
+      const types = elementTypes(a[0]);
+      const what = !types ? null : types.join() === SHAPE_TYPES.join() ? 'shapes' : types.length === 1 && types[0] !== 'text' ? `${types[0]}s` : `${listed(types, 'or')} elements`;
+      if (what) return `the number of ${what} in ${say(a[1])}`;
+      return `the number of items in ${say(a[1])} for which ${cond(a[0])}`;
+    }
     default: return print(x, 1000);
   }
+}
+
+const SHAPE_TYPES = ['rect', 'ellipse', 'diamond'];
+
+/** The element types a diagram count picks: (= (get it "type") "arrow") or (includes? (list …) (get it "type")). */
+function elementTypes(test: Sx): string[] | null {
+  if (!Array.isArray(test)) return null;
+  const isType = (y: Sx) => Array.isArray(y) && y[0] === 'get' && y[1] === '$it' && y[2] === 'type';
+  if (test[0] === '=' && isType(test[1]) && typeof test[2] === 'string') return [test[2]];
+  if (test[0] === 'includes?' && isType(test[2]) && Array.isArray(test[1]) && test[1][0] === 'list') return test[1].slice(1).map(String);
+  return null;
 }
 
 /** A condition as English: "total is more than 100". */
@@ -295,8 +317,10 @@ function cond(x: Sx): string {
   const [h, ...a] = x;
   if (typeof h === 'string' && CMP_WORDS[h]) return `${say(a[0])} ${CMP_WORDS[h]} ${say(a[1])}`;
   if (h === 'and' || h === 'or') return a.map(cond).join(` ${h} `);
+  if (h === 'not' && Array.isArray(a[0]) && a[0][0] === 'includes?') return `${say(a[0][1])} does not include ${say(a[0][2])}`;
   if (h === 'not') return Array.isArray(a[0]) ? `not (${cond(a[0])})` : `${say(a[0])} is off`;
   if (h === 'empty?') return `${say(a[0])} is empty`;
+  if (h === 'includes?') return `${say(a[0])} includes ${say(a[1])}`;
   return say(x);
 }
 
@@ -352,6 +376,7 @@ function sentence(x: Sx): string {
     case 'round': case 'floor': case 'ceil': return `Shows ${say(x)}.`;
     case 'range': return `Makes a list of ${say(x)}.`;
     case 'list': return `Makes a list of ${say(x)}.`;
+    case 'count-if': return `Counts ${say(x).replace(/^the number of /, 'the ')}.`;
     case 'today': return "Shows today's date.";
     case 'now': return 'Shows the current time.';
     case 'days': return `Counts ${say(x).replace(/^the number of /, 'the ')}.`;
@@ -371,16 +396,43 @@ function sentence(x: Sx): string {
   }
 }
 
-function action(x: Sx): string {
+/** What a set! does to tabs, an accordion or a collapsible, in their own words; null for anything else. */
+function opening(cell: Cell | undefined, p: string, v: Sx): string | null {
+  const title = (y: Sx): string | null => {
+    if (typeof y === 'string') return y;
+    if (!Array.isArray(y)) return null;
+    if (y[0] === 'uniq') return title(y[1]);
+    if (y[0] === 'concat' && Array.isArray(y[2]) && y[2][0] === 'list' && y[2].length === 2) return title(y[2][1]);
+    if (y[0] === 'filter' && Array.isArray(y[1]) && y[1][0] === '!=') return title(y[1][2]);
+    return null;
+  };
+  const head = Array.isArray(v) ? v[0] : null;
+  if (cell?.kind === 'tabs' && typeof v === 'string') return `opens the ${v} tab of ${p}`;
+  // (cond (= view "Overview") "Details" … view): the next tab when it starts from the first.
+  if (cell?.kind === 'tabs' && head === 'cond' && Array.isArray(v) && Array.isArray(v[1])) return `opens the ${v[1][2] === panelTitles(cell)[0] ? 'next' : 'previous'} tab of ${p}`;
+  if (cell?.kind === 'collapsible' && typeof v === 'boolean') return `${v ? 'unfolds' : 'folds'} ${p}`;
+  if (cell?.kind !== 'accordion') return null;
+  if (Array.isArray(v) && head === 'list') return v.length === 1 ? `closes every section of ${p}` : `opens ${listed(v.slice(1).map(String))} in ${p}`;
+  if (Array.isArray(v) && head === 'if' && Array.isArray(v[1]) && v[1][0] === 'includes?' && typeof v[1][2] === 'string') return `opens or closes the ${v[1][2]} section of ${p}`;
+  const t = title(v);
+  if (t === null) return null;
+  return head === 'filter' ? `closes the ${t} section of ${p}` : `opens the ${t} section of ${p}`;
+}
+
+function action(x: Sx, ctx?: Ctx): string {
   if (!Array.isArray(x)) return `does ${say(x)}`;
   const [h, ...a] = x;
   const place = (p: Sx) => (Array.isArray(p) && p[0] === 'child'
     ? `the ${p[2] === -1 ? 'last' : p[2] === 0 ? 'first' : nth(Number(p[2]) + 1)} line of ${p[1]}`
     : String(p).replace(/^\$/, ''));
+  const cell = (p: string) => ctx?.idx.byName.get(p) ?? ctx?.idx.byId.get(p);
+  const kind = (p: string) => cell(p)?.kind;
   switch (h) {
     case 'set!': {
       const p = place(a[0]);
       const v = a[1];
+      const opens = opening(cell(p), p, v ?? null);
+      if (opens) return opens;
       if (Array.isArray(v) && v[1] === '$' + p && (v[0] === '+' || v[0] === '-') && v.length === 3) {
         return v[0] === '+' ? `adds ${say(v[2])} to ${p}` : `takes ${say(v[2])} away from ${p}`;
       }
@@ -388,7 +440,7 @@ function action(x: Sx): string {
       if (v === true || v === false) return `${v ? 'ticks' : 'unticks'} ${p}`;
       return `sets ${p} to ${say(v ?? null)}`;
     }
-    case 'toggle!': return `switches ${place(a[0])} on or off`;
+    case 'toggle!': return kind(place(a[0])) === 'collapsible' ? `folds or unfolds ${place(a[0])}` : `switches ${place(a[0])} on or off`;
     case 'insert!': {
       const keys = a[1] && typeof a[1] === 'object' && !Array.isArray(a[1]) ? Object.keys(a[1]) : [];
       return `saves ${keys.length ? listed(keys) : 'a record'} as a new record in ${a[0]}`;
@@ -397,7 +449,7 @@ function action(x: Sx): string {
     case 'delete!': return `deletes a record from ${a[0]}`;
     case 'dup!': return `adds a copy of ${place(a[0])}`;
     case 'remove!': return `removes ${place(a[0])}`;
-    case 'do': return listed(a.map(action), 'then');
+    case 'do': return listed(a.map((y) => action(y, ctx)), 'then');
     default: return `works out ${say(x)}`;
   }
 }
@@ -407,7 +459,7 @@ const tokenWord = (t: Sx) => (typeof t === 'string' ? TOKEN_WORDS[t] ?? t : t ==
 /** One or two plain sentences for a beginner. */
 export function explain(ctx: Ctx, x: Sx): string {
   switch (ctx.target) {
-    case 'do': return `When clicked, it ${action(x)}.`;
+    case 'do': return `When clicked, it ${action(x, ctx)}.`;
     case 'hidden': return `Hides this cell while ${cond(x)}.` + updates(x).replace('It updates', 'It checks again');
     case 'style':
       if (Array.isArray(x) && x[0] === 'if') return `Turns it ${tokenWord(x[2])} while ${cond(x[1])}, otherwise ${tokenWord(x[3] ?? null)}.`;
@@ -498,7 +550,34 @@ const COLOURS: Record<string, string> = {
 const SOFT: Record<string, string> = { bad: 'bad-soft', live: 'live-soft', warn: 'warn-soft', accent: 'accent-soft', agent: 'agent-soft', muted: 'sunken', ink: 'ink', paper: 'paper' };
 const COLOUR = `(${Object.keys(COLOURS).join('|')})`;
 
-const VERBS = 'add|increase|raise|increment|bump|decrease|lower|decrement|reduce|subtract|take|set|change|make|update|reset|clear|empty|zero|toggle|flip|switch|check|uncheck|tick|untick|save|store|record|log|insert|put|append|remove|delete|drop|duplicate|copy|double|halve|mark';
+const VERBS = 'add|increase|raise|increment|bump|decrease|lower|decrement|reduce|subtract|take|set|change|make|update|reset|clear|empty|zero|toggle|flip|switch|check|uncheck|tick|untick|save|store|record|log|insert|put|append|remove|delete|drop|duplicate|copy|double|halve|mark|open|close|show|hide|fold|unfold|expand|collapse|go|move|jump|skip|advance';
+const VERB_SET = new Set(VERBS.split('|'));
+
+/** "opens the Details tab" reads as "open the Details tab", so "a button that opens …" works. */
+function present(clause: string): string {
+  const w = /^[a-z]+/.exec(clause)?.[0];
+  if (!w || VERB_SET.has(w)) return clause;
+  const base = [w.replace(/es$/, ''), w.replace(/s$/, '')].find((b) => b !== w && VERB_SET.has(b));
+  return base ? base + clause.slice(w.length) : clause;
+}
+
+/** Diagram element words and the types they count; null counts every element. */
+const ELEMENT_WORDS: [RegExp, string[] | null][] = [
+  [/^(?:shapes?|nodes?)$/, SHAPE_TYPES],
+  [/^box(?:es)?$/, [...SHAPE_TYPES, 'text']],
+  [/^arrows?$/, ['arrow']],
+  [/^(?:connectors?|connections?|links?|edges?)$/, ['arrow', 'line']],
+  [/^(?:rects?|rectangles?|squares?)$/, ['rect']],
+  [/^(?:ellipses?|circles?|ovals?)$/, ['ellipse']],
+  [/^(?:diamonds?|decisions?)$/, ['diamond']],
+  [/^(?:texts?|labels?|notes?)$/, ['text']],
+  // Words that name other things too: only with the diagram named ("lines in flow").
+  [/^lines?$/, ['line']],
+  [/^(?:elements?|items?|things?)$/, null],
+];
+
+/** Counters that start at 1, so "reset step" means the first step, not step 0. */
+const ORDINAL = /(?:step|page|stage|slide|screen|question|round|level|lesson|chapter)s?$/;
 
 type Rule = [RegExp, (g: string[]) => Sx | null];
 
@@ -575,6 +654,103 @@ class Local {
     let found: Cell | undefined;
     walk(this.ctx.doc.root, (c) => { if (!found && c.name && isGroup(c) && c.children!.some(isGroup)) found = c; });
     return found;
+  }
+
+  /** Quoted text put back as written: "qq0qq tab" → "Details tab". */
+  unq(ph: string): string {
+    return ph.replace(/qq(\d+)qq/g, (_, i: string) => this.quotes[Number(i)] ?? '');
+  }
+
+  /**
+   * Cells of these kinds, the ones holding the cell being edited first (nearest
+   * first), then in document order: a Next button inside a tabs cell means that tabs.
+   */
+  near(...kinds: string[]): Cell[] {
+    const up: Cell[] = [];
+    for (let p = this.ctx.cell && this.ctx.idx.parent.get(this.ctx.cell.id); p; p = this.ctx.idx.parent.get(p.id)) if (kinds.includes(p.kind)) up.push(p);
+    const all: Cell[] = [];
+    walk(this.ctx.doc.root, (c) => { if (kinds.includes(c.kind)) all.push(c); });
+    return [...new Set([...up, ...all])];
+  }
+
+  /** The real title of one of a container's panels, matched forgivingly. */
+  titleIn(box: Cell, ph: string): string | undefined {
+    const want = this.forms(stripArticles(this.unq(ph).toLowerCase()).replace(/\s+(?:tab|section|panel)$/, ''));
+    return panelTitles(box).find((t) => want.includes(canon(t)));
+  }
+
+  /**
+   * A panel named by its title: "the Details tab", "Shipping", "Shipping in faq".
+   * Without a container named, the tabs or accordion around the cell being edited
+   * wins, then the first in the document; "tab" prefers tabs, "section" accordions.
+   */
+  panel(ph: string, kinds = ['tabs', 'accordion']): { box: Cell; title: string } | null {
+    let s = stripArticles(this.unq(ph).toLowerCase());
+    let boxes = this.near(...kinds);
+    const inside = /^(.+?)\s+(?:in|of|on|from|inside)\s+(.+)$/.exec(s);
+    if (inside) {
+      const c = this.cell(stripArticles(inside[2]).replace(/\s+(?:tabs|accordion)$/, ''));
+      if (c && kinds.includes(c.kind)) { boxes = [c]; s = inside[1]; }
+    }
+    const word = /\s+(tabs?|sections?|panels?|panes?|pages?|parts?)$/.exec(s) ?? /^(tabs?|sections?)\s+/.exec(s);
+    if (word) {
+      s = s.replace(word[0], '').trim();
+      const first = word[1].startsWith('tab') ? 'tabs' : word[1].startsWith('section') ? 'accordion' : null;
+      if (first) boxes = [...boxes.filter((b) => b.kind === first), ...boxes.filter((b) => b.kind !== first)];
+    }
+    if (!s) return null;
+    for (const box of boxes) {
+      const title = this.titleIn(box, s);
+      if (title) return { box, title };
+    }
+    return null;
+  }
+
+  /** A collapsible by name or heading, or by a word of its heading: "the details" finds "More details". */
+  fold(ph: string): Cell | undefined {
+    const s = stripArticles(this.unq(ph).toLowerCase()).replace(/\s+(?:section|part|panel|area|bit|block)$/, '');
+    const all = this.near('collapsible');
+    const keys = (c: Cell) => [c.name, c.title].filter((k): k is string => !!k).map(canon);
+    const forms = this.forms(s).filter(Boolean);
+    const exact = all.find((c) => keys(c).some((k) => forms.includes(k)));
+    if (exact) return exact;
+    if (canon(s).length >= 3) {
+      const part = all.find((c) => keys(c).some((k) => k.includes(canon(s))));
+      if (part) return part;
+    }
+    return all.length === 1 && /^(?:it|this|that|everything)$/.test(s) ? all[0] : undefined;
+  }
+
+  /** An accordion named in the phrase, else the one around the cell being edited, else the first. */
+  accordion(ph?: string, multiple?: boolean): Cell | undefined {
+    const all = this.near('accordion').filter((c) => !multiple || c.multiple);
+    if (!ph) return all[0];
+    const c = this.cell(stripArticles(ph).replace(/\s+accordion$/, ''));
+    return c && all.includes(c) ? c : undefined;
+  }
+
+  /** A cell an action can set: an input or a data cell. */
+  settable(ph: string): Cell | undefined {
+    const c = this.cell(stripArticles(ph));
+    return c && (c.kind === 'input' || c.kind === 'data') ? c : undefined;
+  }
+
+  /** A settable cell holding a number, such as a wizard's step. */
+  counter(ph: string): Cell | undefined {
+    const c = this.settable(ph);
+    if (!c) return undefined;
+    const numeric = typeof this.ctx.computed.cells[c.id]?.value === 'number' || (c.kind === 'input' && ['number', 'slider', 'rating'].includes(c.type ?? ''));
+    return numeric ? c : undefined;
+  }
+
+  /** Whether a panel or a collapsible is open, as a condition. Bare phrases only match panels, so names keep their meaning. */
+  isOpen(ph: string, bare = false): Sx | null {
+    if (bare && this.cell(stripArticles(ph))) return null;
+    const p = this.panel(ph);
+    if (p) return p.box.kind === 'tabs' ? ['=', ref(p.box), p.title] : ['includes?', ref(p.box), p.title];
+    if (bare) return null;
+    const c = this.fold(ph);
+    return c ? ref(c) : null;
   }
 
   /** Which column of a group of rows holds a field: by a header, a cell name, or the last numeric column. */
@@ -714,7 +890,24 @@ class Local {
 
   private special(ph: string): Sx | null {
     return this.call(ph) ?? this.dates(ph) ?? this.math(ph) ?? this.text(ph) ?? this.format(ph) ?? this.lists(ph)
-      ?? this.count(ph) ?? this.aggregate(ph) ?? this.records(ph);
+      ?? this.diagram(ph) ?? this.count(ph) ?? this.aggregate(ph) ?? this.records(ph);
+  }
+
+  /** Counting a diagram's elements: "how many shapes", "count the arrows in the flow". */
+  private diagram(ph: string): Sx | null {
+    const m = /^(?:count(?:\s+up)?|how\s+many|(?:the\s+)?(?:total\s+)?(?:number|count|amount)\s+of)\s+(?:the\s+|all\s+(?:the\s+)?)?([a-z]+)(?:\s+(?:in|on|of|inside|within)\s+(.+?))?(?:\s+(?:are there|there are|are drawn|does it have))?$/.exec(ph);
+    const rule = m && ELEMENT_WORDS.find(([re]) => re.test(m[1]));
+    if (!m || !rule) return null;
+    let d: Cell | undefined;
+    if (m[2]) {
+      d = this.cell(stripArticles(m[2]).replace(/\s+diagram$/, ''));
+      if (d?.kind !== 'diagram') return null;
+    } else if (rule[1] && !/^lines?$/.test(m[1])) d = this.near('diagram')[0];
+    if (!d) return null;
+    const types = rule[1];
+    if (!types) return ['len', ref(d)];
+    const test: Sx = types.length === 1 ? ['=', ['get', '$it', 'type'], types[0]] : ['includes?', ['list', ...types], ['get', '$it', 'type']];
+    return ['count-if', test, ref(d)];
   }
 
   /** A cell holding a function, applied: "tax of price" → (tax price). */
@@ -963,13 +1156,17 @@ class Local {
   condition(ph: string, self?: string): Sx | null {
     ph = stripArticles(ph.trim());
     if (!ph) return null;
+    const one = (p: string) => {
+      const st = this.state(p);
+      return st !== null ? { x: st, subject: undefined } : this.compare(p);
+    };
     for (const [w, op] of [[' or ', 'or'], [' and ', 'and']] as const) {
       if (!ph.includes(w)) continue;
       const parts = ph.split(w);
       const out: Sx[] = [];
       let subject: string | undefined;
       for (const p of parts) {
-        let c = this.compare(p);
+        let c = one(p);
         if (c === null && subject) c = this.compare(`${subject} ${p}`) ?? this.compare(`${subject} is ${p}`);
         if (c === null) break;
         out.push(c.x);
@@ -982,12 +1179,40 @@ class Local {
       const c = this.condition(neg[1], self);
       return c === null ? null : ['not', c];
     }
+    const st = this.state(ph);
+    if (st !== null) return st;
     const c = this.compare(ph);
     if (c) return c.x;
     const bare = this.term(ph);
     if (bare !== null) return bare;
     if (self) return this.compare(/^(?:is|are)\s/.test(ph) ? `${self} ${ph}` : `${self} is ${ph}`)?.x ?? null;
     return null;
+  }
+
+  /**
+   * Conditions on what is open, tried before comparisons so "more is open" is not
+   * (= more "open"): "the Details tab is open", "more is folded", "on the Details
+   * tab", "view is Details" (keeping the title's case), "on step 2".
+   */
+  private state(ph: string): Sx | null {
+    ph = stripArticles(ph.trim());
+    const on = /^(?:on|in|at|inside|within)\s+(.+)$/.exec(ph);
+    if (on) return this.state(on[1]);
+    const m = /^(.+?)\s+(?:is\s+|are\s+)?(not\s+)?(open|opened|shown|showing|selected|active|visible|expanded|unfolded|closed|folded|collapsed|shut)$/.exec(ph);
+    if (m) {
+      const x = this.isOpen(m[1]);
+      if (x !== null) return /^(?:closed|folded|collapsed|shut)$/.test(m[3]) === !m[2] ? negate(x) : x;
+    }
+    const eq = /^(.+?)\s+(?:is|equals)\s+(.+)$/.exec(ph);
+    const tabs = eq && this.cell(stripArticles(eq[1]));
+    if (eq && tabs?.kind === 'tabs') {
+      const t = this.titleIn(tabs, eq[2]);
+      if (t) return ['=', ref(tabs), t];
+    }
+    const nth = /^(.+?)\s+(-?\d+)$/.exec(ph);
+    const counter = nth && this.counter(nth[1]);
+    if (counter) return ['=', ref(counter), Number(nth![2])];
+    return this.isOpen(ph, true);
   }
 
   private compare(ph: string): { x: Sx; subject?: string } | null {
@@ -1065,9 +1290,13 @@ class Local {
 
   hidden(s: string): Sx | null {
     let neg = false;
+    const hide = /^(?:hide|hidden|disappear)\b/.test(s);
     s = s.replace(/^(?:hide|hidden|disappear)(?:\s+(?:this|it|me|the cell|this cell))?\s*/, '');
-    const show = /^(?:show|visible|display|appear)(?:\s+(?:this|it|me|the cell|this cell))?\s+(?:only\s+)?(?:when|if|while|whenever)\s+(.+)$/.exec(s);
-    if (show) { neg = true; s = show[1]; }
+    // "show only on the Details tab", "visible on step 2": the cell is hidden the rest of the time.
+    const show = /^(?:show|visible|display|appear)(?:\s+(?:this|it|me|the cell|this cell))?\s+(?:only\s+)?(?:when|if|while|whenever|on|in|at|for)\s+(.+)$/.exec(s);
+    // A bare "only when …" also means show only then; "hide only when …" keeps its word.
+    const only = !hide && /^only\s+(?:when|if|while|whenever|on|in|at|for)\s+(.+)$/.exec(s);
+    if (show) { neg = true; s = show[1]; } else if (only) { neg = true; s = only[1]; }
     const unless = /^(?:unless|until|except when)\s+(.+)$/.exec(s);
     if (unless) { neg = !neg; s = unless[1]; }
     s = s.replace(/^(?:when|if|while|whenever|as long as|only when|only if)\s+/, '');
@@ -1127,22 +1356,52 @@ class Local {
   // ── actions ──
 
   actions(s: string): Sx | null {
-    s = s.replace(/^(?:when\s+(?:clicked|pressed|tapped)|on\s+click|it\s+should|this\s+should|the\s+button\s+should|please)\s*,?\s*/, '');
-    const clauses = s.split(/\s*(?:,\s*)?\b(?:and then|then|after that|afterwards|next)\b\s*,?\s*/)
+    s = s.replace(/^(?:when\s+(?:clicked|pressed|tapped)|on\s+click|it\s+should|this\s+should|the\s+button\s+should|please|(?:a|the|this)\s+button\s+(?:that|which|to)|(?:that|which|it)(?=\s+[a-z]+s\b))\s*,?\s*/, '');
+    // "next" starts a new step only after a comma, so "go to the next step" stays whole.
+    const clauses = s.split(/\s*(?:(?:,\s*)?\b(?:and then|then|after that|afterwards)\b|,\s*next\b)\s*,?\s*/)
       .flatMap((p) => p.split(new RegExp(`\\s*(?:,|\\band\\b)\\s+(?=(?:${VERBS})\\b)`)))
       .map((p) => p.trim()).filter(Boolean);
     const out: Sx[] = [];
     for (const c of clauses) {
-      const a = this.act(c);
+      const a = this.act(present(c));
       if (a === null) return null;
       out.push(a);
     }
     return out.length === 1 ? out[0] : out.length ? ['do', ...out] : null;
   }
 
-  private input(ph: string): Cell | undefined {
-    const c = this.cell(stripArticles(ph));
-    return c && c.kind === 'input' ? c : undefined;
+  /** Open (or close) a panel or a collapsible: "the Details tab", "Shipping", "more". */
+  private open(ph: string, want: boolean, kinds = want ? ['tabs', 'accordion'] : ['accordion']): Sx | null {
+    const p = this.panel(ph, kinds);
+    if (p) {
+      const name = p.box.name ?? p.box.id;
+      const r = ref(p.box);
+      if (!want) return ['set!', name, ['filter', ['!=', '$it', p.title], r]];
+      // One title is accepted and means just that one open; any-number mode keeps the others.
+      return p.box.kind === 'accordion' && p.box.multiple ? ['set!', name, ['uniq', ['concat', r, ['list', p.title]]]] : ['set!', name, p.title];
+    }
+    const c = this.fold(ph);
+    if (c) return ['set!', c.name ?? c.id, want];
+    const acc = want ? undefined : this.accordion(ph);
+    return acc ? ['set!', acc.name ?? acc.id, ['list']] : null;
+  }
+
+  /** Step a counter, or tabs, forwards or back: "next step", "previous tab". */
+  private step(noun: string, dir: 1 | -1, by: number, limit?: number): Sx | null {
+    const n = this.counter(noun);
+    if (n) {
+      const next: Sx = [dir > 0 ? '+' : '-', ref(n), by];
+      return ['set!', n.name ?? n.id, limit === undefined ? next : [dir > 0 ? 'min' : 'max', next, limit]];
+    }
+    const s = stripArticles(noun);
+    const named = /^(?:tab|tabs|page)\s+(?:in|of|on)\s+(.+)$/.exec(s) ?? /^(.+?)\s+tab$/.exec(s);
+    const tabs = named ? this.cell(stripArticles(named[1])) : /^(?:tab|page)$/.test(s) ? this.near('tabs')[0] : undefined;
+    if (tabs?.kind !== 'tabs' || by !== 1) return null;
+    // The title after the open one; on the last tab it stays put.
+    const titles = dir > 0 ? panelTitles(tabs) : panelTitles(tabs).reverse();
+    if (titles.length < 2) return null;
+    const r = ref(tabs);
+    return ['set!', tabs.name ?? tabs.id, ['cond', ...titles.slice(0, -1).flatMap((t, i): Sx[] => [['=', r, t], titles[i + 1]]), r]];
   }
 
   private act(c: string): Sx | null {
@@ -1153,10 +1412,17 @@ class Local {
       return ['child', group.name ?? group.id, i];
     };
     const bump = (cell: Cell, by: Sx, sign: '+' | '-'): Sx => ['set!', cell.name ?? cell.id, [sign, ref(cell), by]];
-    const blank = (cell: Cell): Json => {
+    const blank = (cell: Cell): Sx => {
+      if (cell.kind === 'data') {
+        // A data cell has no type or default, so its current value says what blank is.
+        const v = this.ctx.computed.cells[cell.id]?.value;
+        if (typeof v === 'number') return ORDINAL.test(canon(cell.name ?? '')) ? 1 : 0;
+        return typeof v === 'boolean' ? false : Array.isArray(v) ? ['list'] : v && typeof v === 'object' ? {} : typeof v === 'string' ? '' : null;
+      }
       const t = cell.type ?? 'text';
       return t === 'number' || t === 'slider' || t === 'rating' ? 0 : t === 'checkbox' || t === 'toggle' ? false : '';
     };
+    const by = (w: string | undefined): number | null => (w === undefined || w === 'a' || w === 'an' ? 1 : num(w));
     const collName = (ph: string): string | null => {
       const s = stripArticles(ph).replace(/^(?:saved\s+)?/, '').replace(/\s+(?:collection|list|table|records)$/, '');
       if (this.cell(s)) return null;
@@ -1185,7 +1451,35 @@ class Local {
       return Object.keys(rec).length ? rec : null;
     };
 
+    const limit = '(?:\\s*,?\\s*(?:but\\s+)?(?:not\\s+(?:past|beyond|above|below|under)|up\\s+to|down\\s+to|at\\s+most|at\\s+least|no\\s+(?:further|more|less|lower|higher)\\s+than)\\s+(-?\\d+))?';
     return this.apply(c, [
+      // counters and tabs, step by step: "go to the next step", "previous tab", "go back a step"
+      [new RegExp(`^(?:(?:go|move|jump|skip|advance|continue|proceed|switch|step)\\s+(?:back\\s+|on\\s+|ahead\\s+)?(?:to\\s+)?)?(?:the\\s+)?(next|following|previous|prev|prior)\\s+(.+?)${limit}$`), ([w, x, n]) => (
+        this.step(x, /^(?:next|following)$/.test(w) ? 1 : -1, 1, n === undefined ? undefined : Number(n)))],
+      [new RegExp(`^(?:(?:go|move|jump|skip|step)\\s+)?(back|backward|backwards|forward|forwards|ahead)\\s+(?:(a|an|\\d+)\\s+)?(.+?)${limit}$`), ([w, ...rest]) => {
+        // apply drops the groups that did not match, so work out which of count, noun and limit are here.
+        const [k, x, n] = rest.length === 3 ? rest : rest.length === 1 ? [undefined, rest[0]] : num(rest[1]) !== null ? [undefined, ...rest] : rest;
+        const step = by(k);
+        return step === null || x === undefined ? null : this.step(x, w.startsWith('back') ? -1 : 1, step, n === undefined ? undefined : Number(n));
+      }],
+      [/^(.+?)\s+(back|backward|backwards|forward|forwards|ahead)$/, ([x, w]) => this.step(x, w.startsWith('back') ? -1 : 1, 1)],
+      [/^(?:go|jump|skip|move|switch)\s+(?:back\s+)?to\s+(?:the\s+)?(.+?)\s+(-?\d+)$/, ([x, n]) => {
+        const cell = this.counter(x);
+        return cell ? ['set!', cell.name ?? cell.id, Number(n)] : null;
+      }],
+      // what is open: tabs, accordion sections, collapsibles
+      [/^(?:close|collapse|fold|shut|hide)\s+(?:up\s+)?(?:all|every|each|everything)(?:\s+(?:of\s+)?(?:the\s+)?(?:sections?|panels?|parts?))?(?:\s+(?:in|of)\s+(.+))?$/, ([x]) => {
+        const acc = this.accordion(x);
+        return acc ? ['set!', acc.name ?? acc.id, ['list']] : null;
+      }],
+      [/^(?:open|expand|unfold|show)\s+(?:all|every|each|everything)(?:\s+(?:of\s+)?(?:the\s+)?(?:sections?|panels?|parts?))?(?:\s+(?:in|of)\s+(.+))?$/, ([x]) => {
+        const acc = this.accordion(x, true);
+        return acc ? ['set!', acc.name ?? acc.id, ['list', ...panelTitles(acc)]] : null;
+      }],
+      // Tabs are opened, not expanded: "expand the details" means a section or a collapsible.
+      [/^(?:expand|unfold)\s+(.+)$/, ([x]) => this.open(x, true, ['accordion'])],
+      [/^(?:open|show|view|display|select|pick|choose|activate|reveal|bring\s+up|go\s+(?:back\s+)?to|switch\s+to|jump\s+to|move\s+to|take\s+me\s+to)\s+(.+)$/, ([x]) => this.open(x, true)],
+      [/^(?:close|hide|fold|collapse|shut|fold\s+up|minimi[sz]e)\s+(.+)$/, ([x]) => this.open(x, false)],
       // lines in a group of rows
       [/^(?:add|insert|append|create)\s+(?:a|an|another|1|new|a new)\s+(?:line|row|item|entry)(?:\s+(?:to|in|into|at the end of)\s+(.+))?$|^new\s+(?:line|row|item|entry)$/, ([g]) => {
         const p = line(g, 'last');
@@ -1201,27 +1495,27 @@ class Local {
       }],
       // numbers
       [/^(?:add|plus|put)\s+(.+?)\s+(?:to|onto|on)\s+(.+)$/, ([v, x]) => {
-        const cell = this.input(x);
+        const cell = this.settable(x);
         const by = cell ? this.term(v) : null;
         return cell && by !== null ? bump(cell, by, '+') : null;
       }],
       [/^(?:increase|raise|increment|bump|grow|up)\s+(.+?)(?:\s+by\s+(.+))?$/, ([x, v]) => {
-        const cell = this.input(x);
+        const cell = this.settable(x);
         const by = v === undefined ? 1 : this.term(v);
         return cell && by !== null ? bump(cell, by, '+') : null;
       }],
       [/^(?:decrease|lower|decrement|reduce|shrink|drop)\s+(.+?)(?:\s+by\s+(.+))?$/, ([x, v]) => {
-        const cell = this.input(x);
+        const cell = this.settable(x);
         const by = v === undefined ? 1 : this.term(v);
         return cell && by !== null ? bump(cell, by, '-') : null;
       }],
       [/^(?:subtract|take|remove|deduct)\s+(.+?)\s+(?:from|off)\s+(.+)$/, ([v, x]) => {
-        const cell = this.input(x);
+        const cell = this.settable(x);
         const by = cell ? this.term(v) : null;
         return cell && by !== null ? bump(cell, by, '-') : null;
       }],
-      [/^double\s+(.+)$/, ([x]) => { const cell = this.input(x); return cell ? ['set!', cell.name ?? cell.id, ['*', ref(cell), 2]] : null; }],
-      [/^halve\s+(.+)$/, ([x]) => { const cell = this.input(x); return cell ? ['set!', cell.name ?? cell.id, ['/', ref(cell), 2]] : null; }],
+      [/^double\s+(.+)$/, ([x]) => { const cell = this.settable(x); return cell ? ['set!', cell.name ?? cell.id, ['*', ref(cell), 2]] : null; }],
+      [/^halve\s+(.+)$/, ([x]) => { const cell = this.settable(x); return cell ? ['set!', cell.name ?? cell.id, ['/', ref(cell), 2]] : null; }],
       // records
       [/^(?:save|store|record|log|insert|add|put|append|write|send|copy)\s+(.+?)\s+(?:to|into|in|as)\s+(?:a\s+new\s+record\s+in\s+)?(.+)$/, ([what, where]) => {
         const name = collName(where);
@@ -1237,25 +1531,44 @@ class Local {
         const k = this.coll(w);
         return k ? ['clear!', k] : null;
       }],
-      // inputs
+      // inputs, data cells and containers
       [/^(?:set|change|make|update|put|turn)\s+(.+?)\s+(?:to|equal to|equals|as|into)\s+(.+)$|^(.+?)\s+(?:becomes|equals)\s+(.+)$/, ([x, v]) => {
-        const cell = this.input(x);
+        const box = this.cell(stripArticles(x));
+        if (box?.kind === 'tabs' || box?.kind === 'accordion') {
+          const t = this.titleIn(box, v);
+          return t ? ['set!', box.name ?? box.id, t] : null;
+        }
+        if (box?.kind === 'collapsible' && /^(?:open|closed|folded|unfolded|true|false)$/.test(v)) return ['set!', box.name ?? box.id, /^(?:open|unfolded|true)$/.test(v)];
+        const cell = this.settable(x);
         if (!cell) return null;
         const t = cell.type ?? 'text';
-        if ((t === 'checkbox' || t === 'toggle') && /^(?:on|off|true|false|yes|no|checked|unchecked|ticked|unticked|done)$/.test(v)) {
+        const bool = t === 'checkbox' || t === 'toggle' || (cell.kind === 'data' && typeof this.ctx.computed.cells[cell.id]?.value === 'boolean');
+        if (bool && /^(?:on|off|true|false|yes|no|checked|unchecked|ticked|unticked|done)$/.test(v)) {
           return ['set!', cell.name ?? cell.id, /^(?:on|true|yes|checked|ticked|done)$/.test(v)];
         }
         return ['set!', cell.name ?? cell.id, this.value(v)];
       }],
       [/^(?:reset|clear|empty|blank|zero|wipe|erase)\s+(?:out\s+)?(.+)$/, ([x]) => {
-        const cell = this.input(x);
+        const cell = this.settable(x);
         if (cell) return ['set!', cell.name ?? cell.id, blank(cell)];
+        // Tabs go back to the first tab, an accordion closes.
+        const box = this.cell(stripArticles(x));
+        if (box?.kind === 'tabs') return ['set!', box.name ?? box.id, panelTitles(box)[0]];
+        if (box?.kind === 'accordion') return ['set!', box.name ?? box.id, ['list']];
         const k = this.coll(x);
         return k ? ['clear!', k] : null;
       }],
-      [/^(?:toggle|flip|switch)\s+(.+?)(?:\s+(?:on or off|over|around))?$/, ([x]) => { const cell = this.input(x); return cell ? ['toggle!', cell.name ?? cell.id] : null; }],
-      [/^(?:check|tick|turn on|switch on|enable)\s+(.+)$|^mark\s+(.+?)\s+(?:as\s+)?(?:done|complete|finished|checked)$/, ([x]) => { const cell = this.input(x); return cell ? ['set!', cell.name ?? cell.id, true] : null; }],
-      [/^(?:uncheck|untick|turn off|switch off|disable)\s+(.+)$/, ([x]) => { const cell = this.input(x); return cell ? ['set!', cell.name ?? cell.id, false] : null; }],
+      [/^(?:toggle|flip|switch)\s+(.+?)(?:\s+(?:on or off|over|around|open or closed|open or shut))?$/, ([x]) => {
+        const cell = this.settable(x) ?? this.fold(x);
+        if (cell) return ['toggle!', cell.name ?? cell.id];
+        const p = this.panel(x, ['accordion']);
+        if (!p) return null;
+        const [name, r, t] = [p.box.name ?? p.box.id, ref(p.box), p.title];
+        const opened: Sx = p.box.multiple ? ['concat', r, ['list', t]] : t;
+        return ['set!', name, ['if', ['includes?', r, t], ['filter', ['!=', '$it', t], r], opened]];
+      }],
+      [/^(?:check|tick|turn on|switch on|enable)\s+(.+)$|^mark\s+(.+?)\s+(?:as\s+)?(?:done|complete|finished|checked)$/, ([x]) => { const cell = this.settable(x); return cell ? ['set!', cell.name ?? cell.id, true] : null; }],
+      [/^(?:uncheck|untick|turn off|switch off|disable)\s+(.+)$/, ([x]) => { const cell = this.settable(x); return cell ? ['set!', cell.name ?? cell.id, false] : null; }],
       // whole cells
       [/^(?:duplicate|copy)\s+(.+)$/, ([x]) => { const cell = this.cell(stripArticles(x)); return cell ? ['dup!', cell.name ?? cell.id] : null; }],
       [/^(?:remove|delete)\s+(.+)$/, ([x]) => {
@@ -1316,18 +1629,35 @@ export function suggestions(ctx: Ctx): string[] {
   const colls = [...ctx.collections.keys()];
   const [a = 'qty', b = 'price'] = nums;
   const pick = (xs: (string | false | undefined)[]) => xs.filter((x): x is string => !!x).slice(0, 4);
+  // Tabs, accordions, collapsibles, counters and diagrams get a phrasing of their own, ahead of the rest.
+  const of = (kind: string) => named.find((c) => c.kind === kind);
+  const title = (box: Cell | undefined) => {
+    const t = box ? panelTitles(box)[1] ?? panelTitles(box)[0] : undefined;
+    return t === undefined ? undefined : /^[a-z0-9 ]+$/i.test(t) ? t : JSON.stringify(t);
+  };
+  const [tabs, acc, fold, diagram] = [of('tabs'), of('accordion'), of('collapsible'), of('diagram')];
+  const counter = named.find((c) => c.kind === 'data' && typeof value(c) === 'number');
   switch (ctx.target) {
     case 'do': return pick([
+      tabs && title(tabs) && `open the ${title(tabs)} tab`,
+      counter && `go to the next ${counter.name}`,
+      !tabs && acc && title(acc) && `open the ${title(acc)} section`,
+      !counter && fold && `toggle ${fold.name}`,
       `add 1 to ${inputs[0] ?? a}`,
       `save ${a} and ${b} to ${colls[0] ?? 'records'}`,
       bools[0] && `toggle ${bools[0]}`,
       groups[0] && `add a line to ${groups[0]}`,
       `reset ${inputs[0] ?? a}`,
     ]);
-    case 'hidden': return pick([`when ${a} is 0`, `when ${a} is under 10`, bools[0] && `unless ${bools[0]}`, `when ${b} is empty`]);
+    case 'hidden': return pick([
+      tabs && title(tabs) && `show only on the ${title(tabs)} tab`,
+      !tabs && fold && `show when ${fold.name} is open`,
+      `when ${a} is 0`, `when ${a} is under 10`, bools[0] && `unless ${bools[0]}`, `when ${b} is empty`,
+    ]);
     case 'style': return pick(['red when negative', `green when over 100, otherwise grey`, `orange when ${a} is 0`]);
     case 'options': return pick(['small, medium and large', 'numbers 1 to 5', colls[0] && ctx.collections.get(colls[0])?.[0] && `${ctx.collections.get(colls[0])![0]} of ${colls[0]}`]);
     default: return pick([
+      diagram && `how many shapes in ${diagram.name}`,
       `${a} times ${b}`,
       `sum of ${a} and ${b}`,
       `if ${a} is over 100 then "big" else "small"`,
@@ -1367,6 +1697,47 @@ const TARGET_TASK: Record<Target, string> = {
   trend: 'a list of numbers showing how this value moved over time, oldest first',
 };
 
+/**
+ * What the document's tabs, accordions, collapsibles, data cells and diagrams
+ * hold and how code reads and changes them, with their own names and titles.
+ * Only the kinds the document has; the outline already lists them.
+ */
+function kindNotes(ctx: Ctx): string[] {
+  const first: Partial<Record<string, Cell>> = {};
+  walk(ctx.doc.root, (c) => { first[c.kind] ??= c; });
+  const id = (c: Cell) => c.name ?? c.id;
+  const q = (s: string) => JSON.stringify(s);
+  const out: string[] = [];
+  const { tabs, accordion: acc, collapsible: fold, data, diagram } = first;
+  if (tabs) {
+    const [n, ts] = [id(tabs), panelTitles(tabs)];
+    const t = ts[1] ?? ts[0] ?? 'Details';
+    out.push(`- tabs (${n}): its value is the open tab's title. Read it with (= ${n} ${q(t)}); a button opens a tab with (set! ${n} ${q(t)}). To show a cell only on that tab, hide it while (!= ${n} ${q(t)}).`);
+  }
+  if (acc) {
+    const [n, ts] = [id(acc), panelTitles(acc)];
+    const t = ts[0] ?? 'Shipping';
+    out.push(`- accordion (${n}): its value is the list of open section titles; (includes? ${n} ${q(t)}) tells whether one is open. ` + (acc.multiple
+      ? `${n} lets any number be open: open one more with (set! ${n} (uniq (concat ${n} (list ${q(t)}))))`
+      : `${n} opens one section at a time: (set! ${n} ${q(t)}) opens just that one`)
+      + `; close one with (set! ${n} (filter (!= it ${q(t)}) ${n})); close all with (set! ${n} (list)).`);
+  }
+  if (fold) {
+    const n = id(fold);
+    out.push(`- collapsible (${n}): its value is true while open, false while folded. Read it as ${n}; (set! ${n} false) folds it, (set! ${n} true) unfolds it, (toggle! ${n}) switches.`);
+  }
+  if (data) {
+    const n = id(data);
+    out.push(`- data (${n}): a value the document keeps for itself, never shown. Read it by name; a button changes it, e.g. (set! ${n} ${typeof data.value === 'number' ? `(+ ${n} 1)` : '…'}).`);
+  }
+  if (diagram) {
+    const n = id(diagram);
+    out.push(`- diagram (${n}): its value is the list of its elements, records {id, type, text, …} where type is rect, ellipse, diamond, text, arrow or line. Count shapes with (count-if (includes? (list "rect" "ellipse" "diamond") (get it "type")) ${n}); arrows with (count-if (= (get it "type") "arrow") ${n}).`);
+  }
+  if (tabs || acc) out.push('- Panel titles are exact text: write them as the outline shows them, in the same case.');
+  return out;
+}
+
 /** The system prompt: the language, the document and the task. */
 export function systemPrompt(ctx: Ctx): string {
   const fns = (['Math', 'Logic', 'Lists', 'Records', 'Text', 'Dates', 'Cells', 'Actions'] as const)
@@ -1375,6 +1746,7 @@ export function systemPrompt(ctx: Ctx): string {
   const colls = [...ctx.collections].map(([n, f]) => `  "${n}"${f.length ? ` with fields ${f.join(', ')}` : ''}`).join('\n');
   const c = ctx.cell;
   const where = c ? `cell ${c.id}${c.name ? ` named ${c.name}` : ''} (a ${c.kind}${c.type ? ` of type ${c.type}` : ''})` : 'the document';
+  const notes = kindNotes(ctx);
   return [
     'You write code for one cell of an Edgy document. Edgy formulas are a small Lisp: (* qty price), (if (> total 100) "big" "small"). A bare word reads the cell with that name (or id); text goes in "double quotes"; {key value} is a record.',
     '',
@@ -1384,6 +1756,7 @@ export function systemPrompt(ctx: Ctx): string {
     'The document, one line per cell: id, kind, name, source, → current value:',
     outline(ctx.doc, ctx.computed),
     ...(colls ? ['', 'Collections that can be read with (rows "name"):', colls] : []),
+    ...(notes.length ? ['', 'What these cells hold, and how code reads and changes them:', ...notes] : []),
     '',
     `Task: write ${TARGET_TASK[ctx.target]}, for ${where}.`,
     `Current code: ${ctx.current.trim() || '(none)'}`,
