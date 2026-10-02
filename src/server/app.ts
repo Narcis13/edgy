@@ -15,6 +15,7 @@ import { indexTree } from '../core/tree';
 import { GUIDE } from '../core/reference';
 import { TEMPLATES, tour } from '../core/templates';
 import { Hub } from './hub';
+import { type Clock, type Getter, Runner } from './runner';
 import { type Provider, type Target, ComposeError, Requests, TARGETS, claudeConfig, compose, context, validate } from './compose';
 import { type Store, shortId } from './store';
 
@@ -32,16 +33,32 @@ function cleanActor(a: unknown): Actor {
   return { kind, name, ...(typeof o.id === 'string' ? { id: o.id.slice(0, 40) } : {}) };
 }
 
-export function createApp(store: Store, assetsDir: string, webUrl?: string) {
+/** What tests swap: the clock timers run on, how addresses are fetched, the environment secrets come from. */
+export interface AppOptions {
+  clock?: Clock;
+  get?: Getter;
+  env?: Record<string, string | undefined>;
+}
+
+export function createApp(store: Store, assetsDir: string, webUrl?: string, opts: AppOptions = {}) {
   const app = new Hono();
   const hub = new Hub();
   const requests = new Requests();
-  const world = (): World => ({ rows: (name) => store.rows(name), now: Date.now() });
+  const runner = new Runner({
+    store, hub, ...opts,
+    // A fetch cell's path on this server is answered here, in process, without the network.
+    local: async (path, headers) => {
+      const res = await app.request(path, { headers });
+      return { status: res.status, body: await res.text() };
+    },
+  });
+  /** What formulas see: saved records, the time, and (for a document) its fetch cells' answers. */
+  const world = (docId?: string): World => (docId ? runner.world(docId) : { rows: (name) => store.rows(name), now: Date.now() });
   const collections = () => store.collections().map((c) => c.name);
 
   /** What an agent needs to see of a document: structure, values and what is broken. */
   function view(doc: Doc, format: string) {
-    const computed = evaluate(doc, world());
+    const computed = evaluate(doc, world(doc.id));
     const idx = indexTree(doc.root);
     const values: Record<string, unknown> = {};
     const errors: Record<string, string> = {};
@@ -128,7 +145,10 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string) {
   app.delete('/api/docs/:id', (c) => {
     const id = c.req.param('id');
     const ok = store.deleteDoc(id);
-    if (ok) hub.publish(id, { type: 'deleted' });
+    if (ok) {
+      runner.stop(id);
+      hub.publish(id, { type: 'deleted' });
+    }
     return ok ? c.json({ ok }) : c.json({ error: 'no such document' }, 404);
   });
 
@@ -143,6 +163,9 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string) {
     const ops = body.ops.length === 1 ? [r.op] : (r.op.slice(1) as Op[]);
     const ts = store.saveDoc(next, actor, ops);
     hub.publish(doc.id, { type: 'ops', v: next.v, ts, actor, ops, touched: r.touched, client: body.client, batch: body.batch });
+    runner.changed(doc.id);
+    // A person's browser ran its own handlers; an agent's change sets them off here, if someone is in Live.
+    if (actor.kind === 'agent' && !body.client) runner.agentChanged(doc.id, doc, ops);
     const answer: Record<string, unknown> = actor.kind === 'human'
       ? { v: next.v, ops, touched: r.touched }
       : { ops, touched: r.touched, ...view(next, body.format ?? 'outline') };
@@ -160,7 +183,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string) {
     if (!doc) return c.json({ error: 'no such document' }, 404);
     const body = (await c.req.json()) as { expr?: Sx; src?: string; cell?: string };
     const expr = typeof body.src === 'string' ? read(body.src) : (body.expr ?? null);
-    const r = evalIn(doc, world(), expr, body.cell);
+    const r = evalIn(doc, world(doc.id), expr, body.cell);
     return c.json(r.error ? { error: r.error } : { value: plainValue(r.value) });
   });
 
@@ -168,10 +191,21 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string) {
     const id = c.req.param('id');
     const doc = store.getDoc(id);
     if (!doc) return c.json({ error: 'no such document' }, 404);
+    // The browser says who it is and whether it is in Live: timers and fetches run while anyone is.
+    const client = (c.req.query('client') ?? '').slice(0, 40);
+    const mode = c.req.query('mode') ?? 'edit';
     return streamSSE(c, async (stream) => {
-      const off = hub.subscribe(id, (e) => {
+      const unsubscribe = hub.subscribe(id, (e) => {
         stream.writeSSE({ event: e.type, data: JSON.stringify(e) }).catch(() => off());
       });
+      const token = client ? runner.join(id, client, mode) : 0;
+      let gone = false;
+      const off = () => {
+        if (gone) return;
+        gone = true;
+        unsubscribe();
+        if (token) runner.leave(id, token);
+      };
       stream.onAbort(off);
       await stream.writeSSE({ event: 'hello', data: JSON.stringify({ type: 'hello', v: store.getDoc(id)?.v ?? doc.v }) });
       while (!stream.aborted && !stream.closed) {
@@ -181,6 +215,52 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string) {
       off();
     });
   });
+
+  /** A browser switched between Edit, Live and Page. */
+  app.post('/api/docs/:id/viewer', async (c) => {
+    const id = c.req.param('id');
+    if (!store.getDoc(id)) return c.json({ error: 'no such document' }, 404);
+    const body = (await c.req.json()) as { client?: string; mode?: string };
+    if (typeof body.client !== 'string' || !['edit', 'live', 'page'].includes(body.mode ?? '')) return c.json({ error: 'send {"client", "mode": "edit"|"live"|"page"}' }, 400);
+    runner.mode(id, body.client.slice(0, 40), body.mode!);
+    return c.json({ live: runner.isLive(id) });
+  });
+
+  // ── fetch cells: JSON from an address, fetched here for everyone ──
+
+  app.get('/api/docs/:id/fetched', (c) => {
+    const id = c.req.param('id');
+    if (!store.getDoc(id)) return c.json({ error: 'no such document' }, 404);
+    return c.json(runner.states(id));
+  });
+
+  /** Fetch now (refresh!, Retry, the studio's Fetch now). {"handlers": false} skips load and fail. */
+  app.post('/api/docs/:id/fetch/:cell', async (c) => {
+    const id = c.req.param('id');
+    const doc = store.getDoc(id);
+    if (!doc) return c.json({ error: 'no such document' }, 404);
+    const cell = indexTree(doc.root).byId.get(c.req.param('cell')) ?? indexTree(doc.root).byName.get(c.req.param('cell'));
+    if (!cell || cell.kind !== 'fetch') return c.json({ error: `no fetch cell "${c.req.param('cell')}"` }, 404);
+    const body = (await c.req.json().catch(() => ({}))) as { handlers?: boolean };
+    return c.json(await runner.refresh(id, cell.id, body.handlers !== false));
+  });
+
+  // ── demo answers, so fetch cells can be tried (and tested) without the network ──
+
+  const RATES = [4.82, 5.07, 4.95, 5.21, 4.88];
+  let rateCall = 0;
+  app.get('/api/demo/rate', (c) => {
+    const forced = Number(c.req.query('rate'));
+    const rate = c.req.query('rate') && Number.isFinite(forced) ? forced : RATES[rateCall++ % RATES.length];
+    return c.json({ base: 'EUR', quote: 'RON', rate, at: new Date().toISOString() });
+  });
+  app.get('/api/demo/slow', async (c) => {
+    const ms = Math.min(5000, Math.max(0, Number(c.req.query('ms') ?? 1500) || 0));
+    await new Promise((r) => setTimeout(r, ms));
+    return c.json({ ok: true, waited: ms, at: new Date().toISOString() });
+  });
+  app.get('/api/demo/fail', (c) => c.json({ error: 'the demo service is down' }, 500));
+  app.get('/api/demo/weather', (c) => c.json({ city: c.req.query('city') ?? 'Cluj', temp: 17, sky: 'clear', wind: 9 }));
 
   // ── messages: how a person and an agent talk about a document ──
 
@@ -239,7 +319,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string) {
     if (!TARGETS.includes(target)) return c.json({ error: `target is one of ${TARGETS.join(', ')}` }, 400);
     const provider = body.provider as Provider | undefined;
     if (provider && !['claude', 'agent', 'local'].includes(provider)) return c.json({ error: 'provider is claude, agent or local' }, 400);
-    const ctx = context(doc, world(), collections(), { cell: body.cell, target, current: typeof body.current === 'string' ? body.current : '' });
+    const ctx = context(doc, world(doc.id), collections(), { cell: body.cell, target, current: typeof body.current === 'string' ? body.current : '' });
     if (body.cell && !ctx.cell) return c.json({ error: `no cell "${body.cell}"` }, 400);
     const cell = ctx.cell;
     const agent = hub.listening(doc.id)
@@ -269,7 +349,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string) {
     const body = (await c.req.json()) as { code?: unknown; explanation?: string; actor?: unknown };
     let expr: Sx;
     try {
-      const ctx = context(doc, world(), collections(), { cell: request.cell, target: request.target, current: request.current });
+      const ctx = context(doc, world(id), collections(), { cell: request.cell, target: request.target, current: request.current });
       expr = validate(ctx, body.code, request.target);
     } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 422);
@@ -345,7 +425,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string) {
     });
   });
 
-  return { app, hub, view };
+  return { app, hub, view, runner };
 }
 
 export type { Computed };

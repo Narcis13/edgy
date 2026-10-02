@@ -1,6 +1,8 @@
 // Fan-out of live events to everyone watching a document.
 
 import type { Actor, Op } from '../core/types';
+import type { TraceEntry } from '../core/events';
+import type { FetchState } from '../core/sx';
 import type { AgentRequest } from './compose';
 import type { Message } from './store';
 
@@ -11,6 +13,10 @@ export type DocEvent =
   | { type: 'presence'; actor: Actor; state: 'reading' | 'editing' | 'listening' | 'idle'; ts: number }
   | { type: 'data'; collection: string }
   | { type: 'compose'; request: AgentRequest }
+  /** Handlers the server ran (timers, fetches, agents' changes) and what they did. */
+  | { type: 'trace'; trace: TraceEntry[] }
+  /** A fetch cell started loading, got its answer or failed. */
+  | { type: 'fetch'; cell: string; state: FetchState }
   | { type: 'deleted' };
 
 type Listener = (e: DocEvent) => void;

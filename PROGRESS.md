@@ -10,7 +10,7 @@ and a trace in Activity; Ask AI writes handlers, events and actions from a sente
 
 Started 2026-10-02 on branch `main` at `5c8de68`. Brief: given inline to `/goal-loop` (events brief).
 
-**Next:** M2 server — viewers per document (SSE `?client&mode` + POST mode), `src/server/runner.ts` (timers with an injectable clock, fetch proxy with limits/SSRF/secrets, server-run `react`, agent-op reactions, trace over SSE), `/api/demo/*` fixtures, `GET /api/docs/:id/fetched`, `POST /api/docs/:id/fetch/:cell`, tests.
+**Next:** M3 browser — session: SSE `?client&mode`, POST viewer on mode change, fetch states (`/fetched` + SSE `fetch`), trace (`trace` SSE + own), `react` in dispatch for Live gestures (one undo step), `run` through react, `fire()` for pointer/open/close, click gate; CellView pointer handlers; timer/fetch kinds rendering; Activity trace.
 
 ## Contract (Done means)
 
@@ -40,7 +40,7 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 ## Milestones
 
 1. [x] **Core model**: types, notation, ops (`on.*` on cells, `meta` paths `on.*` and `actions.*`), language, engine (timer, fetch), dispatcher + loop guard, outline, guide, tests (D2–D8 core, D13 part, D14, D15)
-2. [ ] **Server**: Live viewers per document, the runner (timers, fetch proxy with limits, server-run handlers, agent-caused changes), endpoints, demo fixtures, trace over SSE, tests with a fake clock (D4, D5, D14)
+2. [x] **Server**: Live viewers per document, the runner (timers, fetch proxy with limits, server-run handlers, agent-caused changes), endpoints, demo fixtures, trace over SSE, tests with a fake clock (D4, D5, D14)
 3. [ ] **Browser**: gestures through the dispatcher (one undo step), pointer events and the click gate, open/close, fetch state, timer/fetch cells in Edit/Live/Page, Activity trace (D1–D10)
 4. [ ] **Studio and designer**: Events part for a cell and the document, presets + Blocks, fire by hand, custom actions; inspector section, `/` menu, minimap, icons (D11)
 5. [ ] **Ask AI**: an `events` target on the offline composer, Claude (mocked) and the agent path (D12)
@@ -70,8 +70,13 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 ## Notes
 
 - Baseline found no `node_modules` problem this time; gates take ~5 s.
+- No git identity is configured on this machine: commit with `git -c user.name="Narcis Brindusescu" -c user.email="narcis75@gmail.com" commit …` (the name the history uses).
+- Bash heredocs containing escaped backticks fail in this harness; write patch scripts with the Write tool (a new file name each time). Scratchpad `p.cjs` does CRLF-safe exact replacements; most source files are CRLF. Never pass a `$'`-containing replacement string to String.replace (use a function).
+- `react` can be given `before` (an earlier World) so values moved by something outside the document (a fetch answer) raise change.
+- Server tests drive time with a FakeClock passed through `createApp(..., { clock, get, env })`; `runner.settled()` awaits fetches.
 
 ## Log
 
 - 2026-10-02: baseline: 132 tests pass, typecheck clean, build passes.
 - 2026-10-02: M1 core: `on` on cells and `meta.on`/`meta.actions` (ops with paths, renames follow), timer and fetch kinds, emit!/start!/stop!/refresh!/show!/hide!, status/error-of, custom action calls, unknown calls reported in the cell and outline, `react` dispatcher (watchers declared per kind, emit broadcast, a cell's own do as depth 0, loop guard 8/64), outline lines, guide Events section. 132 → 144 tests.
+- 2026-10-02: M2 server: `Runner` (viewers per document, timers on an injectable clock, fetch through the server with SSRF/size/time limits and `secret:` headers, server-run handlers saved as actor "Events", agent changes react while someone is in Live, trace and fetch states over SSE), `/api/demo/*` fixtures. 144 → 152 tests.

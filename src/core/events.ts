@@ -289,11 +289,9 @@ function watched(doc: Doc): boolean {
   return any;
 }
 
-/** The events that follow from the document going from `before` to `after`. */
-function changes(before: Doc, after: Doc, value: (d: Doc) => Computed): Fired[] {
+/** The events that follow from the document going from `before` to `after` (their values in `a` and `b`). */
+function changes(before: Doc, after: Doc, a: () => Computed, b: () => Computed): Fired[] {
   if (!watched(after)) return [];
-  const a = value(before);
-  const b = value(after);
   const was = indexTree(before.root).byId;
   const out: Fired[] = [];
   walk(after.root, (c) => {
@@ -302,8 +300,8 @@ function changes(before: Doc, after: Doc, value: (d: Doc) => Computed): Fired[] 
     if (!decl?.watch || !old || old.kind !== c.kind || !c.on || typeof c.on !== 'object') return;
     const on = c.on as Record<string, unknown>;
     if (!decl.raises.some((e) => e.from === 'change' && on[e.name] != null)) return;
-    const v0 = a.cells[old.id]?.value;
-    const v1 = b.cells[c.id]?.value;
+    const v0 = a().cells[old.id]?.value;
+    const v1 = b().cells[c.id]?.value;
     for (const w of decl.watch) {
       const x0 = w.read ? w.read(old, v0) : v0;
       const x1 = w.read ? w.read(c, v1) : v1;
@@ -327,6 +325,8 @@ export interface Start {
   /** A cell's own action to run first, as the gesture: a button's do (with `name` "click"), a row action with `row` in vars. */
   run?: { cell: string; name: string; action: Sx; vars?: Record<string, unknown> };
   events?: Fired[];
+  /** What the world was before something outside the document changed (a fetch arrived, records were saved): values that moved raise change. */
+  before?: World;
 }
 
 export function react(doc: Doc, world: World, start: Start, now = world.now): Reaction {
@@ -338,9 +338,15 @@ export function react(doc: Doc, world: World, start: Start, now = world.now): Re
   };
   let cur = doc;
   const queue: Queued[] = [];
+  if (start.before) {
+    const was = start.before;
+    for (const ev of changes(doc, doc, () => evaluate(doc, was), () => value(doc))) queue.push({ ev, depth: 0, path: [label(doc, ev.cell)] });
+  }
   if (start.ops?.length) {
+    const first = doc;
     cur = applyOps(doc, start.ops).doc;
-    for (const ev of changes(doc, cur, value)) queue.push({ ev, depth: 0, path: [label(cur, ev.cell)] });
+    const after = cur;
+    for (const ev of changes(first, after, () => value(first), () => value(after))) queue.push({ ev, depth: 0, path: [label(cur, ev.cell)] });
   }
   if (start.run) {
     const { cell, name, action, vars } = start.run;
@@ -402,7 +408,8 @@ export function react(doc: Doc, world: World, start: Start, now = world.now): Re
           queue.push({ ev: { cell: null, name: e.name, data: { payload: e.data as unknown, from } }, depth: depth + 1, path: next });
         } else effects.push(e);
       }
-      if (cur !== before) for (const c of changes(before, cur, value)) queue.push({ ev: c, depth: depth + 1, path: next });
+      const after = cur;
+      if (after !== before) for (const c of changes(before, after, () => value(before), () => value(after))) queue.push({ ev: c, depth: depth + 1, path: next });
     }
   }
   return { doc: cur, ops, effects, trace };
