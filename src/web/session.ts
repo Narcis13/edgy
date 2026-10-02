@@ -162,6 +162,8 @@ export class Session {
   private watchdog: ReturnType<typeof setInterval> | null = null;
   /** The document's open handler ran for this open; close runs only after it. */
   private opened = false;
+  /** Not on screen (a slide): no stream to the server until resumed. */
+  private paused = false;
   private onPageHide = () => this.leaving(true);
   /** Back from the browser's page cache: that is opening it again. */
   private onPageShow = (e: PageTransitionEvent) => {
@@ -205,7 +207,8 @@ export class Session {
       if (this.closed || generation !== this.generation) return;
       this.confirmed = doc;
       this.patch({ status: 'ready', doc, messages, fetched, log: log.map((e) => ({ ...e, mine: false })) });
-      this.connect();
+      // A slide passed while it was loading stays quiet until it is shown again.
+      if (!this.paused) this.connect();
       if (typeof window !== 'undefined') {
         window.addEventListener('pagehide', this.onPageHide);
         window.addEventListener('pageshow', this.onPageShow);
@@ -234,6 +237,7 @@ export class Session {
    * closing: what was typed is still sent, and the state stays as it is.
    */
   pause(): void {
+    this.paused = true;
     this.es?.close();
     this.es = null;
     if (this.clock) clearInterval(this.clock);
@@ -243,6 +247,7 @@ export class Session {
 
   /** Listen again after a pause, catching up on what changed meanwhile. */
   resume(): void {
+    this.paused = false;
     if (this.closed || this.es || this.s.status !== 'ready') return;
     this.connect();
     void this.resync();
@@ -315,7 +320,7 @@ export class Session {
       const since = this.confirmed?.v ?? 0;
       const [doc, log] = await Promise.all([
         api<Doc>('GET', `/api/docs/${this.id}`),
-        api<LogEntry[]>('GET', `/api/docs/${this.id}/log?since=${since}&limit=80`),
+        this.options.guest ? [] : api<LogEntry[]>('GET', `/api/docs/${this.id}/log?since=${since}&limit=80`),
       ]);
       this.confirmed = doc;
       this.pending = this.pending.filter((p) => !(p.state === 'done' && (p.v ?? 0) <= doc.v));

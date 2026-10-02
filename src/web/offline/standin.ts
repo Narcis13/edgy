@@ -122,7 +122,7 @@ export class StandIn {
         const before = rows.length;
         this.records[name] = id ? rows.filter((r) => r.id !== id) : [];
         changed();
-        return json(id ? { ok: rows.length !== before } : { removed: before });
+        return json(id ? { ok: this.records[name].length !== before } : { removed: before });
       }
     }
     if ((m = /^\/api\/decks\/([^/]+)$/.exec(path)) && this.payload.deck && m[1] === this.payload.deck.id) {

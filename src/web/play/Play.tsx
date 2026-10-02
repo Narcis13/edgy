@@ -16,6 +16,11 @@ import { requestFull } from './start';
 import './play.css';
 
 const typing = (t: EventTarget | null) => t instanceof Element && !!t.closest('input, textarea, select, [contenteditable="true"]');
+/** A focused control inside the slide that uses this key itself: Space on a button, arrows on tabs. */
+const owns = (t: EventTarget | null, key: string) =>
+  t instanceof Element && !!t.closest('.slide-room') && (
+    ((key === ' ' || key === 'Enter') && !!t.closest('button, a[href], [role=button], [role=tab], [role=checkbox], [role=switch], summary')) ||
+    (key.startsWith('Arrow') && !!t.closest('[role=tab], [role=tablist], [role=radio], [role=slider], [role=listbox], [role=option], [role=grid], [role=menu]')));
 
 /** Each slide's session lives as long as Play does; only the one on screen listens to the server. */
 class Slides {
@@ -107,6 +112,7 @@ function Player({ title, items, onLeave }: { title: string; items: DocSummary[];
         if (e.key === 'Escape') (e.target as HTMLElement).blur();
         return;
       }
+      if (owns(e.target, e.key)) return;
       const pane = frame.current;
       const step = pane ? pane.clientHeight * 0.85 : 400;
       if (e.key === 'ArrowRight' || e.key === 'PageDown' && !scrollable(pane, 1)) go(1);

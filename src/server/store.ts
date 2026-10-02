@@ -6,7 +6,8 @@
 //   messages   the conversation between people and agents on a document
 //   decks      ordered sets of documents that play as slides
 //   deck_docs  which documents a deck holds, in order (a document is in at most one)
-//   shares     links that open one document for someone else, "view" or "edit"
+//   shares     links that open one document for someone else, "view" or "edit", and the
+//              collections they may reach
 //
 // The schema's version is SQLite's user_version; opening an older file
 // migrates it in place (see `migrate`).
@@ -56,6 +57,12 @@ export interface Share {
   createdAt: number;
   /** When it was turned off; an old link then says so instead of "not found". */
   revokedAt: number | null;
+  /**
+   * The collections the link may read (and with "edit", write): those the
+   * document used when its owner last changed it. Never what a guest's own
+   * changes make it read.
+   */
+  collections: string[];
 }
 
 export interface LogEntry {
@@ -79,8 +86,8 @@ export const shortId = (n = 8) => randomBytes(n).toString('base64url').replace(/
 /** A share link's secret: 32 random bytes, 43 characters. */
 export const newToken = () => randomBytes(32).toString('base64url');
 
-/** The schema this code writes. 1: docs, ops, records, messages. 2: the library. */
-export const SCHEMA = 2;
+/** The schema this code writes. 1: docs, ops, records, messages. 2: the library. 3: the collections a link reaches. */
+export const SCHEMA = 3;
 
 /** Columns version 2 added to docs, with their definitions. */
 const DOC_COLUMNS: [string, string][] = [
@@ -130,28 +137,39 @@ export class Store {
     if (version >= SCHEMA) return;
     this.db.exec('BEGIN');
     try {
-      const have = new Set(this.db.prepare('PRAGMA table_info(docs)').all().map((c) => c.name as string));
-      for (const [name, def] of DOC_COLUMNS) if (!have.has(name)) this.db.exec(`ALTER TABLE docs ADD COLUMN ${name} ${def}`);
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS decks (
-          id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
-          created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, pinned INTEGER, archived_at INTEGER);
-        CREATE TABLE IF NOT EXISTS deck_docs (
-          deck_id TEXT NOT NULL, doc_id TEXT NOT NULL UNIQUE, pos INTEGER NOT NULL, PRIMARY KEY (deck_id, doc_id));
-        CREATE TABLE IF NOT EXISTS shares (
-          token TEXT PRIMARY KEY, doc_id TEXT NOT NULL, access TEXT NOT NULL, created_at INTEGER NOT NULL, revoked_at INTEGER);
-        CREATE INDEX IF NOT EXISTS shares_by_doc ON shares (doc_id);
-      `);
-      // What the library shows of each document comes from its body; bodies and history are not touched.
-      const update = this.db.prepare('UPDATE docs SET description = ?, text = ?, shape = ? WHERE id = ?');
-      for (const r of this.db.prepare('SELECT id, body FROM docs').all()) {
-        update.run(...derived(JSON.parse(r.body as string) as Doc), r.id as string);
-      }
+      if (version < 2) this.toLibrary();
+      // 3: a link remembers the collections it may reach (a link made before reaches none until the owner next edits).
+      if (!this.columns('shares').has('collections')) this.db.exec("ALTER TABLE shares ADD COLUMN collections TEXT NOT NULL DEFAULT '[]'");
       this.db.exec(`PRAGMA user_version = ${SCHEMA}`);
       this.db.exec('COMMIT');
     } catch (e) {
       this.db.exec('ROLLBACK');
       throw e;
+    }
+  }
+
+  private columns(table: string): Set<string> {
+    return new Set(this.db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name as string));
+  }
+
+  /** 2: the library's columns and tables, filled in from each document's body. */
+  private toLibrary(): void {
+    const have = this.columns('docs');
+    for (const [name, def] of DOC_COLUMNS) if (!have.has(name)) this.db.exec(`ALTER TABLE docs ADD COLUMN ${name} ${def}`);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS decks (
+        id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, pinned INTEGER, archived_at INTEGER);
+      CREATE TABLE IF NOT EXISTS deck_docs (
+        deck_id TEXT NOT NULL, doc_id TEXT NOT NULL UNIQUE, pos INTEGER NOT NULL, PRIMARY KEY (deck_id, doc_id));
+      CREATE TABLE IF NOT EXISTS shares (
+        token TEXT PRIMARY KEY, doc_id TEXT NOT NULL, access TEXT NOT NULL, created_at INTEGER NOT NULL, revoked_at INTEGER);
+      CREATE INDEX IF NOT EXISTS shares_by_doc ON shares (doc_id);
+    `);
+    // What the library shows of each document comes from its body; bodies and history are not touched.
+    const update = this.db.prepare('UPDATE docs SET description = ?, text = ?, shape = ? WHERE id = ?');
+    for (const r of this.db.prepare('SELECT id, body FROM docs').all()) {
+      update.run(...derived(JSON.parse(r.body as string) as Doc), r.id as string);
     }
   }
 
@@ -235,11 +253,22 @@ export class Store {
   /** Gone for good: the document, its history, its messages, its links and its place in a deck. Records stay with their collections. */
   deleteDoc(id: string): boolean {
     this.cache.delete(id);
-    this.db.prepare('DELETE FROM ops WHERE doc_id = ?').run(id);
-    this.db.prepare('DELETE FROM messages WHERE doc_id = ?').run(id);
-    this.db.prepare('DELETE FROM shares WHERE doc_id = ?').run(id);
-    this.db.prepare('DELETE FROM deck_docs WHERE doc_id = ?').run(id);
-    return this.db.prepare('DELETE FROM docs WHERE id = ?').run(id).changes > 0;
+    let ok = false;
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare('DELETE FROM ops WHERE doc_id = ?').run(id);
+      this.db.prepare('DELETE FROM messages WHERE doc_id = ?').run(id);
+      this.db.prepare('DELETE FROM shares WHERE doc_id = ?').run(id);
+      this.db.prepare('DELETE FROM deck_docs WHERE doc_id = ?').run(id);
+      ok = this.db.prepare('DELETE FROM docs WHERE id = ?').run(id).changes > 0;
+      // The pinned close up behind it.
+      if (ok) this.renumberPins();
+      this.db.exec('COMMIT');
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      throw e;
+    }
+    return ok;
   }
 
   log(docId: string, since = 0, limit = 200): LogEntry[] {
@@ -401,21 +430,27 @@ export class Store {
   // ── share links ──
 
   shares(docId: string): Share[] {
-    return this.db.prepare('SELECT token, doc_id, access, created_at, revoked_at FROM shares WHERE doc_id = ? ORDER BY created_at').all(docId).map(shareOf);
+    return this.db.prepare('SELECT token, doc_id, access, created_at, revoked_at, collections FROM shares WHERE doc_id = ? ORDER BY created_at').all(docId).map(shareOf);
   }
 
   share(token: string): Share | null {
-    const r = this.db.prepare('SELECT token, doc_id, access, created_at, revoked_at FROM shares WHERE token = ?').get(token);
+    const r = this.db.prepare('SELECT token, doc_id, access, created_at, revoked_at, collections FROM shares WHERE token = ?').get(token);
     return r ? shareOf(r) : null;
   }
 
-  /** Turn a link on: the one already on for this access, or a new token. */
-  openShare(docId: string, access: Access): Share {
+  /** Turn a link on: the one already on for this access, or a new token. It reaches these collections. */
+  openShare(docId: string, access: Access, collections: string[]): Share {
     const on = this.shares(docId).find((s) => s.access === access && s.revokedAt == null);
     if (on) return on;
     const token = newToken();
-    this.db.prepare('INSERT INTO shares (token, doc_id, access, created_at) VALUES (?, ?, ?, ?)').run(token, docId, access, Date.now());
+    this.db.prepare('INSERT INTO shares (token, doc_id, access, created_at, collections) VALUES (?, ?, ?, ?, ?)')
+      .run(token, docId, access, Date.now(), JSON.stringify(collections));
     return this.share(token)!;
+  }
+
+  /** The owner changed the document: its links reach the collections it uses now. */
+  shareCollections(docId: string, collections: string[]): void {
+    this.db.prepare('UPDATE shares SET collections = ? WHERE doc_id = ? AND revoked_at IS NULL').run(JSON.stringify(collections), docId);
   }
 
   /** Turn a link off for good. The token stays known, so it can say it was turned off. */
@@ -501,5 +536,6 @@ function shareOf(r: Record<string, unknown>): Share {
     access: r.access as Access,
     createdAt: r.created_at as number,
     revokedAt: num(r.revoked_at),
+    collections: JSON.parse((r.collections as string | null) ?? '[]') as string[],
   };
 }

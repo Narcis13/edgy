@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Doc } from '../../../core/types';
 import { movePinned } from '../../../core/library';
-import { type Deck, type LibraryEntry, type TemplateSummary, api } from '../../lib/api';
+import { type Deck, type Library, type LibraryEntry, type TemplateSummary, api } from '../../lib/api';
 import { startPlay } from '../../play/start';
 import { ShareDialog } from '../../share/ShareDialog';
 import { Minimap } from '../Minimap';
@@ -165,9 +165,18 @@ export function Library({ navigate }: { navigate: (p: string) => void }) {
     const ids = entries.map((e) => e.id);
     const what = entries.length === 1 ? quoted(entries[0].title) : String(entries.length);
     void attempt(async () => {
+      // Archiving unpins; Undo puts the pins back where they were.
+      const pins = on ? (await api<Library>('GET', '/api/library')).pinned.map((e) => e.id) : [];
       await bulk(on ? 'archive' : 'restore', ids);
       setSelected(new Set());
-      live.current.notify(`${on ? 'Archived' : 'Restored'} ${what}`, () => void attempt(() => bulk(on ? 'restore' : 'archive', ids)));
+      live.current.notify(`${on ? 'Archived' : 'Restored'} ${what}`, () => void attempt(async () => {
+        await bulk(on ? 'restore' : 'archive', ids);
+        const unpinned = ids.filter((id) => pins.includes(id));
+        if (unpinned.length) {
+          await bulk('pin', unpinned);
+          await api('POST', '/api/library/pins', { ids: pins });
+        }
+      }));
     });
   }, [attempt]);
 
@@ -283,7 +292,8 @@ export function Library({ navigate }: { navigate: (p: string) => void }) {
   };
 
   const searching = shown.query !== '';
-  const canReorder = !searching;
+  // Pins can be moved only where every pin shows: a filtered view would scramble the hidden ones.
+  const canReorder = !searching && (shown.filter === 'all' || shown.filter === 'pinned');
   const visible = rest.slice(0, limit);
   const listClass = cx('lib-cards', prefs.view === 'list' ? 'is-list' : 'is-grid');
   const card = (e: LibraryEntry, pinIndex: number) => (

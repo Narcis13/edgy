@@ -195,7 +195,7 @@ api /api/decks/$DECK/export -o "$WORK/quarterly-review.html"
 echo "   sizes: team-offsite.html $(wc -c <"$WORK/team-offsite.html") bytes, quarterly-review.html $(wc -c <"$WORK/quarterly-review.html") bytes"
 echo "   external URLs in src/href/url(): $(grep -oiE '(src|href)=["'"'"']?https?:|url\(["'"'"']?https?:' "$WORK/team-offsite.html" | wc -l)"
 F="file:///$(cd "$WORK" && pwd -W 2>/dev/null || pwd)"
-shot "$URL/d/$OFFSITE?view=live" "$OUT/export-live.png" --size 1440x900 --wait 3000
+shot "$URL/d/$OFFSITE?view=live" "$OUT/export-live.png" --size 1440x900 --wait 3000 --js "[...document.querySelectorAll('button[aria-pressed=true][title^=Activity], button[aria-pressed=true][title^=Cell]')].map((b) => (b.click(), b.title))"
 shot "$F/team-offsite.html" "$OUT/export-offline.png" --size 1440x900 --offline --wait 3000 --js "(async () => { $SETV
   const total = () => [...document.querySelectorAll('.sheet *')].find(e => e.children.length === 0 && /^Total /.test(e.textContent))?.textContent;
   const before = total(); const qty = [...document.querySelectorAll('.sheet input[type=number]')].find(i => i.value === '14'); setv(qty, '20'); qty.blur(); await wait(500);
@@ -209,5 +209,8 @@ say "E2 the exported deck plays every slide, offline"
 shot "$F/quarterly-review.html" "$OUT/export-deck-overview.png" --size 1440x900 --offline --wait 2500
 shot "$F/quarterly-review.html" "$OUT/export-deck-play.png" --size 1440x900 --offline --wait 2500 --press ".offline-play|Enter;;.slide-room|ArrowRight;;.slide-room|ArrowRight" --then "document.querySelector('.play-count')?.textContent + ' · ' + document.querySelector('.play-title')?.textContent"
 } 2>&1 | tee "$LOG"
+
+# An agent does the same over MCP, against this server.
+node $OUT/mcp-check.mjs "$URL" "$WORK" >"$OUT/mcp.txt" 2>&1; echo "mcp-check: exit $? (see mcp.txt)"
 
 bash $P/serve.sh stop $PORT >/dev/null

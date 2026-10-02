@@ -9,6 +9,7 @@ import { SCHEMA, Store } from './store';
 import { allows, grantFor } from './access';
 
 function api(store = new Store(':memory:')) {
+
   const { app, hub } = createApp(store, join(mkdtempSync(join(tmpdir(), 'edgy-')), 'assets'));
   const call = async (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) => {
     const res = await app.request(path, {
@@ -18,7 +19,7 @@ function api(store = new Store(':memory:')) {
     });
     return { status: res.status, json: (await res.json()) as any };
   };
-  return { call, hub, store };
+  return { call, hub, store, app };
 }
 
 const make = async (call: ReturnType<typeof api>['call'], title: string, root?: unknown) =>
@@ -153,7 +154,7 @@ test('share links: long random tokens; view reads only its document; edit change
   const as = (token: string) => ({ 'x-edgy-share': token });
   assert.deepEqual((await call('GET', '/api/shared', undefined, as(view.token))).json, { id, title: 'Menu', access: 'view' });
   assert.equal((await call('GET', `/api/docs/${id}`, undefined, as(view.token))).status, 200);
-  assert.equal((await call('GET', `/api/docs/${id}/read`, undefined, as(view.token))).json.values.n, 1);
+  assert.equal((await call('GET', `/api/docs/${id}/read`)).json.values.n, 1);
   assert.equal((await call('GET', '/api/data/orders', undefined, as(view.token))).status, 200, 'records it reads');
   for (const [method, path] of [['GET', `/api/docs/${other}`], ['GET', '/api/docs'], ['GET', '/api/library'], ['GET', '/api/data'], ['GET', '/api/data/salaries'],
     ['GET', `/api/docs/${id}/log`], ['GET', `/api/docs/${id}/messages`], ['DELETE', `/api/docs/${id}`], ['POST', `/api/docs/${id}/shares`], ['GET', '/api/guide']]) {
@@ -192,17 +193,68 @@ test('share links: long random tokens; view reads only its document; edit change
 test('the access rules on their own', () => {
   const store = new Store(':memory:');
   assert.deepEqual(grantFor(store, undefined), { level: 'owner' });
-  const grant = { level: 'view' as const, doc: 'd1', token: 't' };
-  const reads = () => ['orders'];
-  assert.equal(allows(grant, 'GET', '/api/docs/d1', reads), true);
-  assert.equal(allows(grant, 'GET', '/api/docs/d1/events', reads), true);
-  assert.equal(allows(grant, 'GET', '/api/docs/d2', reads) === true, false);
-  assert.equal(allows(grant, 'POST', '/api/docs/d1/ops', reads) === true, false);
-  assert.equal(allows({ ...grant, level: 'edit' }, 'POST', '/api/docs/d1/ops', reads), true);
-  assert.equal(allows({ ...grant, level: 'edit' }, 'PATCH', '/api/docs/d1', reads) === true, false, 'not the title or the library');
-  assert.equal(allows(grant, 'GET', '/api/data/orders', reads), true);
-  assert.equal(allows(grant, 'GET', '/api/data/other', reads) === true, false);
-  assert.equal(allows({ level: 'owner' }, 'DELETE', '/api/docs/d1', reads), true);
+  const grant = { level: 'view' as const, doc: 'd1', token: 't', collections: ['orders'] };
+  assert.equal(allows(grant, 'GET', '/api/docs/d1'), true);
+  assert.equal(allows(grant, 'GET', '/api/docs/d1/events'), true);
+  assert.equal(allows(grant, 'GET', '/api/docs/d1/read') === true, false, 'not the outline (it shows fetch addresses)');
+  assert.equal(allows(grant, 'GET', '/api/docs/d2') === true, false);
+  assert.equal(allows(grant, 'POST', '/api/docs/d1/ops') === true, false);
+  assert.equal(allows({ ...grant, level: 'edit' }, 'POST', '/api/docs/d1/ops'), true);
+  assert.equal(allows({ ...grant, level: 'edit' }, 'PATCH', '/api/docs/d1') === true, false, 'not the title or the library');
+  assert.equal(allows(grant, 'GET', '/api/data/orders'), true);
+  assert.equal(allows(grant, 'GET', '/api/data/other') === true, false);
+  assert.equal(allows(grant, 'GET', '/api/docs/%E0%A4%A') === true, false, 'a broken encoding is refused, not a crash');
+  assert.equal(allows({ level: 'owner' }, 'DELETE', '/api/docs/d1'), true);
+});
+
+test('a guest\'s own changes never widen what its link reaches, and a link turned off hears nothing more', async () => {
+  const { call, store, app } = api();
+  await call('POST', '/api/data/orders', { record: { item: 'tea' } });
+  await call('POST', '/api/data/secret', { record: { card: '4111-SECRET' } });
+  const id = await make(call, 'Shop', ['col', ['formula', { name: 'n' }, ['len', ['rows', 'orders']]],
+    ['fetch', { name: 'rate', headers: { Authorization: 'secret:K' } }, '/api/demo/rate?apikey=SUPERSECRET']]);
+  const edit = (await call('POST', `/api/docs/${id}/shares`, { access: 'edit' })).json;
+  const view = (await call('POST', `/api/docs/${id}/shares`, { access: 'view' })).json;
+  const as = (t: string) => ({ 'x-edgy-share': t });
+  // The guest makes the document read another collection: its link still doesn't reach it.
+  assert.equal((await call('POST', `/api/docs/${id}/ops`, { ops: [['meta', 'actions', { peek: ['fn', [], ['rows', 'secret']] }]] }, as(edit.token))).status, 200);
+  for (const t of [edit.token, view.token]) {
+    assert.equal((await call('GET', '/api/data/secret', undefined, as(t))).status, 403);
+    assert.equal((await call('DELETE', '/api/data/secret', undefined, as(t))).status, 403);
+  }
+  assert.equal((await call('GET', '/api/data/orders', undefined, as(view.token))).status, 200);
+  // When the owner changes it, its links follow what it uses.
+  await call('POST', `/api/docs/${id}/ops`, { ops: [['set', 'n', 'expr', ['len', ['rows', 'invoices']]]] });
+  assert.deepEqual(store.share(view.token)!.collections.sort(), ['invoices', 'secret'], 'the owner\'s change, including what the guest planted, now that the owner saved it');
+  // A guest sees what a fetch answered, never where from.
+  const doc = (await call('GET', `/api/docs/${id}`, undefined, as(view.token))).json;
+  assert.ok(!JSON.stringify(doc).includes('SUPERSECRET') && !JSON.stringify(doc).includes('secret:K'));
+  assert.equal((await call('GET', `/api/docs/${id}/read`, undefined, as(view.token))).status, 403);
+
+  // A guest's event stream: told the link is off, then closed, before the owner's next change.
+  const res = await app.request(`/api/docs/${id}/events?client=g1&mode=live&share=${view.token}`);
+  const reader = res.body!.getReader();
+  const text = new TextDecoder();
+  let heard = '';
+  const next = () => Promise.race([reader.read(), new Promise<{ done: true; value?: undefined }>((r) => setTimeout(() => r({ done: true }), 1500))]);
+  heard += text.decode((await next()).value);
+  assert.match(heard, /event: hello/);
+  await call('DELETE', `/api/shares/${view.token}`);
+  await call('PATCH', `/api/docs/${id}`, { title: 'Shop, renamed' });
+  for (let r = await next(); !r.done; r = await next()) heard += text.decode(r.value);
+  assert.match(heard, /event: unshared/);
+  assert.ok(!heard.includes('renamed'), 'nothing after the link was turned off');
+});
+
+test('deleting a pinned document closes up the pins; an archived deck can not be pinned', async () => {
+  const { call } = api();
+  const [a, b, c] = [await make(call, 'A'), await make(call, 'B'), await make(call, 'C')];
+  for (const id of [a, b, c]) await call('PATCH', `/api/docs/${id}`, { pinned: true });
+  await call('DELETE', `/api/docs/${b}`);
+  assert.deepEqual((await call('GET', '/api/library')).json.pinned.map((e: any) => [e.id, e.pinned]), [[a, 1], [c, 2]]);
+  const deck = (await call('POST', '/api/decks', { title: 'K', docs: [a] })).json;
+  await call('PATCH', `/api/decks/${deck.id}`, { archived: true });
+  assert.equal((await call('PATCH', `/api/decks/${deck.id}`, { pinned: true })).status, 409);
 });
 
 /** The schema written by the code before this version (commit 40b398d), word for word. */

@@ -72,13 +72,9 @@ export const dataUri = (type: string, b: Buffer) => `data:${type};base64,${b.toS
  * address can hold a key). `shown` gives each picture cell's current source.
  */
 export async function forExport(doc: Doc, shown: (cell: Cell) => unknown, pictures: Pictures, missing: string[]): Promise<Doc> {
-  const copy = structuredClone(doc) as Doc;
+  const copy = withoutAddresses(doc);
   const jobs: Promise<void>[] = [];
   walk(copy.root, (c) => {
-    if (c.kind === 'fetch') {
-      c.url = '';
-      delete c.headers;
-    }
     if (c.kind === 'image') {
       const src = shown(c);
       jobs.push((async () => {
@@ -90,6 +86,26 @@ export async function forExport(doc: Doc, shown: (cell: Cell) => unknown, pictur
   });
   await Promise.all(jobs);
   return copy;
+}
+
+/**
+ * A copy of the document whose fetch cells have no address and no headers:
+ * what leaves the owner's hands (an export, a share link). The answers stay.
+ */
+export function withoutAddresses(doc: Doc): Doc {
+  const copy = structuredClone(doc) as Doc;
+  walk(copy.root, (c) => {
+    if (c.kind !== 'fetch') return;
+    c.url = '';
+    delete c.headers;
+  });
+  return copy;
+}
+
+/** A fetch answer without the address it came from. */
+export function quietState<T extends object>(st: T): Omit<T, 'url'> {
+  const { url: _u, ...rest } = st as T & { url?: unknown };
+  return rest;
 }
 
 // ── fonts ──

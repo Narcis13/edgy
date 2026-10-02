@@ -20,7 +20,7 @@ import { type Grant, SHARE_HEADER, allows, grantFor, guestHears } from './access
 import { Hub } from './hub';
 import { type Clock, type Getter, Runner } from './runner';
 import { type Provider, ComposeError, Requests, TARGETS, accept, claudeConfig, compose, context, eventOf, eventProblem, isTarget } from './compose';
-import { type Bundle, type Pictures, composeHtml, dataUri, fileName, forExport, sniffImage } from './export';
+import { type Bundle, type Pictures, composeHtml, dataUri, fileName, forExport, quietState, sniffImage, withoutAddresses } from './export';
 import { getGuarded } from './runner';
 import type { ExportPayload } from '../core/offline';
 import { shapeOf } from '../core/library';
@@ -83,18 +83,20 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     // The page a link opens asks first what it opens; "nothing any more" is an answer, not a failure.
     if ('status' in grant && c.req.path === '/api/shared') return c.json({ refused: grant.reason, error: grant.error });
     if ('status' in grant) return c.json({ error: grant.error, reason: grant.reason }, grant.status);
-    const ok = allows(grant, c.req.method, c.req.path, () => (grant.level === 'owner' ? [] : reads(grant.doc)));
+    const ok = allows(grant, c.req.method, c.req.path);
     if (ok !== true) return c.json({ error: ok.error, reason: ok.reason }, ok.status);
     c.set('grant', grant);
     await next();
   });
 
   /** Apply ops as someone, save them, and tell everyone watching. */
-  function change(doc: Doc, raw: Op[], actor: Actor, o: { client?: string; batch?: string } = {}) {
+  function change(doc: Doc, raw: Op[], actor: Actor, o: { client?: string; batch?: string; owner?: boolean } = {}) {
     const r = applyOps(doc, raw);
     const next: Doc = { ...r.doc, v: doc.v + 1 };
     const ops = raw.length === 1 ? [r.op] : (r.op.slice(1) as Op[]);
     const ts = store.saveDoc(next, actor, ops);
+    // The owner's changes decide which collections the document's links reach; a guest's never do.
+    if (o.owner) store.shareCollections(doc.id, reads(doc.id));
     hub.publish(doc.id, { type: 'ops', v: next.v, ts, actor, ops, touched: r.touched, client: o.client, batch: o.batch });
     runner.changed(doc.id);
     return { next, ops, touched: r.touched };
@@ -176,7 +178,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
       payload.docs.push(await forExport(doc, (c) => computed.cells[c.id]?.value, pictures, missing));
       payload.shapes[doc.id] = shapeOf(doc.root);
       for (const name of reads(doc.id)) payload.records[name] ??= store.rows(name);
-      const fetched = runner.states(doc.id);
+      const fetched = Object.fromEntries(Object.entries(runner.states(doc.id)).map(([k, st]) => [k, quietState(st)]));
       if (Object.keys(fetched).length) payload.fetched[doc.id] = fetched;
     }
     if (deck) payload.deck = { id: deck.id, title: deck.title, description: deck.description, docs: docs.map((d) => d.id) };
@@ -270,7 +272,9 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
 
   app.get('/api/docs/:id', (c) => {
     const doc = store.getDoc(c.req.param('id'));
-    return doc ? c.json(doc) : c.json({ error: 'no such document' }, 404);
+    if (!doc) return c.json({ error: 'no such document' }, 404);
+    // Someone with a link sees what fetch cells answered, not where from.
+    return c.json(c.get('grant').level === 'owner' ? doc : withoutAddresses(doc));
   });
 
   app.get('/api/docs/:id/read', (c) => {
@@ -305,7 +309,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     if (body.pinned && body.archived === undefined && store.summary(doc.id)?.archivedAt != null) {
       return c.json({ error: 'an archived document can not be pinned; restore it first' }, 409);
     }
-    if (ops.length) change(doc, ops, cleanActor(body.actor));
+    if (ops.length) change(doc, ops, cleanActor(body.actor), { owner: true });
     if (body.archived !== undefined) store.setArchived(doc.id, !!body.archived);
     if (body.pinned !== undefined) store.setPinned(doc.id, !!body.pinned);
     return c.json(store.summary(doc.id));
@@ -320,7 +324,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     let actor = cleanActor(body.actor);
     // Someone with a link is a person, whatever they call themselves.
     if (c.get('grant').level !== 'owner') actor = { ...actor, kind: 'human' };
-    const { next, ops, touched } = change(doc, body.ops, actor, { client: body.client, batch: body.batch });
+    const { next, ops, touched } = change(doc, body.ops, actor, { client: body.client, batch: body.batch, owner: c.get('grant').level === 'owner' });
     // A person's browser ran its own handlers; an agent's change sets them off here, if someone is in Live.
     if (actor.kind === 'agent' && !body.client) runner.agentChanged(doc.id, doc, ops);
     const answer: Record<string, unknown> = actor.kind === 'human'
@@ -350,13 +354,23 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     if (!doc) return c.json({ error: 'no such document' }, 404);
     // The browser says who it is and whether it is in Live: timers and fetches run while anyone is.
     const client = (c.req.query('client') ?? '').slice(0, 40);
-    const mode = c.req.query('mode') ?? 'edit';
+    const grant = c.get('grant');
+    // A view link changes nothing, so it doesn't keep timers and fetches running either.
+    const mode = grant.level === 'view' ? 'page' : c.req.query('mode') ?? 'edit';
     return streamSSE(c, async (stream) => {
-      const grant = c.get('grant');
       const unsubscribe = hub.subscribe(id, (e) => {
         // Someone with a link hears changes, not the conversation or the agents' work.
-        if (!guestHears(grant, e as { type: string }, () => reads(id))) return;
-        stream.writeSSE({ event: e.type, data: JSON.stringify(e) }).catch(() => off());
+        if (!guestHears(grant, e as { type: string })) return;
+        const sent = grant.level !== 'owner' && e.type === 'fetch' ? { ...e, state: quietState(e.state) } : e;
+        const written = stream.writeSSE({ event: e.type, data: JSON.stringify(sent) }).catch(() => off());
+        // A link turned off hears that, and then nothing more.
+        if (e.type === 'unshared' && grant.level !== 'owner') {
+          unsubscribe();
+          void written.then(() => {
+            off();
+            return stream.close();
+          });
+        }
       });
       const token = client ? runner.join(id, client, mode) : 0;
       let gone = false;
@@ -382,7 +396,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     if (!store.getDoc(id)) return c.json({ error: 'no such document' }, 404);
     const body = (await c.req.json()) as { client?: string; mode?: string };
     if (typeof body.client !== 'string' || !['edit', 'live', 'page'].includes(body.mode ?? '')) return c.json({ error: 'send {"client", "mode": "edit"|"live"|"page"}' }, 400);
-    runner.mode(id, body.client.slice(0, 40), body.mode!);
+    runner.mode(id, body.client.slice(0, 40), c.get('grant').level === 'view' ? 'page' : body.mode!);
     return c.json({ live: runner.isLive(id) });
   });
 
@@ -471,6 +485,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     }
     if (Object.keys(fields).length) store.updateDeck(id, fields);
     if (body.archived !== undefined) store.setArchived(id, !!body.archived);
+    if (body.pinned && store.deck(id)?.archivedAt != null) return c.json({ error: 'an archived deck can not be pinned; restore it first' }, 409);
     if (body.pinned !== undefined) store.setPinned(id, !!body.pinned);
     return c.json(store.deck(id));
   });
@@ -503,7 +518,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const body = (await c.req.json().catch(() => ({}))) as { access?: string };
     const access = (body.access ?? 'view') as Access;
     if (access !== 'view' && access !== 'edit') return c.json({ error: 'access is "view" or "edit"' }, 400);
-    return c.json(shareView(store.openShare(id, access), new URL(c.req.url).origin), 201);
+    return c.json(shareView(store.openShare(id, access, reads(id)), new URL(c.req.url).origin), 201);
   });
 
   /** Turn a link off. Whoever has it open sees that it is no longer shared. */
@@ -535,7 +550,8 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   app.get('/api/docs/:id/fetched', (c) => {
     const id = c.req.param('id');
     if (!store.getDoc(id)) return c.json({ error: 'no such document' }, 404);
-    return c.json(runner.states(id));
+    const states = runner.states(id);
+    return c.json(c.get('grant').level === 'owner' ? states : Object.fromEntries(Object.entries(states).map(([k, st]) => [k, quietState(st)])));
   });
 
   /** Fetch now (refresh!, Retry, the studio's Fetch now). {"handlers": false} skips load and fail. */

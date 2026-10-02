@@ -238,8 +238,8 @@ export function arrange<E extends Entry>(entries: E[], o: { filter?: Filter; sor
     if (filter === 'archived') return e.archivedAt != null;
     if (e.archivedAt != null) return false;
     if (filter === 'decks') return e.type === 'deck';
-    // A pinned document stays pinned when it joins a deck.
-    if (!o.searching && e.type === 'doc' && e.deck && e.pinned == null) return false;
+    // In the main list a deck's documents are in its card (a pinned one stays pinned); filters show them as they are.
+    if (filter === 'all' && !o.searching && e.type === 'doc' && e.deck && e.pinned == null) return false;
     if (filter === 'pinned') return e.pinned != null;
     if (filter === 'shared') return e.type === 'doc' && !!(e.shared?.view || e.shared?.edit);
     return true;

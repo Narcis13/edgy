@@ -105,9 +105,9 @@
 .lc .badge.deck { background: var(--agent-soft); color: var(--agent); }
 
 /* selecting: the box shows on hover and focus, always once something is selected, always on touch */
-.lc-pick { position: absolute; top: 10px; left: 10px; z-index: 3; display: grid; place-items: center; width: 36px; height: 36px; cursor: pointer; }
+.lc-pick { position: absolute; top: 8px; left: 8px; z-index: 3; display: grid; place-items: center; width: 40px; height: 40px; cursor: pointer; }
 .lc-check { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; opacity: 0; transition: opacity 120ms; }
-.lc-pick::before { content: ''; position: absolute; inset: 7px; border-radius: 6px; background: var(--raised); opacity: 0; transition: opacity 120ms; }
+.lc-pick::before { content: ''; position: absolute; inset: 9px; border-radius: 6px; background: var(--raised); opacity: 0; transition: opacity 120ms; }
 .lc-check { position: relative; }
 .lc:hover .lc-check,
 .lc:focus-within .lc-check,
