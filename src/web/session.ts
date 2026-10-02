@@ -8,8 +8,9 @@ import { isGroup } from '../core/types';
 import { type Applied, applyOps } from '../core/ops';
 import { toNotation } from '../core/notation';
 import { shownLeaves } from '../core/containers';
-import type { Raised } from '../core/events';
-import { type Computed, evaluate, runAction } from '../core/engine';
+import { type Fired, type Raised, type Reaction, type Start, type TraceEntry, react, sampleData } from '../core/events';
+import { type Computed, type World, evaluate, runAction } from '../core/engine';
+import type { Effect, FetchState } from '../core/sx';
 import { indexTree, leaves } from '../core/tree';
 import { type LogEntry, type Message, type Row, ApiError, api } from './lib/api';
 import { type Store, createStore } from './lib/store';
@@ -26,6 +27,15 @@ export interface Presence {
   actor: Actor;
   state: 'reading' | 'editing' | 'listening' | 'idle';
   ts: number;
+}
+
+/** A handler that ran, here or on the server, as Activity lists it. */
+export interface TraceItem extends TraceEntry {
+  n: number;
+  /** "here": this browser ran it (a gesture, the document opening); "server": a timer, a fetch, an agent's change. */
+  source: 'here' | 'server';
+  /** Fired by hand from the studio. */
+  test?: boolean;
 }
 
 export interface SessionState {
@@ -50,6 +60,10 @@ export interface SessionState {
   flashes: Record<string, { actor: Actor; n: number }>;
   collections: Record<string, Row[]>;
   toast: { text: string; n: number } | null;
+  /** Fetch cells' requests, by cell id, as the server reports them. */
+  fetched: Record<string, FetchState>;
+  /** The handlers that ran lately, oldest first. */
+  trace: TraceItem[];
   canUndo: boolean;
   canRedo: boolean;
   now: number;
@@ -71,6 +85,12 @@ interface UndoEntry {
 export interface DispatchOptions {
   /** false for changes that should not be undoable on their own (undo itself). */
   undo?: boolean;
+  /**
+   * false for changes that set off no handlers: undo and redo, and handlers'
+   * own changes. Otherwise, in Live, what a person changes runs the handlers
+   * it sets off, in the same dispatch, so it all undoes as one step.
+   */
+  react?: boolean;
   /** Changes sharing a key within a moment undo as one (typing, dragging a slider). */
   key?: string;
   transition?: boolean;
@@ -123,12 +143,15 @@ export class Session {
   private generation = 0;
   private lastEvent = 0;
   private watchdog: ReturnType<typeof setInterval> | null = null;
+  /** The document's open handler ran for this open; close runs only after it. */
+  private opened = false;
+  private onPageHide = () => this.leaving(true);
 
   constructor(readonly id: string) {
     this.s = {
       status: 'loading', online: true, doc: null, computed: null, unsaved: 0, selection: [], editing: null, seed: null,
       menu: null, mode: initialMode(), printing: false, links: true, log: [], messages: [], presence: [], flashes: {}, collections: {},
-      toast: null, canUndo: false, canRedo: false, now: Date.now(),
+      toast: null, fetched: {}, trace: [], canUndo: false, canRedo: false, now: Date.now(),
     };
     this.store = createStore(this.s);
   }
@@ -143,21 +166,26 @@ export class Session {
     this.closed = false;
     const generation = ++this.generation;
     try {
-      const [doc, log, messages] = await Promise.all([
+      const [doc, log, messages, fetched] = await Promise.all([
         api<Doc>('GET', `/api/docs/${this.id}`),
         api<LogEntry[]>('GET', `/api/docs/${this.id}/log?limit=80`),
         api<Message[]>('GET', `/api/docs/${this.id}/messages`),
+        api<Record<string, FetchState>>('GET', `/api/docs/${this.id}/fetched`).catch(() => ({})),
       ]);
       if (this.closed || generation !== this.generation) return;
       this.confirmed = doc;
-      this.patch({ status: 'ready', doc, messages, log: log.map((e) => ({ ...e, mine: false })) });
+      this.patch({ status: 'ready', doc, messages, fetched, log: log.map((e) => ({ ...e, mine: false })) });
       this.connect();
+      if (typeof window !== 'undefined') window.addEventListener('pagehide', this.onPageHide);
+      this.opening();
     } catch (e) {
       this.patch({ status: e instanceof ApiError && e.status === 404 ? 'missing' : 'failed' });
     }
   }
 
   close(): void {
+    this.leaving(false);
+    if (typeof window !== 'undefined') window.removeEventListener('pagehide', this.onPageHide);
     this.closed = true;
     this.es?.close();
     this.es = null;
@@ -168,7 +196,8 @@ export class Session {
 
   private connect(): void {
     this.es?.close();
-    const es = new EventSource(`/api/docs/${this.id}/events`);
+    // Who this is and whether it is in Live: the server runs timers and fetches while anyone is.
+    const es = new EventSource(`/api/docs/${this.id}/events?client=${this.client}&mode=${this.s.mode}`);
     this.es = es;
     this.lastEvent = Date.now();
     const on = (type: string, fn: (e: any) => void) =>
@@ -200,6 +229,8 @@ export class Session {
       if (e.collection in this.s.collections) void this.loadCollection(e.collection);
     });
     on('deleted', () => this.patch({ status: 'missing' }));
+    on('fetch', (e) => this.patch({ fetched: { ...this.s.fetched, [e.cell]: e.state } }));
+    on('trace', (e) => this.traced(e.trace, 'server'));
   }
 
   private async resync(): Promise<void> {
@@ -239,7 +270,7 @@ export class Session {
   }
 
   private patch(p: Partial<SessionState>, transition = false): void {
-    const recompute = ('doc' in p && p.doc !== this.s.doc) || 'collections' in p || 'now' in p;
+    const recompute = ('doc' in p && p.doc !== this.s.doc) || 'collections' in p || 'now' in p || 'fetched' in p;
     this.s = { ...this.s, ...p };
     if (recompute && this.s.doc) this.evaluate();
     this.publish(transition);
@@ -247,7 +278,7 @@ export class Session {
 
   private evaluate(): void {
     const s = this.s;
-    const computed = evaluate(s.doc!, { rows: (name) => s.collections[name] ?? [], now: s.now }, s.computed ?? undefined);
+    const computed = evaluate(s.doc!, this.world(s.now), s.computed ?? undefined);
     this.s = { ...s, computed };
     for (const name of computed.collections) if (!(name in s.collections)) void this.loadCollection(name);
     if (computed.usesNow && !this.clock) this.clock = setInterval(() => this.patch({ now: Date.now() }), 1000);
@@ -270,6 +301,12 @@ export class Session {
     }
   }
 
+  /** What formulas and handlers see outside the document. */
+  world(now = Date.now()): World {
+    const s = this.s;
+    return { rows: (name) => s.collections[name] ?? [], now, fetched: (id) => s.fetched[id] };
+  }
+
   toast(text: string): void {
     this.patch({ toast: { text, n: ++this.counter } });
   }
@@ -280,7 +317,16 @@ export class Session {
   dispatch(op: Op | Op[], o: DispatchOptions = {}): Applied | null {
     const doc = this.s.doc;
     if (!doc) return null;
-    const ops = (Array.isArray(op[0]) ? op : [op]) as Op[];
+    let ops = (Array.isArray(op[0]) ? op : [op]) as Op[];
+    let rx: Reaction | null = null;
+    if (this.s.mode === 'live' && o.react !== false) {
+      try {
+        rx = react(doc, this.world(), { ops });
+      } catch {
+        rx = null; // the ops themselves don't apply; applying them below says why
+      }
+      if (rx?.ops.length) ops = [...ops, ...rx.ops];
+    }
     let r: Applied;
     try {
       r = applyOps(doc, ops);
@@ -289,7 +335,8 @@ export class Session {
       return null;
     }
     const sent = ops.length === 1 ? [r.op] : (r.op.slice(1) as Op[]);
-    if (o.undo !== false) {
+    // Handlers' changes are part of the gesture's step, even when the gesture alone isn't one (choosing a tab).
+    if (o.undo !== false || rx?.ops.length) {
       const top = this.undoStack.at(-1);
       const now = Date.now();
       if (!(o.key && top?.key === o.key && now - top.ts < 1500)) this.undoStack.push({ op: r.inverse, key: o.key, ts: now });
@@ -313,13 +360,14 @@ export class Session {
       o.transition ?? isStructural(sent),
     );
     void this.flush();
+    if (rx?.trace.length) this.carryOut(rx);
     return r;
   }
 
   undo(): void {
     const entry = this.undoStack.pop();
     if (!entry) return;
-    const r = this.dispatch(entry.op, { undo: false, transition: true });
+    const r = this.dispatch(entry.op, { undo: false, react: false, transition: true });
     if (r) this.redoStack.push({ op: r.inverse, ts: Date.now() });
     this.patch({ canUndo: this.undoStack.length > 0, canRedo: this.redoStack.length > 0 });
   }
@@ -327,7 +375,7 @@ export class Session {
   redo(): void {
     const entry = this.redoStack.pop();
     if (!entry) return;
-    const r = this.dispatch(entry.op, { undo: false, transition: true });
+    const r = this.dispatch(entry.op, { undo: false, react: false, transition: true });
     if (r) this.undoStack.push({ op: r.inverse, ts: Date.now() });
     this.patch({ canUndo: this.undoStack.length > 0, canRedo: this.redoStack.length > 0 });
   }
@@ -410,7 +458,8 @@ export class Session {
     const n = ++this.counter;
     for (const id of e.touched) if (live.has(id)) flashes[id] = { actor: e.actor, n };
     setTimeout(() => this.clearFlashes(n), 2200);
-    this.s = { ...this.s, presence: upsert(this.s.presence, { actor: e.actor, state: 'editing', ts: e.ts }) };
+    // The server's own handlers are not someone who is here.
+    if (!(e.actor.kind === 'agent' && e.actor.name === 'Events')) this.s = { ...this.s, presence: upsert(this.s.presence, { actor: e.actor, state: 'editing', ts: e.ts }) };
     this.patch(
       {
         doc,
@@ -476,7 +525,10 @@ export class Session {
   }
 
   setMode(mode: Mode): void {
+    const was = this.s.mode;
     this.patch({ mode, selection: [], editing: null, menu: null });
+    if (mode !== was) this.told(mode);
+    if (mode === 'live') this.opening();
     try {
       const url = new URL(window.location.href);
       if (mode === 'page') url.searchParams.set('view', 'page');
@@ -487,7 +539,9 @@ export class Session {
 
   /** Print the document as pages: switch to the page view, which prints once laid out. */
   print(): void {
+    const was = this.s.mode;
     this.patch({ mode: 'page', printing: true, selection: [], editing: null, menu: null });
+    if (was !== 'page') this.told('page');
   }
 
   printed(): void {
@@ -671,6 +725,18 @@ export class Session {
     const cell = this.cell(id);
     const todo = action ? action.do : cell?.do;
     if (!doc || !cell || todo == null) return;
+    if (this.s.mode === 'live') {
+      // In Live the action is the gesture: it, the button's click handler and what they set off are one step.
+      const rx = react(doc, this.world(), {
+        run: { cell: id, name: 'click', action: todo, vars: action?.vars },
+        ...(action ? {} : { events: [{ cell: id, name: 'click' }] }),
+      });
+      const failed = rx.trace.find((t) => t.via === 'do' && t.error);
+      if (failed) return this.toast(`That button failed: ${failed.error}.`);
+      if (rx.ops.length) this.dispatch(rx.ops, { react: false });
+      await this.carryOut(rx);
+      return;
+    }
     try {
       const s = this.s;
       const effects = runAction(doc, { rows: (name) => s.collections[name] ?? [], now: Date.now() }, id, todo, action?.vars);
@@ -690,12 +756,146 @@ export class Session {
 
   /**
    * A cell raised an event: a tab changed, a section opened, a shape was
-   * clicked (each kind declares its events in core/events.ts). Nothing handles
-   * events yet; the events brief connects handlers here. The last few are kept
-   * so they can be looked at.
+   * clicked. The last few are kept so they can be looked at; what handlers
+   * follow from a change is worked out by `dispatch`, and pointer events go
+   * through `fire`.
    */
   raise(cell: string, name: string, data: Record<string, unknown> = {}): void {
     this.raised = [...this.raised.slice(-19), { cell, name, data }];
+  }
+
+  // ── events ──
+
+  /**
+   * An event happened here: a click, a double-click, the document opening.
+   * Its handlers run now (only in Live), and what they change is one undo step
+   * unless `undo` is false (nobody did it: the document opening).
+   */
+  fire(ev: Fired, o: { undo?: boolean } = {}): TraceEntry[] {
+    const doc = this.s.doc;
+    if (!doc || this.s.mode !== 'live') return [];
+    const rx = react(doc, this.world(), { events: [ev] });
+    if (!rx.trace.length) return [];
+    if (rx.ops.length) this.dispatch(rx.ops, { react: false, undo: o.undo });
+    void this.carryOut(rx);
+    return rx.trace;
+  }
+
+  /**
+   * A person clicked (or double-clicked) a cell in Live. `index` is the
+   * position of the table row or list item clicked; `part` is what the kind
+   * itself said was clicked (a diagram's shape).
+   */
+  pointer(cell: string, name: 'click' | 'dblclick', where: { index?: number; part?: Record<string, unknown> } = {}): void {
+    const c = this.cell(cell);
+    if (!c) return;
+    const value = this.s.computed?.cells[cell]?.value;
+    const list = Array.isArray(value) ? value : [];
+    let data: Record<string, unknown> = { ...where.part };
+    if (where.index !== undefined && c.kind === 'table') data = { row: list[where.index] ?? null, index: where.index };
+    else if (where.index !== undefined && c.kind === 'list') data = { item: list[where.index] ?? null, index: where.index };
+    else if (c.kind === 'table') data = { row: null, index: null };
+    else if (c.kind === 'list') data = { item: null, index: null };
+    else if (c.kind === 'diagram' && !('element' in data)) data = { element: null };
+    this.fire({ cell, name, data });
+  }
+
+  /**
+   * Fire an event by hand, to try a handler, in any mode: the studio's test
+   * button. With no data, sample data stands in for what the event would carry.
+   * Its changes are real, and one undo step.
+   */
+  test(cell: string | null, name: string, data?: Record<string, unknown>): TraceEntry[] {
+    const doc = this.s.doc;
+    if (!doc) return [];
+    const c = cell ? this.cell(cell) ?? null : null;
+    const rx = react(doc, this.world(), { events: [{ cell, name, data: data ?? sampleData(doc, this.world(), c, name) }] });
+    if (rx.ops.length) this.dispatch(rx.ops, { react: false });
+    void this.carryOut(rx, true);
+    if (!rx.trace.length) this.toast(`Nothing handles ${name} here yet.`);
+    return rx.trace;
+  }
+
+  /** Fetch a fetch cell now; with `handlers` its load or fail runs (Live), without it only the answer arrives (designing). */
+  async fetchNow(cell: string, handlers: boolean): Promise<void> {
+    try {
+      await api('POST', `/api/docs/${this.id}/fetch/${encodeURIComponent(cell)}`, { handlers });
+    } catch (e) {
+      this.toast(e instanceof Error ? sentence(e.message) : 'That could not be fetched.');
+    }
+  }
+
+  /** Records, fetches and the trace: what a reaction leaves to be done after its ops are applied. */
+  private async carryOut(rx: Reaction, test = false): Promise<void> {
+    this.traced(rx.trace, 'here', test);
+    const bad = rx.trace.find((t) => t.error);
+    if (bad) this.toast(`${bad.name}: ${sentence(bad.error!)}`);
+    for (const e of rx.effects) {
+      try {
+        await this.effect(e);
+      } catch (err) {
+        this.toast(err instanceof Error ? sentence(err.message) : 'A handler could not finish.');
+      }
+    }
+  }
+
+  private async effect(e: Effect, keepalive = false): Promise<void> {
+    if (e.type === 'refresh') {
+      await api('POST', `/api/docs/${this.id}/fetch/${encodeURIComponent(e.cell)}`, { handlers: true });
+      return;
+    }
+    if (e.type === 'op' || e.type === 'emit') return;
+    const path = `/api/data/${encodeURIComponent(e.collection)}`;
+    if (keepalive) {
+      const [method, url, body] = e.type === 'insert' ? ['POST', path, { record: e.record, source: { doc: this.id } }]
+        : e.type === 'update' ? ['PATCH', `${path}/${encodeURIComponent(e.id)}`, { fields: e.fields }]
+        : e.type === 'delete' ? ['DELETE', `${path}/${encodeURIComponent(e.id)}`, undefined] : ['DELETE', path, undefined];
+      void fetch(url as string, { method: method as string, keepalive: true, headers: { 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) }).catch(() => undefined);
+      return;
+    }
+    if (e.type === 'insert') await api('POST', path, { record: e.record, source: { doc: this.id } });
+    if (e.type === 'delete') await api('DELETE', `${path}/${encodeURIComponent(e.id)}`);
+    if (e.type === 'update') await api('PATCH', `${path}/${encodeURIComponent(e.id)}`, { fields: e.fields });
+    if (e.type === 'clear') await api('DELETE', path);
+  }
+
+  private traced(entries: TraceEntry[], source: TraceItem['source'], test = false): void {
+    if (!entries.length) return;
+    const items = entries.map((t) => ({ ...t, n: ++this.counter, source, ...(test ? { test } : {}) }));
+    this.patch({ trace: [...this.s.trace, ...items].slice(-100) });
+  }
+
+  /** The server runs timers and fetches while someone is in Live, so it hears when this browser changes mode. */
+  private told(mode: Mode): void {
+    if (this.s.status !== 'ready') return;
+    void api('POST', `/api/docs/${this.id}/viewer`, { client: this.client, mode }).catch(() => undefined);
+  }
+
+  /** The document's open handler: once per open, the first time it is used in Live. */
+  private opening(): void {
+    if (this.opened || this.s.status !== 'ready' || this.s.mode !== 'live') return;
+    this.opened = true;
+    this.fire({ cell: null, name: 'open' }, { undo: false });
+  }
+
+  /**
+   * The person is leaving: the document's close handler, if it opened. When
+   * the page itself goes away (`unloading`), its changes are sent with
+   * keepalive, since the usual queue won't get to send them.
+   */
+  private leaving(unloading: boolean): void {
+    const doc = this.s.doc;
+    if (!this.opened || !doc || this.closed) return;
+    this.opened = false;
+    const on = doc.meta.on;
+    if (!on || typeof on !== 'object' || (on as Record<string, unknown>).close == null) return;
+    const rx = react(doc, this.world(), { events: [{ cell: null, name: 'close' }] });
+    if (rx.ops.length) {
+      const body = JSON.stringify({ ops: rx.ops, actor: this.actor, client: this.client, batch: uid() });
+      void fetch(`/api/docs/${this.id}/ops`, { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body }).catch(() => undefined);
+    }
+    for (const e of rx.effects) void this.effect(e, true).catch(() => undefined);
+    if (!unloading) this.traced(rx.trace, 'here');
   }
 
   async say(text: string): Promise<void> {

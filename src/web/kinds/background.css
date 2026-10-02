@@ -1,0 +1,27 @@
+/* timers and fetches: chips while designing, one quiet line for a fetch in Live */
+.leaf.kind-timer, .leaf.kind-fetch:has(.kbg-chip) { flex: 0 0 auto !important; align-self: flex-start; max-width: 100%; padding: 6px 12px; }
+.group.kind-row > .leaf.kind-timer, .group.kind-row > .leaf.kind-fetch:has(.kbg-chip) { align-self: center; }
+.kbg-chip.is-bad { border-color: var(--bad); color: var(--bad); }
+.kbg-go {
+  display: inline-grid; place-items: center; width: 22px; height: 22px; margin: -3px -5px -3px 0; border: 0; border-radius: 999px;
+  background: transparent; color: var(--muted); cursor: pointer;
+}
+.kbg-go:hover:not(:disabled) { background: var(--line); color: var(--ink); }
+.kbg-go:disabled { opacity: 0.5; cursor: default; }
+.kbg-spin { animation: kbg-spin 0.9s linear infinite; }
+@keyframes kbg-spin { to { transform: rotate(360deg); } }
+
+.leaf.kind-fetch:has(.kfetch) { flex: 0 0 auto !important; }
+.kfetch {
+  display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 4px 12px; color: var(--muted); font-size: 13px; line-height: 1.35;
+}
+.kfetch-text { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.kfetch.is-loading { color: var(--accent); }
+.kfetch.is-failed { color: var(--bad); background: var(--bad-soft); border-radius: 8px; }
+.kfetch .kfetch-btn { flex: none; }
+.kfetch .icon-btn.kfetch-btn { width: 32px; height: 32px; }
+@media (max-width: 699px) { .kfetch .icon-btn.kfetch-btn { width: 40px; height: 40px; } .kfetch .btn.kfetch-btn { min-height: 40px; } }
+
+/* a cell that runs something when clicked, in Live */
+.desk.live .cell.has-click { cursor: pointer; }
+.desk.live .cell.has-click[role='button']:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

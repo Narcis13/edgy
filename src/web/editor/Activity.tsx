@@ -1,9 +1,11 @@
 // The left-hand panel: who is here, what changed, and a line to the agent.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, Send, Sparkles } from 'lucide-react';
+import { ChevronRight, FlaskConical, Send, Sparkles, Zap } from 'lucide-react';
 import type { Actor, Op } from '../../core/types';
 import { print } from '../../core/sx';
+import { sayEffect } from '../../core/events';
+import type { TraceItem } from '../session';
 import { timeAgo } from '../lib/api';
 import { cx, useS, useSession } from './ctx';
 
@@ -13,6 +15,8 @@ interface Block {
   ts: number;
   ops?: { text: string; n: number; touched?: string }[];
   message?: { text: string; cell?: string };
+  /** Handlers that ran: the event, the cell it came from, and what each one changed. */
+  events?: TraceItem[];
 }
 
 const short = (op: Op): string => {
@@ -27,13 +31,29 @@ const short = (op: Op): string => {
   return s;
 };
 
-function blocks(log: { v: number; ts: number; actor: Actor; ops: Op[] }[], messages: { id: number; ts: number; actor: Actor; text: string; cell?: string }[]): Block[] {
-  const items: ({ t: 'op'; ts: number; actor: Actor; op: Op; v: number } | { t: 'msg'; ts: number; actor: Actor; text: string; cell?: string; id: number })[] = [];
+const EVENTS: Actor = { kind: 'agent', name: 'Events' };
+
+function blocks(log: { v: number; ts: number; actor: Actor; ops: Op[] }[], messages: { id: number; ts: number; actor: Actor; text: string; cell?: string }[], trace: TraceItem[]): Block[] {
+  type Item = { t: 'op'; ts: number; actor: Actor; op: Op; v: number } | { t: 'msg'; ts: number; actor: Actor; text: string; cell?: string; id: number } | { t: 'ev'; ts: number; item: TraceItem };
+  const items: Item[] = [];
   for (const e of log) for (const op of e.ops) items.push({ t: 'op', ts: e.ts, actor: e.actor, op, v: e.v });
   for (const m of messages) items.push({ t: 'msg', ts: m.ts, actor: m.actor, text: m.text, cell: m.cell, id: m.id });
+  // An event is listed just before the changes it made.
+  for (const item of trace) items.push({ t: 'ev', ts: item.at - 1, item });
   items.sort((a, b) => a.ts - b.ts);
   const out: Block[] = [];
   for (const it of items) {
+    if (it.t === 'ev') {
+      const last = out.at(-1);
+      if (last?.events && it.ts - last.ts < 2000) {
+        last.events.push(it.item);
+        last.ts = it.ts;
+      } else out.push({ key: 'e' + it.item.n, actor: EVENTS, ts: it.ts, events: [it.item] });
+      continue;
+    }
+    // Changes the server's handlers made are already listed under the event that made them.
+    const last0 = out.at(-1);
+    if (it.t === 'op' && it.actor.kind === EVENTS.kind && it.actor.name === EVENTS.name && last0?.events && it.ts - last0.ts < 2000) continue;
     if (it.t === 'msg') {
       out.push({ key: 'm' + it.id, actor: it.actor, ts: it.ts, message: { text: it.text, cell: it.cell } });
       continue;
@@ -59,10 +79,13 @@ export function Activity() {
   const log = useS((s) => s.log);
   const messages = useS((s) => s.messages);
   const presence = useS((s) => s.presence);
+  const trace = useS((s) => s.trace);
+  const doc = useS((s) => s.doc);
   const now = useS((s) => s.now);
   const [text, setText] = useState('');
   const [help, setHelp] = useState(false);
-  const feed = useMemo(() => blocks(log, messages), [log, messages]);
+  const feed = useMemo(() => blocks(log, messages, trace), [log, messages, trace]);
+  const label = (id: string | null) => (id === null ? 'document' : (doc && session.cell(id)?.name) || id);
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
     end.current?.scrollIntoView({ block: 'end' });
@@ -93,9 +116,9 @@ export function Activity() {
       </div>
 
       <div className="feed">
-        {!feed.length && <p className="feed-empty">Changes and messages will show up here.</p>}
+        {!feed.length && <p className="feed-empty">Changes, events and messages will show up here.</p>}
         {feed.map((b) => (
-          <div key={b.key} className={cx('block', b.actor.kind, b.message && 'is-message')}>
+          <div key={b.key} className={cx('block', b.actor.kind, b.message && 'is-message', b.events && 'is-events')}>
             <div className="block-head">
               <span className={cx('who-name', b.actor.kind)}>{b.actor.kind === 'human' && b.actor.name === 'You' ? 'You' : b.actor.name}</span>
               <time>{timeAgo(b.ts, now)}</time>
@@ -105,6 +128,24 @@ export function Activity() {
                 {b.message.cell && <button className="chip" onClick={() => session.select(b.message!.cell!)}>{b.message.cell}</button>}
                 {b.message.text}
               </p>
+            )}
+            {b.events && (
+              <ul className="evs">
+                {b.events.map((e) => (
+                  <li key={e.n} className={cx(e.error && 'is-error')} style={{ paddingLeft: Math.min(e.depth, 4) * 10 }}>
+                    <span className="ev-head">
+                      {e.test ? <FlaskConical size={11} aria-label="fired by hand" /> : <Zap size={11} aria-hidden />}
+                      <b>{e.via === 'do' ? 'do' : e.name}</b>
+                      <button type="button" className="chip" onClick={() => e.cell && session.select(e.cell)} disabled={!e.cell}>{label(e.cell)}</button>
+                      {e.source === 'server' && <small>on the server</small>}
+                    </span>
+                    {e.ops.map((op, i) => <code key={i}>{short(op)}</code>)}
+                    {e.effects.map((fx, i) => <small key={'f' + i}>{sayEffect(fx, label)}</small>)}
+                    {!e.ops.length && !e.effects.length && !e.error && <small>changed nothing</small>}
+                    {e.error && <small className="ev-error">{e.error}</small>}
+                  </li>
+                ))}
+              </ul>
             )}
             {b.ops && (
               <ul className="ops">

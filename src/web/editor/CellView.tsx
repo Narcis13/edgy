@@ -16,6 +16,7 @@ import { CanvasView } from '../kinds/Canvas';
 import { DiagramView } from '../kinds/Diagram';
 import { ContainerView, DataChip } from '../kinds/Containers';
 import { ListView } from '../kinds/List';
+import { FetchView, TimerChip } from '../kinds/Background';
 import { StatView } from '../kinds/Stat';
 import { TableView } from '../kinds/Table';
 import { CELL_ICONS } from './icons';
@@ -23,6 +24,7 @@ import { SxField } from './fields';
 import { Markdown } from './Markdown';
 import { COLOR_TOKENS, color, cssOf, flexOf } from './look';
 import { cx, useS, useSession } from './ctx';
+import { clickGate, partOf } from './pointer';
 
 interface Props {
   cell: Cell;
@@ -36,14 +38,17 @@ export const CellView = memo(function CellView({ cell, dir }: Props) {
   const live = useS((s) => s.mode !== 'edit');
   const flash = useS((s) => s.flashes[cell.id]);
   const docId = useSession().id;
+  const pointer = usePointer(cell);
+  const paper = useS((s) => s.mode === 'page');
 
   if (st?.hidden && live) return null;
-  // A data cell is for formulas and actions: readers never see it, and it takes no room.
-  if (cell.kind === 'data' && live) return null;
+  // A data cell or a timer is for formulas and actions: readers never see it, and it takes no room.
+  if (unseen(cell, live) || (cell.kind === 'fetch' && paper)) return null;
   const style = { ...(dir ? flexOf(cell.size) : {}), ...cssOf(st?.style), viewTransitionName: `c-${docId}-${cell.id}` };
   const classes = cx(
     'cell', isGroup(cell) ? 'group' : 'leaf', `kind-${cell.kind}`,
     selected && 'is-selected', st?.hidden && 'is-hidden', flash && 'is-flash', editing && 'is-editing', !!st?.error && 'has-error',
+    !!pointer.onClick && 'has-click',
   );
 
   const sizing = dir ? (cell.size === 'hug' ? 'hug' : typeof cell.size === 'string' ? 'fixed' : 'fill') : undefined;
@@ -56,18 +61,55 @@ export const CellView = memo(function CellView({ cell, dir }: Props) {
     );
   }
   return (
-    <div className={classes} data-cell={cell.id} data-size={sizing} style={style}>
+    <div className={classes} data-cell={cell.id} data-size={sizing} style={style} {...pointer}>
       {cell.kind === 'data' ? <DataChip cell={cell} st={st} /> : <Leaf cell={cell} st={st} editing={editing} live={live} />}
       {st?.error && cell.kind !== 'text' && <span className="cell-error" title={st.error}>{st.error}</span>}
     </div>
   );
 });
 
+/** Cells readers never see in Live or on paper: data and timers; a fetch shows a line in Live only. */
+function unseen(cell: Cell, live: boolean): boolean {
+  if (!live) return false;
+  return cell.kind === 'data' || cell.kind === 'timer';
+}
+
+/** Kinds whose whole cell can be pressed like a button when it handles click. */
+const PRESSABLE = new Set(['text', 'image', 'icon', 'stat', 'chart', 'formula']);
+
+/** In Live, a cell with a click or dblclick handler runs it when clicked (a button's click runs with its do). */
+function usePointer(cell: Cell): React.HTMLAttributes<HTMLDivElement> {
+  const session = useSession();
+  const live = useS((s) => s.mode === 'live');
+  const on = cell.on && typeof cell.on === 'object' ? (cell.on as Record<string, unknown>) : null;
+  const click = on?.click != null;
+  const double = on?.dblclick != null;
+  if (!live || (!click && !double) || cell.kind === 'button') return {};
+  const press = (where: ReturnType<typeof partOf>, detail: number, key: string) =>
+    clickGate.press(key, detail, double, () => click && session.pointer(cell.id, 'click', where), () => session.pointer(cell.id, 'dblclick', where));
+  const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const where = partOf(e, e.currentTarget);
+    press(where, e.detail || 1, cell.id + (where.index !== undefined ? ':' + where.index : ''));
+  };
+  if (!PRESSABLE.has(cell.kind)) return { onClick };
+  return {
+    onClick,
+    role: 'button',
+    tabIndex: 0,
+    onKeyDown: (e) => {
+      if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+      e.preventDefault();
+      if (click) session.pointer(cell.id, 'click');
+      else session.pointer(cell.id, 'dblclick');
+    },
+  };
+}
+
 /** A group's cells with the edges between them; cells readers can't see leave no edge behind. */
 export function Kids({ cell }: { cell: Cell }) {
   const live = useS((s) => s.mode !== 'edit');
   const visible = useS((s) =>
-    live && cell.children ? cell.children.map((c) => (s.computed?.cells[c.id]?.hidden || c.kind === 'data' ? '0' : '1')).join('') : '',
+    live && cell.children ? cell.children.map((c) => (s.computed?.cells[c.id]?.hidden || unseen(c, true) || (c.kind === 'fetch' && s.mode === 'page') ? '0' : '1')).join('') : '',
   );
   return (
     <>
@@ -124,6 +166,10 @@ function Leaf({ cell, st, editing, live }: { cell: Cell; st: CellState | undefin
       return <BreakView />;
     case 'diagram':
       return <DiagramView cell={cell} st={st} />;
+    case 'timer':
+      return <TimerChip cell={cell} />;
+    case 'fetch':
+      return <FetchView cell={cell} st={st} />;
     default:
       return null;
   }

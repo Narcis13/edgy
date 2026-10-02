@@ -432,7 +432,8 @@ export const getGuarded: Getter = async (url, headers, limits) => {
         method: 'GET',
         headers: { ...headers, 'user-agent': 'edgy-fetch/1' },
         // Connect to the address that was checked, never to a second answer from DNS.
-        lookup: (_h: string, _o: unknown, cb: (e: Error | null, a: string, f: number) => void) => cb(null, target.address, target.family),
+        lookup: ((_h: string, o: { all?: boolean }, cb: (e: Error | null, a: unknown, f?: number) => void) =>
+          (o?.all ? cb(null, [{ address: target.address, family: target.family }]) : cb(null, target.address, target.family))) as never,
         timeout: limits.ms,
       }, (res) => {
         const status = res.statusCode ?? 0;

@@ -209,7 +209,7 @@ function Editable({ cell, type, items, label, List }: { cell: Cell; type: string
     const done = type === 'check' && isDone(it);
     const editing = edit && !edit.fresh && edit.at === i ? edit : null;
     return (
-      <li key={`${n}:${text}`} data-i={i} className={cx('klist-item', done && 'is-done', drag?.from === i && 'is-dragging')}
+      <li key={`${n}:${text}`} data-i={i} data-ev-index={i} className={cx('klist-item', done && 'is-done', drag?.from === i && 'is-dragging')}
         style={drag ? { transform: `translateY(${shift(i)}px)` } : undefined}>
         <Mark type={type} i={i} done={done} text={text} onToggle={() => setValue(toggled(items, i))} />
         {editing ? field(editing) : (

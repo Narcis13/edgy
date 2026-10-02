@@ -59,7 +59,7 @@ export function Grid({ m, label, sort, setSort, header, widthOf, resize }: Props
     const on = m.picked.has(row.key);
     const name = cols[0] ? m.text(row.rec, cols[0]) : '';
     return (
-      <tr key={row.i} className={cx(on && 'is-picked', m.stripes && k % 2 === 1 && 'is-alt', m.live && select && 'is-pickable')}
+      <tr key={row.i} data-ev-index={row.i} className={cx(on && 'is-picked', m.stripes && k % 2 === 1 && 'is-alt', m.live && select && 'is-pickable')}
         onClick={(e) => m.rowClick(row, e)}>
         {select && <td className="ktable-pick"><PickBox mode={select} on={on} label={`Pick ${name || `row ${n}`}`} onToggle={() => m.pick(row)} /></td>}
         {cols.map((c) => cellOf(row, c))}

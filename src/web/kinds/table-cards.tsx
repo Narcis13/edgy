@@ -30,7 +30,7 @@ export function Cards({ m, label }: { m: Model; label?: string }) {
     const name = first ? m.text(row.rec, first) : '';
     const rest = cols.slice(1).filter((c) => editable || (row.rec[c.key] != null && row.rec[c.key] !== ''));
     return (
-      <li key={row.i} className={cx('ktable-card', on && 'is-picked', m.live && select && 'is-pickable')} onClick={(e) => m.rowClick(row, e)}>
+      <li key={row.i} data-ev-index={row.i} className={cx('ktable-card', on && 'is-picked', m.live && select && 'is-pickable')} onClick={(e) => m.rowClick(row, e)}>
         <div className="ktable-card-head">
           {select && <PickBox mode={select} on={on} label={`Pick ${name || `row ${n}`}`} onToggle={() => m.pick(row)} />}
           {first && (

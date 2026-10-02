@@ -14,6 +14,7 @@ import {
   elementsWithin, eraseElements, extent, fitText, fontOf, insideBox, isConnector, moveElements, newId, pickAt, resizeBox, textRoom,
 } from '../../core/diagram';
 import { cx, useS, useSession } from '../editor/ctx';
+import { markPart } from '../editor/pointer';
 import { useBox } from './shared';
 import { Elements, type Frame, Outline, frameFor, strokeOf, viewBox } from './diagram-draw';
 import { DiagramTools, TOOLS, type Swatch, type Tool } from './diagram-tools';
@@ -52,6 +53,8 @@ function DiagramPicture({ cell, els, texts, live, paper }: { cell: Cell; els: Di
   const onClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!frame) return;
     const hit = pickAt(els, toUser(e.currentTarget, e), 8 / frame.scale);
+    // The cell's click handler (in CellView) learns which shape it was.
+    markPart(e, { element: hit ? { ...hit } : null });
     if (hit) session.raise(cell.id, 'click', { element: { ...hit } });
   };
   return (
