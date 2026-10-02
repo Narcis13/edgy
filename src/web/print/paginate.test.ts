@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { type Box, pageSpec, paginate } from './paginate';
+import { type Box, keepWithNext, pageSpec, paginate } from './paginate';
 
 const stack = (...heights: number[]): Box[] => {
   let y = 0;
@@ -50,4 +50,16 @@ test('page formats', () => {
   assert.equal(l.h, 215.9);
   assert.equal(l.margin, 10);
   assert.equal(pageSpec({ title: 't', page: 'B9' }).size, 'A4');
+});
+
+test('unfolded tabs and sections: a page never ends right after a panel title', () => {
+  // On paper a tabs cell prints each panel under its title: title, cell, title, cell.
+  const heads = [{ top: 0, bottom: 30 }, { top: 500, bottom: 530 }];
+  const cells = [{ top: 30, bottom: 500 }, { top: 530, bottom: 1000 }];
+  const without = paginate({ total: 1000, room: 540, leaves: cells, groups: [], forced: [] });
+  assert.equal(without[0].end, 530, 'left alone, the second title would sit alone at the foot of page 1');
+  const pages = paginate({ total: 1000, room: 540, leaves: [...cells, ...keepWithNext(heads, cells)], groups: [], forced: [] });
+  assert.deepEqual(pages.map((p) => p.end), [500, 1000]);
+  // No cell is cut: every page ends on an edge between cells.
+  for (const p of pages) assert.ok(cells.every((c) => !(c.top < p.end - 0.5 && c.bottom > p.end + 0.5)));
 });

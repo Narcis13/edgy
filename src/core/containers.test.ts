@@ -6,7 +6,7 @@ import { evaluate, runAction } from './engine';
 import { normalize, resolve } from './tree';
 import { build, toNotation } from './notation';
 import { outline } from './outline';
-import { openSections, openTab, panelTitles, toggleSection } from './containers';
+import { openSections, openTab, panelTitles, shownLeaves, toggleSection } from './containers';
 
 const world = { rows: () => [] as unknown[], now: Date.UTC(2026, 8, 30) };
 
@@ -197,4 +197,13 @@ test('containers: a rename reaches titles that carry templates', () => {
   assert.equal(val(d, cell(d, 'c1').children![1].id).props?.title, 'Items (3)');
   const r = applyOp(d, ['set', 'n', 'name', 'count']);
   assert.equal(r.doc.root.children![1].title, 'Items ({{count}})');
+});
+
+test('containers: only the leaves behind open tabs and sections are shown', () => {
+  const d = docWith(['col',
+    ['tabs', { name: 'view', value: 'Two' }, ['panel', { title: 'One' }, ['text', { name: 'a' }, 'a']], ['panel', { title: 'Two' }, ['text', { name: 'b' }, 'b']]],
+    ['collapsible', { title: 'Folded', value: false }, ['text', { name: 'c' }, 'c']],
+    ['accordion', { value: ['Y'] }, ['panel', { title: 'X' }, ['text', { name: 'x' }, 'x']], ['panel', { title: 'Y' }, ['text', { name: 'y' }, 'y']]],
+  ]);
+  assert.deepEqual(shownLeaves(d.root).map((c) => c.name), ['b', 'y']);
 });

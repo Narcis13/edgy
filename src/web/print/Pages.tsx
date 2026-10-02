@@ -11,7 +11,7 @@ import type { Doc } from '../../core/types';
 import { CellView } from '../editor/CellView';
 import { useS, useSession } from '../editor/ctx';
 import { docCss } from '../editor/look';
-import { type Box, MM, type PageSpec, type Slice, pageSpec, paginate } from './paginate';
+import { type Box, MM, type PageSpec, type Slice, keepWithNext, pageSpec, paginate } from './paginate';
 import { PageSetup } from './PageSetup';
 import './print.css';
 
@@ -44,10 +44,11 @@ export function Pages() {
       return { top, bottom: top + el.offsetHeight };
     };
     const all = (sel: string) => [...root.querySelectorAll<HTMLElement>(sel)];
+    const leaves = all('.cell.leaf').map(box);
     const next = paginate({
       total: root.offsetHeight,
       room,
-      leaves: all('.cell.leaf').map(box),
+      leaves: [...leaves, ...keepWithNext(all('[data-keep]').map(box), leaves)],
       groups: all('.cell.group').map(box),
       forced: all('.cell.kind-break').map((el) => offsetIn(el, root)),
     });

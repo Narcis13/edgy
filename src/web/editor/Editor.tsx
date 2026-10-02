@@ -5,6 +5,7 @@ import { Activity as ActivityIcon, Ellipsis, Moon, PanelRight, Printer, Redo2, S
 import type { Cell } from '../../core/types';
 import { isGroup } from '../../core/types';
 import { leaves } from '../../core/tree';
+import { shownLeaves } from '../../core/containers';
 import { Session } from '../session';
 import { uploadPicture } from '../lib/api';
 import { useTheme } from '../theme';
@@ -318,7 +319,7 @@ function useKeyboard() {
       if (!cell) {
         if (['ArrowDown', 'ArrowRight', 'Tab'].includes(e.key) && s.doc) {
           e.preventDefault();
-          session.select(leaves(s.doc.root)[0].id);
+          session.select(shownLeaves(s.doc.root)[0].id);
         }
         return;
       }
@@ -344,14 +345,14 @@ function useKeyboard() {
       }
       if (e.key === 'Enter') {
         e.preventDefault();
-        if (isGroup(cell)) return session.select(leaves(cell)[0].id);
+        if (isGroup(cell)) return session.select((shownLeaves(cell)[0] ?? leaves(cell)[0]).id);
         if (['text', 'empty', 'formula', 'button'].includes(cell.kind)) return session.edit(cell.id);
         if (cell.kind === 'button') return void session.run(cell.id);
         return;
       }
       if (e.key === '/' ) {
         e.preventDefault();
-        return session.openMenu(isGroup(cell) ? leaves(cell)[0].id : cell.id);
+        return session.openMenu(isGroup(cell) ? (shownLeaves(cell)[0] ?? leaves(cell)[0]).id : cell.id);
       }
       if (e.key === 'Backspace' || e.key === 'Delete') {
         e.preventDefault();

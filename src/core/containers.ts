@@ -86,3 +86,20 @@ export function renamedValue(container: Cell, from: string, to: string): Json | 
   if (v === from) return to;
   return undefined;
 }
+
+/** The panels of a container that are showing: the open tab, the open sections, or all of them on paper. */
+export function shownPanels(c: Cell, paper = false): Cell[] {
+  const kids = c.children ?? [];
+  if (paper || c.kind === 'panel' || c.kind === 'row' || c.kind === 'col') return kids;
+  if (c.kind === 'collapsible') return isOpen(c) ? kids : [];
+  const titles = panelTitles(c);
+  const open = c.kind === 'tabs' ? [openTab(c)] : openSections(c);
+  return kids.filter((_, i) => open.includes(titles[i]));
+}
+
+/** The leaves people can see: not those behind a closed tab or a folded section. */
+export function shownLeaves(cell: Cell, out: Cell[] = []): Cell[] {
+  if (!cell.children) out.push(cell);
+  else for (const ch of shownPanels(cell)) shownLeaves(ch, out);
+  return out;
+}

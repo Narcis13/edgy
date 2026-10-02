@@ -7,6 +7,7 @@ import type { Actor, Cell, Doc, Json, Op, Sx } from '../core/types';
 import { isGroup } from '../core/types';
 import { type Applied, applyOps } from '../core/ops';
 import { toNotation } from '../core/notation';
+import { shownLeaves } from '../core/containers';
 import type { Raised } from '../core/events';
 import { type Computed, evaluate, runAction } from '../core/engine';
 import { indexTree, leaves } from '../core/tree';
@@ -460,7 +461,8 @@ export class Session {
   selectNext(delta: 1 | -1): void {
     const doc = this.s.doc;
     if (!doc) return;
-    const ls = leaves(doc.root);
+    // Only the cells people can see: not those behind a closed tab or a folded section.
+    const ls = shownLeaves(doc.root);
     const cur = this.s.selection.at(-1);
     let i = cur ? ls.findIndex((c) => c.id === cur) : delta > 0 ? -1 : 0;
     i = (i + delta + ls.length) % ls.length;

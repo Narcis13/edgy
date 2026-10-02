@@ -79,6 +79,17 @@ export function paginate({ total, room, leaves, groups, forced }: Layout): Slice
   return out;
 }
 
+/**
+ * A heading (a tab's or section's title on paper) and the first cell under it
+ * count as one box that can't be cut, so a page never ends right after a heading.
+ */
+export function keepWithNext(heads: Box[], leaves: Box[]): Box[] {
+  return heads.map((h) => {
+    const next = leaves.filter((b) => b.top >= h.bottom - EPS).reduce<Box | null>((a, b) => (!a || b.top < a.top ? b : a), null);
+    return next ? { top: h.top, bottom: Math.max(h.bottom, next.bottom) } : h;
+  });
+}
+
 // ── page formats ──
 
 export const PAGE_SIZES: Record<string, [number, number]> = {

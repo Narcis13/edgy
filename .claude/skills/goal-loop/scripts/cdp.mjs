@@ -7,6 +7,9 @@
 // --scroll  one image per screenful of the app's scrolling pane: out-0.png, out-1.png, …
 // --dark    prefers-color-scheme: dark
 // --js      evaluated after load (awaited); its value is printed as a JS line, then the page settles
+// --press   "<css selector>|Key Key …" after --js: focus that element, then press real keys (trusted
+//           events, so Enter and Space activate buttons): Enter Space Tab Escape Arrow… Home End.
+//           Several groups can be separated by ";;". Then --then (an expression) is printed as THEN.
 //
 // Every console error/warning, uncaught exception, failed request and HTTP status >= 400 is printed
 // as a line starting with "CONSOLE". The exit code is 3 when any was seen, so a sweep can't miss one.
@@ -26,6 +29,11 @@ if (!['shot', 'pdf'].includes(cmd) || !url || !out) {
 const [w, h] = opt('size', '1440x900').split('x').map(Number);
 const mobile = flag('mobile');
 const js = opt('js', '');
+const press = opt('press', '');
+const then = opt('then', '');
+const KEYS = {
+  Enter: [13, '\r'], Space: [32, ' '], Tab: [9], Escape: [27], ArrowLeft: [37], ArrowUp: [38], ArrowRight: [39], ArrowDown: [40], Home: [36], End: [35],
+};
 const wait = Number(opt('wait', '3500'));
 // The selector of the element the app scrolls in (the page itself does not scroll).
 const PANE = '.desk, .home, .records';
@@ -79,6 +87,21 @@ if (js) {
   console.log('JS', JSON.stringify(r?.result?.value ?? r?.exceptionDetails?.exception?.description ?? r?.exceptionDetails?.text ?? null));
   await sleep(1200);
 }
+for (const group of press ? press.split(';;') : []) {
+  const [sel, keys = ''] = group.split('|');
+  const found = (await evaluate(`(() => { const el = document.querySelector(${JSON.stringify(sel.trim())}); if (el) el.focus(); return !!el; })()`)).result.value;
+  if (!found) console.log('PRESS', JSON.stringify(sel), 'not found');
+  for (const k of keys.trim().split(/\s+/).filter(Boolean)) {
+    const [code, text] = KEYS[k] ?? [0];
+    const key = k === 'Space' ? ' ' : k;
+    const base = { key, code: k === 'Space' ? 'Space' : k, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code };
+    await send('Input.dispatchKeyEvent', { type: text ? 'keyDown' : 'rawKeyDown', ...base, ...(text ? { text } : {}) });
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+    await sleep(250);
+  }
+  await sleep(600);
+}
+if (then) console.log('THEN', JSON.stringify((await evaluate(then))?.result?.value ?? null));
 
 const png = async (file) => {
   const r = await send('Page.captureScreenshot', { format: 'png' });

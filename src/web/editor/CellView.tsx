@@ -3,7 +3,7 @@
 import { Fragment, memo, useEffect, useRef, useState } from 'react';
 import { CircleHelp, ImagePlus, Star } from 'lucide-react';
 import type { Cell, Dir, Json, Op } from '../../core/types';
-import { flowOf, isGroup } from '../../core/types';
+import { flowOf, isContainer, isGroup } from '../../core/types';
 import type { CellState } from '../../core/engine';
 import { display } from '../../core/engine';
 import { read, show } from '../../core/sx';
@@ -14,6 +14,7 @@ import { BreakView } from '../kinds/Break';
 import { CalendarView } from '../kinds/Calendar';
 import { CanvasView } from '../kinds/Canvas';
 import { DiagramView } from '../kinds/Diagram';
+import { ContainerView, DataChip } from '../kinds/Containers';
 import { ListView } from '../kinds/List';
 import { StatView } from '../kinds/Stat';
 import { TableView } from '../kinds/Table';
@@ -34,12 +35,11 @@ export const CellView = memo(function CellView({ cell, dir }: Props) {
   const editing = useS((s) => s.editing === cell.id);
   const live = useS((s) => s.mode !== 'edit');
   const flash = useS((s) => s.flashes[cell.id]);
-  const visible = useS((s) =>
-    live && cell.children ? cell.children.map((c) => (s.computed?.cells[c.id]?.hidden ? '0' : '1')).join('') : '',
-  );
   const docId = useSession().id;
 
   if (st?.hidden && live) return null;
+  // A data cell is for formulas and actions: readers never see it, and it takes no room.
+  if (cell.kind === 'data' && live) return null;
   const style = { ...(dir ? flexOf(cell.size) : {}), ...cssOf(st?.style), viewTransitionName: `c-${docId}-${cell.id}` };
   const classes = cx(
     'cell', isGroup(cell) ? 'group' : 'leaf', `kind-${cell.kind}`,
@@ -47,29 +47,43 @@ export const CellView = memo(function CellView({ cell, dir }: Props) {
   );
 
   const sizing = dir ? (cell.size === 'hug' ? 'hug' : typeof cell.size === 'string' ? 'fixed' : 'fill') : undefined;
+  if (isContainer(cell)) return <ContainerView cell={cell} st={st} className={classes} style={style} sizing={sizing} />;
   if (isGroup(cell)) {
     return (
       <div className={classes} data-cell={cell.id} data-size={sizing} data-stack={cell.kind === 'row' ? stackOf(cell) : undefined} style={style}>
-        {cell.children!.map((ch, i) => {
-          if (live && visible[i] === '0') return null;
-          const prev = live ? visible.lastIndexOf('1', i - 1) >= 0 : i > 0;
-          return (
-            <Fragment key={ch.id}>
-              {prev && <Divider group={cell} index={i} />}
-              <CellView cell={ch} dir={flowOf(cell)} />
-            </Fragment>
-          );
-        })}
+        <Kids cell={cell} />
       </div>
     );
   }
   return (
     <div className={classes} data-cell={cell.id} data-size={sizing} style={style}>
-      <Leaf cell={cell} st={st} editing={editing} live={live} />
+      {cell.kind === 'data' ? <DataChip cell={cell} st={st} /> : <Leaf cell={cell} st={st} editing={editing} live={live} />}
       {st?.error && cell.kind !== 'text' && <span className="cell-error" title={st.error}>{st.error}</span>}
     </div>
   );
 });
+
+/** A group's cells with the edges between them; cells readers can't see leave no edge behind. */
+export function Kids({ cell }: { cell: Cell }) {
+  const live = useS((s) => s.mode !== 'edit');
+  const visible = useS((s) =>
+    live && cell.children ? cell.children.map((c) => (s.computed?.cells[c.id]?.hidden || c.kind === 'data' ? '0' : '1')).join('') : '',
+  );
+  return (
+    <>
+      {cell.children!.map((ch, i) => {
+        if (live && visible[i] === '0') return null;
+        const prev = live ? visible.lastIndexOf('1', i - 1) >= 0 : i > 0;
+        return (
+          <Fragment key={ch.id}>
+            {prev && <Divider group={cell} index={i} />}
+            <CellView cell={ch} dir={flowOf(cell)} />
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
 
 /** How a row behaves on a narrow screen: wrap its cells under each other, or keep them side by side. */
 const stackOf = (cell: Cell): string => {
@@ -437,7 +451,7 @@ function Divider({ group, index }: { group: Cell; index: number }) {
     const prev = el.previousElementSibling as HTMLElement | null;
     const next = el.nextElementSibling as HTMLElement | null;
     if (!prev || !next) return;
-    const horizontal = group.kind === 'row';
+    const horizontal = flowOf(group) === 'row';
     const start = horizontal ? e.clientX : e.clientY;
     const pa = horizontal ? prev.offsetWidth : prev.offsetHeight;
     const pb = horizontal ? next.offsetWidth : next.offsetHeight;
@@ -486,5 +500,5 @@ function Divider({ group, index }: { group: Cell; index: number }) {
     }
   };
 
-  return <div className={cx('divider', group.kind)} onPointerDown={onDown} onDoubleClick={even} title={live ? undefined : 'Drag to resize; double-click to even out'} />;
+  return <div className={cx('divider', flowOf(group) ?? 'col')} onPointerDown={onDown} onDoubleClick={even} title={live ? undefined : 'Drag to resize; double-click to even out'} />;
 }
