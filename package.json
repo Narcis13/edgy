@@ -8,10 +8,10 @@
     "dev": "node scripts/dev.mjs",
     "server": "tsx --disable-warning=ExperimentalWarning src/server/index.ts",
     "web": "vite",
-    "build": "vite build",
+    "build": "vite build && vite build -c vite.offline.config.ts",
     "start": "NODE_ENV=production tsx --disable-warning=ExperimentalWarning src/server/index.ts",
     "mcp": "tsx src/mcp/server.ts",
-    "test": "tsx --disable-warning=ExperimentalWarning --test src/core/*.test.ts src/server/*.test.ts src/web/print/*.test.ts src/web/kinds/*.test.ts src/web/code/*.test.ts src/web/editor/*.test.ts src/web/editor/inspector/*.test.ts",
+    "test": "tsx --disable-warning=ExperimentalWarning --test src/core/*.test.ts src/server/*.test.ts src/web/print/*.test.ts src/web/kinds/*.test.ts src/web/code/*.test.ts src/web/editor/*.test.ts src/web/editor/inspector/*.test.ts src/web/play/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

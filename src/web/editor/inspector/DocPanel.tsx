@@ -24,6 +24,10 @@ export function DocPanel() {
           <Prop label="Title">
             <TextField value={meta.title} label="Title" onCommit={(v) => set('title', v.trim() || 'Untitled')} />
           </Prop>
+          <Prop label="Description" hint="Shown on the document's card and found by search.">
+            <TextField value={typeof meta.description === 'string' ? meta.description : ''} multiline label="Description" placeholder="What this document is for"
+              onCommit={(v) => set('description', v.trim().slice(0, 2000) || null)} />
+          </Prop>
           <div className="ins-pair">
             <Prop label="Width" onReset={meta.width != null ? () => set('width', null) : undefined}>
               <NumberField value={num(meta.width)} placeholder="880" min={320} max={2400} step={20} label="Width in pixels" onCommit={(v) => set('width', v)} />

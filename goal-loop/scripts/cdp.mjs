@@ -12,6 +12,9 @@
 // --press   "<css selector>|Key Key …" after --js: focus that element, then press real keys (trusted
 //           events, so Enter and Space activate buttons): Enter Space Tab Escape Arrow… Home End.
 //           Several groups can be separated by ";;". Then --then (an expression) is printed as THEN.
+// --swipe   "x1,y1,x2,y2[;;…]" after --press: a real one-finger swipe (touch events), e.g. right to left.
+// --offline the network is off (file:// pages still load). With it or not, REQUESTS prints how many
+//           requests went to the network (not data:, blob: or file:), with up to 5 of their URLs.
 //
 // Every console error/warning, uncaught exception, failed request and HTTP status >= 400 is printed
 // as a line starting with "CONSOLE". The exit code is 3 when any was seen, so a sweep can't miss one.
@@ -34,6 +37,9 @@ const mobile = flag('mobile');
 const js = opt('js', '');
 const press = opt('press', '');
 const then = opt('then', '');
+const swipes = opt('swipe', '');
+const offline = flag('offline');
+const requests = [];
 const KEYS = {
   Enter: [13, '\r'], Space: [32, ' '], Tab: [9], Escape: [27], ArrowLeft: [37], ArrowUp: [38], ArrowRight: [39], ArrowDown: [40], Home: [36], End: [35],
 };
@@ -76,6 +82,7 @@ ws.addEventListener('message', (m) => {
   if (msg.method === 'Log.entryAdded' && ['error', 'warning'].includes(p.entry.level)) report({ log: p.entry.text, url: p.entry.url });
   if (msg.method === 'Network.responseReceived' && p.response.status >= 400) report({ http: p.response.status, url: p.response.url });
   if (msg.method === 'Network.loadingFailed' && !p.canceled) report({ failed: p.errorText, type: p.type });
+  if (msg.method === 'Network.requestWillBeSent' && !/^(data|blob|file|about|chrome|devtools):/.test(p.request.url)) requests.push(p.request.url);
 });
 const send = (method, params = {}) => new Promise((r) => { const n = ++id; waiting.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); });
 const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })).result;
@@ -86,6 +93,7 @@ await send('Log.enable');
 await send('Network.enable');
 await send('Page.enable');
 await metrics(h);
+if (offline) await send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
 if (flag('dark')) await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
 if (mobile) await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
 await send('Page.navigate', { url });
@@ -109,7 +117,19 @@ for (const group of press ? press.split(';;') : []) {
   }
   await sleep(600);
 }
+for (const s of swipes ? swipes.split(';;') : []) {
+  const [x1, y1, x2, y2] = s.split(',').map(Number);
+  const point = (x, y) => [{ x, y, radiusX: 4, radiusY: 4, force: 1, id: 1 }];
+  await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: point(x1, y1) });
+  for (let i = 1; i <= 8; i++) {
+    await send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: point(x1 + ((x2 - x1) * i) / 8, y1 + ((y2 - y1) * i) / 8) });
+    await sleep(16);
+  }
+  await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await sleep(700);
+}
 if (then) console.log('THEN', JSON.stringify((await evaluate(then))?.result?.value ?? null));
+console.log('REQUESTS', requests.length, JSON.stringify(requests.slice(0, 5)));
 
 const png = async (file) => {
   const r = await send('Page.captureScreenshot', { format: 'png' });

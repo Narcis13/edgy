@@ -1,12 +1,70 @@
-import type { Actor, Doc, Json, Op } from '../../core/types';
+import type { Actor, Json, Op } from '../../core/types';
+import type { Field, Shape } from '../../core/library';
+import { send } from './transport';
 
+/** A document as the library lists it: no content, a shape to draw. */
 export interface DocSummary {
   id: string;
   title: string;
+  description: string;
   v: number;
   createdAt: number;
   updatedAt: number;
-  root: Doc['root'];
+  /** Position among the pinned (1 first), or null. */
+  pinned: number | null;
+  archivedAt: number | null;
+  deck: string | null;
+  shared: { view: boolean; edit: boolean };
+  shape: Shape;
+}
+
+/** A card on the home page (GET /api/library). */
+export type LibraryEntry =
+  | ({ type: 'doc'; deckTitle?: string; match?: { field: Field; snippet: string } } & DocSummary)
+  | {
+      type: 'deck';
+      id: string;
+      title: string;
+      description: string;
+      createdAt: number;
+      updatedAt: number;
+      pinned: number | null;
+      archivedAt: number | null;
+      docs: string[];
+      count: number;
+      covers: { id: string; title: string; shape: Shape }[];
+      match?: { field: Field; snippet: string };
+    };
+
+export interface Library {
+  pinned: LibraryEntry[];
+  rest: LibraryEntry[];
+  total: number;
+  query: string;
+  filter: string;
+  sort: string;
+}
+
+export interface Deck {
+  id: string;
+  title: string;
+  description: string;
+  createdAt: number;
+  updatedAt: number;
+  pinned: number | null;
+  archivedAt: number | null;
+  docs: string[];
+  /** GET /api/decks/:id: its documents' summaries, in order. */
+  items?: DocSummary[];
+}
+
+export interface ShareLink {
+  token: string;
+  doc: string;
+  access: 'view' | 'edit';
+  createdAt: number;
+  revokedAt: number | null;
+  url: string;
 }
 
 export interface TemplateSummary {
@@ -34,13 +92,14 @@ export interface Message {
 export type Row = { id: string; at: number } & Record<string, Json>;
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number) {
+  /** reason: why a share link was refused: "unknown", "revoked" or "forbidden". */
+  constructor(message: string, public status: number, public reason?: string) {
     super(message);
   }
 }
 
 export async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(path, {
+  const res = await send(path, {
     method,
     headers: body === undefined ? {} : { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -48,7 +107,7 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
   const text = await res.text();
   let json: unknown;
   try { json = JSON.parse(text); } catch { json = null; }
-  if (!res.ok) throw new ApiError((json as { error?: string } | null)?.error ?? `The server answered ${res.status}.`, res.status);
+  if (!res.ok) throw new ApiError((json as { error?: string } | null)?.error ?? `The server answered ${res.status}.`, res.status, (json as { reason?: string } | null)?.reason);
   return json as T;
 }
 

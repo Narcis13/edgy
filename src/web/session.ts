@@ -13,6 +13,7 @@ import { type Computed, type World, evaluate, runAction } from '../core/engine';
 import type { Effect, FetchState } from '../core/sx';
 import { indexTree, leaves } from '../core/tree';
 import { type LogEntry, type Message, type Row, ApiError, api } from './lib/api';
+import { listen, send } from './lib/transport';
 import { type Store, createStore } from './lib/store';
 import { asItems } from './kinds/items';
 import { isoOf } from './kinds/month';
@@ -38,8 +39,22 @@ export interface TraceItem extends TraceEntry {
   test?: boolean;
 }
 
+/** How this session was opened. */
+export interface SessionOptions {
+  /** Start in this mode instead of the one the address or the screen suggests. */
+  mode?: Mode;
+  /**
+   * Opened with a share link: no history or messages, and with "view" nothing
+   * is sent: what the person types stays in their tab.
+   */
+  guest?: 'view' | 'edit';
+  /** A slide in a deck being played: the address bar belongs to the player. */
+  embedded?: boolean;
+}
+
 export interface SessionState {
-  status: 'loading' | 'ready' | 'missing' | 'failed';
+  /** unshared: opened with a share link that has been turned off. */
+  status: 'loading' | 'ready' | 'missing' | 'failed' | 'unshared';
   online: boolean;
   doc: Doc | null;
   computed: Computed | null;
@@ -151,10 +166,10 @@ export class Session {
     if (e.persisted) this.opening();
   };
 
-  constructor(readonly id: string) {
+  constructor(readonly id: string, readonly options: SessionOptions = {}) {
     this.s = {
       status: 'loading', online: true, doc: null, computed: null, unsaved: 0, selection: [], editing: null, seed: null,
-      menu: null, mode: initialMode(), printing: false, links: true, log: [], messages: [], presence: [], flashes: {}, collections: {},
+      menu: null, mode: options.mode ?? initialMode(), printing: false, links: true, log: [], messages: [], presence: [], flashes: {}, collections: {},
       toast: null, fetched: {}, trace: [], canUndo: false, canRedo: false, now: Date.now(),
     };
     this.store = createStore(this.s);
@@ -170,10 +185,12 @@ export class Session {
     this.closed = false;
     const generation = ++this.generation;
     try {
+      // Someone with a link sees the document as it is now, not its history or the conversation.
+      const guest = !!this.options.guest;
       const [doc, log, messages, fetched] = await Promise.all([
         api<Doc>('GET', `/api/docs/${this.id}`),
-        api<LogEntry[]>('GET', `/api/docs/${this.id}/log?limit=80`),
-        api<Message[]>('GET', `/api/docs/${this.id}/messages`),
+        guest ? [] : api<LogEntry[]>('GET', `/api/docs/${this.id}/log?limit=80`),
+        guest ? [] : api<Message[]>('GET', `/api/docs/${this.id}/messages`),
         api<Record<string, FetchState>>('GET', `/api/docs/${this.id}/fetched`).catch(() => ({})),
       ]);
       if (this.closed || generation !== this.generation) return;
@@ -189,8 +206,28 @@ export class Session {
       if (this.closed || generation !== this.generation) return;
       this.opening();
     } catch (e) {
-      this.patch({ status: e instanceof ApiError && e.status === 404 ? 'missing' : 'failed' });
+      this.patch({ status: e instanceof ApiError && e.reason === 'revoked' ? 'unshared' : e instanceof ApiError && (e.status === 404 || e.status === 403) ? 'missing' : 'failed' });
     }
+  }
+
+  /**
+   * Stop listening for a while (a slide that is not on screen) without
+   * closing: what was typed is still sent, and the state stays as it is.
+   */
+  pause(): void {
+    this.es?.close();
+    this.es = null;
+    if (this.clock) clearInterval(this.clock);
+    if (this.watchdog) clearInterval(this.watchdog);
+    this.clock = this.watchdog = null;
+  }
+
+  /** Listen again after a pause, catching up on what changed meanwhile. */
+  resume(): void {
+    if (this.closed || this.es || this.s.status !== 'ready') return;
+    this.connect();
+    void this.resync();
+    if (this.s.computed?.usesNow && !this.clock) this.clock = setInterval(() => this.patch({ now: Date.now() }), 1000);
   }
 
   close(): void {
@@ -210,7 +247,7 @@ export class Session {
   private connect(): void {
     this.es?.close();
     // Who this is and whether it is in Live: the server runs timers and fetches while anyone is.
-    const es = new EventSource(`/api/docs/${this.id}/events?client=${this.client}&mode=${this.s.mode}`);
+    const es = listen(`/api/docs/${this.id}/events?client=${this.client}&mode=${this.s.mode}`);
     this.es = es;
     this.lastEvent = Date.now();
     const on = (type: string, fn: (e: any) => void) =>
@@ -246,6 +283,10 @@ export class Session {
       if (e.collection in this.s.collections) void this.loadCollection(e.collection);
     });
     on('deleted', () => this.patch({ status: 'missing' }));
+    on('unshared', () => {
+      this.patch({ status: 'unshared' });
+      this.pause();
+    });
     on('fetch', (e) => this.patch({ fetched: { ...this.s.fetched, [e.cell]: e.state } }));
     on('trace', (e) => this.traced(e.trace, 'server'));
   }
@@ -417,7 +458,8 @@ export class Session {
   }
 
   private async flush(): Promise<void> {
-    if (this.sending || this.closed) return;
+    // A view link changes nothing on the server: what the person does stays here.
+    if (this.sending || this.closed || this.options.guest === 'view') return;
     const next = this.pending.find((p) => p.state === 'queued');
     if (!next) return;
     next.state = 'sent';
@@ -552,6 +594,7 @@ export class Session {
     this.patch({ mode, selection: [], editing: null, menu: null });
     if (mode !== was) this.told(mode);
     if (mode === 'live') this.opening();
+    if (this.options.embedded || this.options.guest) return;
     try {
       const url = new URL(window.location.href);
       if (mode === 'page') url.searchParams.set('view', 'page');
@@ -874,6 +917,10 @@ export class Session {
   }
 
   private async effect(e: Effect, keepalive = false): Promise<void> {
+    if (this.options.guest === 'view' && e.type !== 'op' && e.type !== 'emit') {
+      this.toast('This link can only view the document, so nothing is saved.');
+      return;
+    }
     if (e.type === 'refresh') {
       await api('POST', `/api/docs/${this.id}/fetch/${encodeURIComponent(e.cell)}`, { handlers: true });
       return;
@@ -884,7 +931,7 @@ export class Session {
       const [method, url, body] = e.type === 'insert' ? ['POST', path, { record: e.record, source: { doc: this.id } }]
         : e.type === 'update' ? ['PATCH', `${path}/${encodeURIComponent(e.id)}`, { fields: e.fields }]
         : e.type === 'delete' ? ['DELETE', `${path}/${encodeURIComponent(e.id)}`, undefined] : ['DELETE', path, undefined];
-      void fetch(url as string, { method: method as string, keepalive: true, headers: { 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) }).catch(() => undefined);
+      void send(url as string, { method: method as string, keepalive: true, headers: { 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) }).catch(() => undefined);
       return;
     }
     if (e.type === 'insert') await api('POST', path, { record: e.record, source: { doc: this.id } });
@@ -926,9 +973,9 @@ export class Session {
     const on = doc.meta.on;
     if (!on || typeof on !== 'object' || (on as Record<string, unknown>).close == null) return;
     const rx = react(doc, this.world(), { events: [{ cell: null, name: 'close' }] });
-    if (rx.ops.length) {
+    if (rx.ops.length && this.options.guest !== 'view') {
       const body = JSON.stringify({ ops: rx.ops, actor: this.actor, client: this.client, batch: uid() });
-      void fetch(`/api/docs/${this.id}/ops`, { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body }).catch(() => undefined);
+      void send(`/api/docs/${this.id}/ops`, { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body }).catch(() => undefined);
     }
     for (const e of rx.effects) void this.effect(e, true).catch(() => undefined);
     if (!unloading) this.traced(rx.trace, 'here');

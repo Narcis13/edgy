@@ -1,0 +1,51 @@
+/* A deck's own page: its fields, then its slides in order. */
+
+.deck-page { display: flex; flex-direction: column; gap: 16px; }
+.back-link { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); text-decoration: none; font-size: 13.5px; align-self: flex-start; min-height: 32px; }
+.back-link:hover { color: var(--ink); }
+.deck-head { display: flex; gap: 20px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+.deck-fields { flex: 1 1 360px; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.deck-title-input, .deck-desc-input {
+  font: inherit; color: var(--ink); background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 4px 8px; margin-left: -8px; width: 100%;
+}
+.deck-title-input { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+.deck-desc-input { font-size: 15px; color: var(--muted); resize: none; line-height: 1.45; field-sizing: content; min-height: 2.4em; }
+.deck-title-input:hover, .deck-desc-input:hover { border-color: var(--line); }
+.deck-title-input:focus, .deck-desc-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; background: var(--raised); color: var(--ink); }
+.deck-count { margin: 0; color: var(--faint); font-size: 13px; }
+.deck-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.deck-actions .btn { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; text-decoration: none; }
+
+.deck-slides { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.deck-slide {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper);
+}
+.deck-slide.is-dragging { opacity: 0.45; }
+.deck-slide.is-archived .deck-doc { opacity: 0.6; }
+.deck-grip { color: var(--faint); cursor: grab; display: grid; }
+.deck-n { width: 2ch; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 600; }
+.deck-doc { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; }
+.deck-doc .minimap { width: 96px; height: 64px; flex: none; padding: 4px; }
+.deck-doc-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.deck-doc-title { font-weight: 600; }
+.deck-doc-desc { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.deck-slide-tools { display: flex; gap: 2px; flex: none; }
+.deck-slide-tools .icon-btn { width: 36px; height: 36px; }
+.deck-add { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; }
+
+.add-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line-strong); border-radius: 9px; padding: 0 10px; color: var(--muted); }
+.add-search input { flex: 1; border: 0; background: transparent; font: inherit; color: var(--ink); padding: 9px 0; outline: none; }
+.add-list { list-style: none; margin: 0; padding: 0; max-height: 46vh; overflow: auto; display: flex; flex-direction: column; }
+.add-list label { display: flex; align-items: center; gap: 10px; padding: 8px 6px; border-radius: 8px; min-height: 40px; cursor: pointer; }
+.add-list label:hover { background: var(--sunken); }
+.add-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.add-none { color: var(--muted); padding: 10px 6px; }
+
+@media (max-width: 720px) {
+  .deck-title-input { font-size: 22px; }
+  .deck-grip { display: none; }
+  .deck-doc .minimap { width: 64px; height: 48px; }
+  .deck-slide { gap: 6px; padding: 6px; }
+  .deck-slide-tools .icon-btn { width: 40px; height: 40px; }
+  .deck-slide-tools { flex-direction: column; }
+}

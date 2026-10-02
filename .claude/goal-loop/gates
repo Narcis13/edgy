@@ -2,7 +2,7 @@
 typecheck  npm run --silent typecheck
 test       npm test --silent
 # Built into the log folder, so it never touches dist/ or a running server's build.
-build      npx vite build --outDir "$LOGS/dist" --emptyOutDir
+build      npx vite build --outDir "$LOGS/dist" --emptyOutDir && npx vite build -c vite.offline.config.ts --outDir "$LOGS/dist/offline" --emptyOutDir
 
 # Node's test runner prints a summary; surface the counts so PROGRESS.md can quote them.
 @summary test ^(#|ℹ) (tests|pass|fail)

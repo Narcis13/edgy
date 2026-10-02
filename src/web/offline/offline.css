@@ -1,0 +1,18 @@
+/* The exported file's own bits: the "offline copy" bar and a deck's slide list. */
+
+.offline-bar { gap: 10px; }
+.offline-badge {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 4px 8px; border-radius: 999px; white-space: nowrap;
+  background: var(--warn-soft); color: var(--warn); font-weight: 600;
+}
+.offline-when { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.offline-deck h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.02em; }
+.offline-desc { color: var(--muted); margin: 0 0 18px; max-width: 60ch; }
+.offline-play { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; margin-bottom: 24px; }
+.offline-slides { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+.offline-slides li { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: var(--paper); }
+.offline-slides .minimap { height: 120px; }
+
+@media (max-width: 720px) {
+  .offline-when { display: none; }
+}

@@ -1,9 +1,11 @@
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { createApp } from './app';
 import { Store } from './store';
+import { bundleLoader } from './export';
 
 const port = Number(process.env.EDGY_PORT ?? 8787);
 const hostname = process.env.HOST ?? '127.0.0.1';
@@ -16,7 +18,9 @@ const built = existsSync(join(dist, 'index.html')) && process.env.NODE_ENV === '
 const webUrl = process.env.EDGY_WEB_URL ?? (built ? undefined : 'http://localhost:5173');
 
 const store = new Store(join(dataDir, 'edgy.db'));
-const { app } = createApp(store, join(dataDir, 'assets'), webUrl);
+// Exports use the offline build: next to a production build, or built once on the first export in development.
+const offline = built ? bundleLoader(join(dist, 'offline'), false) : bundleLoader(mkdtempSync(join(tmpdir(), 'edgy-offline-')), true);
+const { app } = createApp(store, join(dataDir, 'assets'), webUrl, { offline });
 
 // After `npm run build`, this one process serves the app too.
 if (built) {

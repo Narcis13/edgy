@@ -24,6 +24,8 @@ start() {
   stop
   mkdir -p "$data"
   npx vite build --outDir "$dist" --emptyOutDir >"$log" 2>&1 || { echo "build failed, see $log"; exit 1; }
+  # The app as exported files carry it.
+  npx vite build -c vite.offline.config.ts --outDir "$dist/offline" --emptyOutDir >>"$log" 2>&1 || { echo "offline build failed, see $log"; exit 1; }
   NODE_ENV=production EDGY_PORT="$port" EDGY_DATA="$data" EDGY_DIST="$dist" \
     nohup node --disable-warning=ExperimentalWarning --import tsx src/server/index.ts >>"$log" 2>&1 &
   echo $! >"$pidfile"

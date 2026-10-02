@@ -1,7 +1,7 @@
 // The document screen: header, formula bar, activity, the sheet, inspector.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity as ActivityIcon, Ellipsis, Moon, PanelRight, Printer, Redo2, Spline, Sun, Undo2 } from 'lucide-react';
+import { Activity as ActivityIcon, Download, Ellipsis, Moon, PanelRight, Printer, Redo2, Share2, Spline, Sun, Undo2 } from 'lucide-react';
 import type { Cell } from '../../core/types';
 import { isGroup } from '../../core/types';
 import { leaves } from '../../core/tree';
@@ -15,10 +15,12 @@ import { FormulaBar } from './FormulaBar';
 import { Inspector } from './Inspector';
 import { Overlay } from './Overlay';
 import { SessionContext, cx, useS, useSession } from './ctx';
-import { docCss } from './look';
+import { Toast, sheetStyle } from './LiveView';
 import { Logo } from '../pages/Logo';
+import { Notice } from '../pages/Notice';
 import { StudioHost } from '../code/Studio';
 import { Pages } from '../print/Pages';
+import { ShareDialog } from '../share/ShareDialog';
 
 export function Editor({ id, navigate }: { id: string; navigate: (path: string) => void }) {
   const session = useMemo(() => new Session(id), [id]);
@@ -56,8 +58,14 @@ function Screen({ navigate }: { navigate: (path: string) => void }) {
   useKeyboard();
 
   if (status === 'loading') return <div className="screen-note">Opening…</div>;
-  if (status === 'missing') return <div className="screen-note">This document is gone. <button className="link-btn" onClick={() => navigate('/')}>Back to your documents</button></div>;
-  if (status === 'failed') return <div className="screen-note">The server did not answer. Is <code>npm run dev</code> running?</div>;
+  if (status === 'missing' || status === 'unshared') {
+    return (
+      <Notice kind="missing" title="No document here" action={<a className="btn solid" href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>Back to your documents</a>}>
+        There is no document at this address. It may have been deleted, or the link has a typo.
+      </Notice>
+    );
+  }
+  if (status === 'failed') return <Notice kind="failed" title="The server did not answer">Is <code>npm run dev</code> running? This page tries again when you reload it.</Notice>;
 
   return (
     <div className={cx('editor', `mode-${mode}`, showActivity && 'with-activity', showInspector && 'with-inspector')}>
@@ -84,6 +92,7 @@ function Header(props: { navigate: (p: string) => void; showActivity: boolean; s
   const canRedo = useS((s) => s.canRedo);
   const [theme, setTheme] = useTheme();
   const [t, setT] = useState(title);
+  const [sharing, setSharing] = useState(false);
   useEffect(() => setT(title), [title]);
   return (
     <header className="topbar">
@@ -107,15 +116,18 @@ function Header(props: { navigate: (p: string) => void; showActivity: boolean; s
           <button className={cx(mode === 'page' && 'is-on')} aria-pressed={mode === 'page'} onClick={() => session.setMode('page')} title="See it as printed pages">Page</button>
         </div>
         <button className="icon-btn wide-only" title="Print (⌘P)" aria-label="Print" onClick={() => session.print()}><Printer size={16} /></button>
+        <a className="icon-btn wide-only" title="Export as one HTML file that works offline" aria-label="Export as HTML" href={`/api/docs/${session.id}/export`} download><Download size={16} /></a>
+        <button className="btn soft small share-btn wide-only" title="Share a link to this document" onClick={() => setSharing(true)}><Share2 size={14} /> Share</button>
         <button className="icon-btn wide-only" title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
-        <More {...props} />
+        <More {...props} share={() => setSharing(true)} />
       </div>
+      {sharing && <ShareDialog id={session.id} title={title} onClose={() => setSharing(false)} />}
     </header>
   );
 }
 
 /** On a phone the header keeps the essentials; everything else lives in this menu. */
-function More(props: { showActivity: boolean; setShowActivity: (v: boolean) => void; showInspector: boolean; setShowInspector: (v: boolean) => void }) {
+function More(props: { showActivity: boolean; setShowActivity: (v: boolean) => void; showInspector: boolean; setShowInspector: (v: boolean) => void; share: () => void }) {
   const session = useSession();
   const links = useS((s) => s.links);
   const [theme, setTheme] = useTheme();
@@ -138,6 +150,8 @@ function More(props: { showActivity: boolean; setShowActivity: (v: boolean) => v
           {item('Activity and messages', <ActivityIcon size={16} />, props.showActivity, () => props.setShowActivity(!props.showActivity))}
           {item('Cell details', <PanelRight size={16} />, props.showInspector, () => props.setShowInspector(!props.showInspector))}
           {item('Show links between cells', <Spline size={16} />, links, () => session.setLinks(!links))}
+          {item('Share…', <Share2 size={16} />, false, props.share)}
+          {item('Export as HTML', <Download size={16} />, false, () => { window.location.href = `/api/docs/${session.id}/export`; })}
           {item('Print', <Printer size={16} />, false, () => session.print())}
           {item(theme === 'dark' ? 'Light theme' : 'Dark theme', theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />, false, () => setTheme(theme === 'dark' ? 'light' : 'dark'))}
         </div>
@@ -245,25 +259,13 @@ function Desk() {
   return (
     <main className={cx('desk', mode)} onPointerDown={onPointerDown} onClick={onClick} onDoubleClick={onDoubleClick} onDragOver={onDragOver} onDragLeave={() => setDropping(null)} onDrop={(e) => void onDrop(e)}>
       <div className="desk-inner" ref={host}>
-        <div className={cx('sheet', dropping && 'is-dropping')} style={{ ...docCss(meta), maxWidth: typeof meta.width === 'number' ? meta.width : 880, minHeight: typeof meta.minHeight === 'number' ? meta.minHeight : 560, '--pad': `${typeof meta.pad === 'number' ? meta.pad : 28}px` } as React.CSSProperties}>
+        <div className={cx('sheet', dropping && 'is-dropping')} style={sheetStyle(meta)}>
           <CellView cell={doc.root} dir={null} />
         </div>
         <Overlay host={host} />
       </div>
     </main>
   );
-}
-
-function Toast() {
-  const toast = useS((s) => s.toast);
-  const [shown, setShown] = useState(toast);
-  useEffect(() => {
-    if (!toast) return;
-    setShown(toast);
-    const t = setTimeout(() => setShown(null), 5000);
-    return () => clearTimeout(t);
-  }, [toast]);
-  return shown ? <div className="toast" role="status">{shown.text}</div> : null;
 }
 
 /** Spatial navigation: the nearest leaf in a direction, judged by the cells' boxes. */

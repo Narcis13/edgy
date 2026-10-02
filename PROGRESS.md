@@ -7,7 +7,7 @@ as slides; a document or deck exported as one self-contained `.html`; all of it 
 
 Started 2026-10-02 on branch `main` at `40b398d`. Brief: given inline to `/goal-loop` (library brief).
 
-**Next:** M1, core library module and the store migration.
+**Next:** M6 export (offline bundle, composer, stand-in server); a subagent builds the home library UI (M3) in parallel.
 
 ## Contract (Done means)
 
@@ -39,8 +39,8 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 
 ## Milestones
 
-1. [ ] **Core + store**: `core/library.ts` (document text, search match and snippet, shape for the card, arrange: filter/sort/pinned), store migration v2 (description, pinned, archived, search, shape columns; shares; decks), tests (L2, L4, L5, K1, M1, T1 part)
-2. [ ] **API + access + MCP + guide**: library list/search, PATCH doc, bulk actions, pins order, decks, shares, the share-token check in one place (`server/access.ts`) with a filtered event stream, MCP tools, guide section, tests (S2, S4, A1, T1 part)
+1. [x] **Core + store**: `core/library.ts` (document text, search match and snippet, shape for the card, arrange: filter/sort/pinned), store migration v2 (description, pinned, archived, search, shape columns; shares; decks), tests (L2, L4, L5, K1, M1, T1 part)
+2. [x] **API + access + MCP + guide**: library list/search, PATCH doc, bulk actions, pins order, decks, shares, the share-token check in one place (`server/access.ts`) with a filtered event stream, MCP tools, guide section, tests (S2, S4, A1, T1 part)
 3. [ ] **Home library UI**: search, sort, filters, grid/list, pinned section with reorder, selection bar, card menu, describe on the card, delete dialog, archive/restore, incremental rendering; not-found page; description in the Document panel (L1–L6)
 4. [ ] **Sharing UI**: Share dialog in the editor, `/s/<token>` view (Live only, view or edit), banners, "no longer shared" (S1–S4)
 5. [ ] **Decks + Play**: deck card and page (reorder, add, remove, ungroup), Play with fit-to-screen slides, keys, click, swipe, counter, full screen, Esc (K1, K2)
@@ -75,3 +75,5 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 ## Log
 
 - 2026-10-02: baseline: typecheck, 170 tests, build pass; sweep (home, data, showcase in edit/live/page/phone/pdf) with 300 seeded documents: 0 problems. `GET /api/docs` with 301 docs: 393,854 bytes.
+- 2026-10-02: M1+M2: core/library.ts (document text, search match + snippet, card shape, arrange), store schema 2 with in-place migration (docs columns, decks, deck_docs, shares), server/access.ts (one check for share tokens, filtered event stream), library/pins/bulk/decks/shares endpoints, MCP tools edgy_docs (search), edgy_organize, edgy_deck, edgy_share, edgy_export, guide Library section. 170 → 185 tests (search, pins, archive/restore, decks, share rules, migration from the v1 schema). Pushed 0ca480c.
+- 2026-10-02: M4/M5 in progress: transport seam (share token header / stream param), Session options (guest view/edit, embedded, pause/resume), Notice page (not found / no longer shared), Description in the Document panel, Share dialog + editor Share button, /s/<token> page (Live only), deck page, Play (fit.ts, keys, click beside, swipe, counter, full screen, Esc). Checked headless: shared view has no brand/mode/home link; Play 1440×900 scale 1.07, phone fits (scrollWidth 390 = clientWidth) and a real touch swipe moves 1→2; input typed on slide 1 kept after → ←; Esc returns to from=.

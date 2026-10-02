@@ -5,6 +5,7 @@ import { flowOf } from '../../core/types';
 import { build } from '../../core/notation';
 import { isOpen, openSections, openTab, panelTitles } from '../../core/containers';
 import { flexOf } from '../editor/look';
+import type { Shape } from '../../core/library';
 
 function fromNotation(n: Json): Cell | null {
   try {
@@ -48,7 +49,48 @@ function Block({ cell, dir }: { cell: Cell; dir: 'row' | 'col' | null }) {
   return <div className={`mm-leaf ${cell.kind}`} style={style} />;
 }
 
-export function Minimap({ root, notation }: { root?: Cell; notation?: Json }) {
+const GROUP = new Set(['row', 'col', 'panel', 'collapsible', 'tabs', 'accordion']);
+
+/** The same picture from a shape (see core/library), which is all the document list carries. */
+function ShapeBlock({ s, dir }: { s: Shape; dir: 'row' | 'col' | null }) {
+  const style = dir ? flexOf(s.s === 'hug' ? 'hug' : s.s) : undefined;
+  if (s.k === 'data' || s.k === 'timer') return null;
+  if (GROUP.has(s.k)) {
+    const kids = s.c ?? [];
+    const open = (i: number) => (Array.isArray(s.o) ? s.o.includes(i) : true);
+    const flow = s.k === 'row' ? 'row' : 'col';
+    return (
+      <div className={`mm-group ${s.k}`} style={style}>
+        {s.k === 'tabs' && (
+          <>
+            <div className="mm-tabbar">{kids.map((_, i) => <span key={i} className={open(i) ? 'is-on' : undefined} />)}</div>
+            {kids.map((c, i) => open(i) && <ShapeBlock key={i} s={c} dir={null} />)}
+          </>
+        )}
+        {s.k === 'accordion' && kids.map((c, i) => (
+          <div key={i} className={`mm-section${open(i) ? ' is-open' : ''}`}>
+            <div className="mm-head" />
+            {open(i) && <ShapeBlock s={c} dir={null} />}
+          </div>
+        ))}
+        {s.k === 'collapsible' && <div className="mm-head" />}
+        {s.k !== 'tabs' && s.k !== 'accordion' && (s.k !== 'collapsible' || s.o !== false) &&
+          kids.map((c, i) => <ShapeBlock key={i} s={c} dir={flow} />)}
+      </div>
+    );
+  }
+  if (s.k === 'fetch') return <div className="mm-leaf fetch" style={{ ...style, maxHeight: 6, background: 'color-mix(in srgb, var(--live) 24%, var(--paper))' }} />;
+  return <div className={`mm-leaf ${s.k}`} style={style} />;
+}
+
+export function Minimap({ root, notation, shape }: { root?: Cell; notation?: Json; shape?: Shape }) {
+  if (shape) {
+    return (
+      <div className="minimap" aria-hidden>
+        <ShapeBlock s={shape} dir={null} />
+      </div>
+    );
+  }
   const cell = root ?? (notation !== undefined ? fromNotation(notation) : null);
   if (!cell) return <div className="minimap" />;
   return (

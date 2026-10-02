@@ -20,6 +20,10 @@ import { type Grant, SHARE_HEADER, allows, grantFor, guestHears } from './access
 import { Hub } from './hub';
 import { type Clock, type Getter, Runner } from './runner';
 import { type Provider, ComposeError, Requests, TARGETS, accept, claudeConfig, compose, context, eventOf, eventProblem, isTarget } from './compose';
+import { type Bundle, type Pictures, composeHtml, dataUri, fileName, forExport, sniffImage } from './export';
+import { getGuarded } from './runner';
+import type { ExportPayload } from '../core/offline';
+import { shapeOf } from '../core/library';
 import { type Access, type Deck, type DocSummary, type Share, type Store, StoreError, isDeckId, shortId } from './store';
 
 const ASSET_TYPES: Record<string, string> = {
@@ -41,6 +45,8 @@ export interface AppOptions {
   clock?: Clock;
   get?: Getter;
   env?: Record<string, string | undefined>;
+  /** The offline build exports are made from (see export.ts). */
+  offline?: () => Promise<Bundle | null>;
 }
 
 export function createApp(store: Store, assetsDir: string, webUrl?: string, opts: AppOptions = {}) {
@@ -137,6 +143,55 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   }
 
   const shareView = (s: Share, origin: string) => ({ ...s, url: `${webUrl ?? origin}/s/${s.token}` });
+
+  /** A picture as data: an upload from this server, or one from the network, checked like a fetch cell's address. */
+  const pictures: Pictures = async (src) => {
+    if (/^data:image\//.test(src)) return src;
+    const local = /^\/assets\/([a-f0-9]{20}\.\w+)$/.exec(src);
+    if (local) {
+      const file = join(assetsDir, local[1]);
+      if (!existsSync(file)) return null;
+      const bytes = readFileSync(file);
+      const type = sniffImage(bytes);
+      return type ? dataUri(type, bytes) : null;
+    }
+    if (!/^https?:\/\//i.test(src)) return null;
+    try {
+      const got = await (opts.get ?? getGuarded)(src, { accept: 'image/*' }, { ms: 10_000, bytes: MAX_ASSET });
+      const type = got.status >= 200 && got.status < 300 && got.bytes ? sniffImage(got.bytes) : null;
+      return type ? dataUri(type, got.bytes!) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  /** What an export of these documents holds: them, the records they read, their fetch answers; nothing else. */
+  async function exportOf(docs: Doc[], deck?: Deck) {
+    const missing: string[] = [];
+    const payload: ExportPayload = { kind: deck ? 'deck' : 'doc', exportedAt: Date.now(), docs: [], shapes: {}, records: {}, fetched: {} };
+    for (const doc of docs) {
+      const computed = evaluate(doc, world(doc.id));
+      payload.docs.push(await forExport(doc, (c) => computed.cells[c.id]?.value, pictures, missing));
+      payload.shapes[doc.id] = shapeOf(doc.root);
+      for (const name of reads(doc.id)) payload.records[name] ??= store.rows(name);
+      const fetched = runner.states(doc.id);
+      if (Object.keys(fetched).length) payload.fetched[doc.id] = fetched;
+    }
+    if (deck) payload.deck = { id: deck.id, title: deck.title, description: deck.description, docs: docs.map((d) => d.id) };
+    return { payload, missing };
+  }
+
+  async function sendExport(c: { body: (b: string, s: 200, h: Record<string, string>) => Response; json: (b: unknown, s: 503) => Response }, docs: Doc[], title: string, deck?: Deck) {
+    const bundle = await opts.offline?.();
+    if (!bundle) return c.json({ error: 'the offline build is missing; run npm run build' }, 503);
+    const { payload, missing } = await exportOf(docs, deck);
+    const html = composeHtml(payload, bundle, title);
+    return c.body(html, 200, {
+      'content-type': 'text/html; charset=utf-8',
+      'content-disposition': `attachment; filename="${fileName(title)}"`,
+      'x-edgy-missing-pictures': String(missing.length),
+    });
+  }
 
   /** What an agent needs to see of a document: structure, values and what is broken. */
   function view(doc: Doc, format: string) {
@@ -452,6 +507,22 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     if (!share) return c.json({ error: 'no such link' }, 404);
     hub.publish(share.doc, { type: 'unshared', token: share.token });
     return c.json(shareView(share, new URL(c.req.url).origin));
+  });
+
+  // ── one self-contained .html file ──
+
+  app.get('/api/docs/:id/export', async (c) => {
+    const doc = store.getDoc(c.req.param('id'));
+    if (!doc) return c.json({ error: 'no such document' }, 404);
+    return sendExport(c, [doc], doc.meta.title);
+  });
+
+  /** A deck's file plays its documents (archived ones left out) as slides. */
+  app.get('/api/decks/:id/export', async (c) => {
+    const deck = store.deck(c.req.param('id'));
+    if (!deck) return c.json({ error: 'no such deck' }, 404);
+    const docs = store.listDocs().filter((d) => deck.docs.includes(d.id) && d.archivedAt == null).sort((a, b) => deck.docs.indexOf(a.id) - deck.docs.indexOf(b.id));
+    return sendExport(c, docs.map((d) => store.getDoc(d.id)!), deck.title, deck);
   });
 
   // ── fetch cells: JSON from an address, fetched here for everyone ──

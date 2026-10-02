@@ -40,6 +40,8 @@ export const realClock: Clock = {
 export interface Got {
   status: number;
   body: string;
+  /** The same answer as bytes (a picture). */
+  bytes?: Buffer;
 }
 
 /** Gets a URL: limits, redirects and the address check are its job. */
@@ -519,7 +521,10 @@ async function getHops(url: string, headers: Record<string, string>, limits: Lim
             reject(new FetchError(`the answer is larger than ${Math.round(limits.bytes / 1024)} KB`));
           } else chunks.push(c);
         });
-        res.on('end', () => resolve({ status, body: Buffer.concat(chunks).toString('utf8') }));
+        res.on('end', () => {
+          const bytes = Buffer.concat(chunks);
+          resolve({ status, body: bytes.toString('utf8'), bytes });
+        });
         res.on('error', reject);
       });
       req.on('timeout', () => req.destroy(new FetchError(`no answer within ${limits.ms / 1000} s`)));

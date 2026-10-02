@@ -1,0 +1,35 @@
+/* A deck being played: the slide fills the screen above a slim bar. */
+
+.play {
+  position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; background: var(--glass);
+  /* Vertical scrolling stays the browser's; a sideways swipe is the player's. */
+  touch-action: pan-y;
+}
+.slide-room {
+  flex: 1 1 auto; min-height: 0; display: flex; justify-content: center; align-items: center;
+  padding: 28px 32px; overflow: hidden; outline: none;
+}
+.slide-room.scrolls { align-items: flex-start; overflow-y: auto; overflow-x: hidden; }
+.slide-box { position: relative; flex: none; }
+.slide-sheet { transform-origin: 0 0; }
+.slide-sheet .sheet { margin: 0; }
+.slide-note { color: var(--muted); }
+.slide-more {
+  position: absolute; bottom: 66px; left: 50%; transform: translateX(-50%); pointer-events: none;
+  font-size: 12px; color: var(--muted); background: var(--raised); border-radius: 999px; padding: 4px 12px; box-shadow: var(--pop);
+}
+
+.play-bar {
+  flex: none; display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-top: 1px solid var(--line); background: var(--panel);
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
+}
+.play-bar .icon-btn { width: 40px; height: 40px; }
+.play-count { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 4.5ch; text-align: center; font-size: 14px; }
+.play-count b { color: var(--ink); }
+.play-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: 600; font-size: 14px; padding: 0 6px; }
+.play-deck { color: var(--muted); font-weight: 500; }
+
+@media (max-width: 720px) {
+  .slide-room { padding: 8px; }
+  .play-deck { display: none; }
+}
