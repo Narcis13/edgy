@@ -82,6 +82,7 @@ export class HttpCloud implements Cloud {
     }
     this.stats.requests++;
     if (res.status === 401 || res.status === 403) throw new Error(`the cloud refused the credentials (HTTP ${res.status}); check TURSO_AUTH_TOKEN`);
+    if (res.status === 413) throw new Error('the cloud refused a request that large (HTTP 413)');
     if (!res.ok) throw new CloudDown(`the cloud answered HTTP ${res.status}`);
     const json = (await res.json()) as { results: ({ type: 'ok'; response: { type: string; result?: { cols: { name: string }[]; rows: Hrana[][]; rows_read?: number; rows_written?: number } } } | { type: 'error'; error: { message: string } })[] };
     const out: Result[] = [];
@@ -105,6 +106,8 @@ export class LocalCloud implements Cloud {
   readonly stats = { requests: 0, rowsRead: 0, rowsWritten: 0 };
   readonly db: DatabaseSync;
   down = false;
+  /** Tests: a request this says yes to breaks off before it runs, as a dropped connection would. */
+  failIf: ((stmts: Stmt[]) => boolean) | null = null;
 
   constructor(file = ':memory:') {
     this.db = new DatabaseSync(file);
@@ -114,7 +117,18 @@ export class LocalCloud implements Cloud {
     // An answer never arrives in the same tick, as over the network.
     await new Promise((r) => setImmediate(r));
     if (this.down) throw new CloudDown('the cloud did not answer (offline)');
+    if (this.failIf?.(stmts)) throw new CloudDown('the connection broke off');
     this.stats.requests++;
+    try {
+      return this.runAll(stmts);
+    } catch (e) {
+      // As a request that breaks off does over the network: a transaction it opened ends.
+      try { this.db.exec('ROLLBACK'); } catch { /* none open */ }
+      throw e;
+    }
+  }
+
+  private runAll(stmts: Stmt[]): Result[] {
     return stmts.map((s) => {
       const st = this.db.prepare(s.sql);
       const args = (s.args ?? []) as (string | number | null | Uint8Array)[];

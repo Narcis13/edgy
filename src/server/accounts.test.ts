@@ -468,3 +468,11 @@ test("a viewer can't take someone else's tab out of Live", async () => {
   assert.equal(s.runner.isLive(id), true, 'Ana is still in Live');
   await res.body?.cancel();
 });
+
+test("a proxy's own Authorization header leaves the session cookie to speak", async () => {
+  const s = server();
+  const a = await s.signup('ana@example.test', 'Ana');
+  const r = await s.call('GET', '/api/me', undefined, { ...a.cookie, authorization: 'Basic dXNlcjpwYXNz' });
+  assert.equal(r.status, 200);
+  assert.equal((await s.call('GET', '/api/me', undefined, { authorization: 'Bearer edgy_nope' })).status, 401, 'an edgy key that is wrong is still refused');
+});

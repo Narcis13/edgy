@@ -17,7 +17,7 @@
 // rest is last-writer-wins, in cloud order. Deleted things stay deleted.
 
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Actor, Doc, Json, Op } from '../core/types';
 import { applyOps } from '../core/ops';
@@ -77,6 +77,8 @@ export const CLOUD_SCHEMA: Stmt[] = [
   { sql: 'CREATE INDEX IF NOT EXISTS edgy_log_space ON edgy_log (space, seq)' },
   { sql: 'CREATE TABLE IF NOT EXISTS edgy_accounts (id TEXT PRIMARY KEY, email TEXT UNIQUE, body TEXT NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER)' },
   { sql: 'CREATE TABLE IF NOT EXISTS edgy_assets (file TEXT PRIMARY KEY, type TEXT NOT NULL, bytes BLOB NOT NULL)' },
+  // Which database this is: a file that synced with another one starts again (see `connect`).
+  { sql: 'CREATE TABLE IF NOT EXISTS edgy_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)' },
 ];
 
 const insert = (space: string, oid: string, kind: string, key: string, origin: string, body: unknown): Stmt => ({
@@ -102,6 +104,7 @@ export class Sync {
   private lastError: unknown = null;
   private lastSyncAt: number | null = null;
   private conflicts = 0;
+  private pushing = false;
   private skipped = 0;
 
   constructor(
@@ -113,6 +116,11 @@ export class Sync {
     let origin = store.syncMeta('origin');
     if (!origin) store.setSyncMeta('origin', (origin = randomBytes(6).toString('base64url')));
     this.origin = origin;
+    // Pictures uploaded before sync was on go up once.
+    if (!store.syncMeta('assets-queued') && opts.assetsDir && existsSync(opts.assetsDir)) {
+      for (const file of readdirSync(opts.assetsDir)) if (/^[a-f0-9]{20}\.\w+$/.test(file)) store.assetToSend(file);
+      store.setSyncMeta('assets-queued', '1');
+    }
   }
 
   // ── when ──
@@ -143,7 +151,7 @@ export class Sync {
     if (this.timer) clearTimeout(this.timer);
     const every = this.opts.interval ?? 3000;
     // While the cloud can't be reached, try less often.
-    this.timer = setTimeout(() => void this.round(), this.lastError instanceof CloudDown ? Math.max(every, 30_000) : every);
+    this.timer = setTimeout(() => void this.round(), this.lastError ? Math.max(every, 30_000) : every);
   }
 
   /** One push and pull (or wait for the one under way, and run once more after it). */
@@ -176,7 +184,7 @@ export class Sync {
     const pending = this.store.pendingCount(space);
     const down = this.lastError instanceof CloudDown;
     return {
-      state: down ? 'offline' : this.lastError ? 'error' : this.running || pending > 0 ? 'syncing' : 'synced',
+      state: down ? 'offline' : this.lastError ? 'error' : this.pushing || pending > 0 ? 'syncing' : 'synced',
       pending,
       lastSyncAt: this.lastSyncAt,
       error: this.lastError ? (this.lastError instanceof Error ? this.lastError.message : String(this.lastError)) : null,
@@ -187,23 +195,32 @@ export class Sync {
   }
 
   private async once(): Promise<void> {
-    if (!this.schemaReady) {
-      await this.cloud.run(CLOUD_SCHEMA);
-      this.schemaReady = true;
-    }
+    await this.connect();
     await this.removals();
     await this.pull();
     if (await this.push()) await this.pull();
+  }
+
+  /** The cloud's tables, once; and if it is not the database this file last synced with, start again. */
+  private async connect(): Promise<void> {
+    if (this.schemaReady) return;
+    const results = await this.cloud.run([
+      ...CLOUD_SCHEMA,
+      { sql: "INSERT INTO edgy_meta (key, value) VALUES ('id', ?) ON CONFLICT (key) DO NOTHING", args: [randomBytes(9).toString('base64url')] },
+      { sql: "SELECT value FROM edgy_meta WHERE key = 'id'" },
+    ]);
+    const id = String(results[results.length - 1].rows[0]?.value ?? '');
+    const known = this.store.syncMeta('cloud-id');
+    if (known && known !== id) this.store.resetSync();
+    if (known !== id) this.store.setSyncMeta('cloud-id', id);
+    this.schemaReady = true;
   }
 
   // ── accounts in the cloud ──
 
   /** The account with this email in the cloud: how a new machine signs someone in. */
   async findAccount(email: string): Promise<{ id: string; email: string; name: string; color: string; theme: string | null; password: string | null; createdAt: number } | null> {
-    if (!this.schemaReady) {
-      await this.cloud.run(CLOUD_SCHEMA);
-      this.schemaReady = true;
-    }
+    await this.connect();
     const [r] = await this.cloud.run([{ sql: 'SELECT id, email, body FROM edgy_accounts WHERE email = ? AND deleted_at IS NULL', args: [email] }]);
     const row = r.rows[0];
     if (!row) return null;
@@ -240,7 +257,13 @@ export class Sync {
 
   /** Send what changed here. Returns whether anything went. */
   private async push(): Promise<boolean> {
-    const stmts: Stmt[] = [];
+    // Units go whole into one request: a document's state and its history are never split.
+    const units: Stmt[][] = [];
+    let stmts: Stmt[] = [];
+    const unit = () => {
+      if (stmts.length) units.push(stmts);
+      stmts = [];
+    };
     const after: (() => void)[] = [];
     const accounts: { id: string; body: { email: string | null } }[] = [];
     const store = this.store;
@@ -255,10 +278,12 @@ export class Sync {
       for (let i = 0; i < hist.length; i += HISTORY_CHUNK) {
         stmts.push(insert(owner, `hist:${id}:${doc.v}:${i / HISTORY_CHUNK}`, 'hist', id, this.origin, { base: doc.v, entries: hist.slice(i, i + HISTORY_CHUNK) }));
       }
+      unit();
     }
     // Ops after what the cloud confirmed, in order.
     for (const p of store.pendingOps()) {
       stmts.push(insert(p.space, p.oid, 'op', p.doc, this.origin, { v: p.v, ts: p.ts, actor: p.actor, ops: p.ops }));
+      unit();
     }
     // The latest state of everything else that changed.
     for (const d of store.dirtyItems()) {
@@ -268,12 +293,28 @@ export class Sync {
         if (d.kind === 'account' && body && typeof body === 'object' && 'email' in body) accounts.push({ id: d.key, body: body as { email: string | null } });
       }
       after.push(() => store.clearDirty(d.kind, d.key, d.n));
+      unit();
     }
-    if (!stmts.length && !store.unsentAssets().length) {
+    if (!units.length && !store.unsentAssets().length) {
       for (const fn of after) fn();
       return false;
     }
-    for (let i = 0; i < stmts.length; i += STMTS_PER_REQUEST) await this.cloud.run(stmts.slice(i, i + STMTS_PER_REQUEST));
+    this.pushing = true;
+    try {
+      // Requests of whole units, each a transaction: a request that breaks off leaves nothing half sent.
+      let batch: Stmt[] = [];
+      const send = async () => {
+        if (batch.length) await this.cloud.run([{ sql: 'BEGIN' }, ...batch, { sql: 'COMMIT' }]);
+        batch = [];
+      };
+      for (const u of units) {
+        if (batch.length && batch.length + u.length > STMTS_PER_REQUEST) await send();
+        batch.push(...u);
+      }
+      await send();
+    } finally {
+      this.pushing = false;
+    }
     for (const fn of after) fn();
     // How another machine finds the account by email. Each on its own: an email another account has there is refused
     // alone (the profile still travels in the log), and is reported.
@@ -293,7 +334,13 @@ export class Sync {
       const path = this.opts.assetsDir ? join(this.opts.assetsDir, file) : '';
       if (path && existsSync(path)) {
         const type = ASSET_TYPES[file.split('.').pop() ?? ''] ?? 'application/octet-stream';
-        await this.cloud.run([{ sql: 'INSERT INTO edgy_assets (file, type, bytes) VALUES (?, ?, ?) ON CONFLICT (file) DO NOTHING', args: [file, type, new Uint8Array(readFileSync(path))] }]);
+        try {
+          await this.cloud.run([{ sql: 'INSERT INTO edgy_assets (file, type, bytes) VALUES (?, ?, ?) ON CONFLICT (file) DO NOTHING', args: [file, type, new Uint8Array(readFileSync(path))] }]);
+        } catch (e) {
+          if (e instanceof CloudDown) throw e;
+          // One picture the cloud won't take (too large, say) doesn't hold up the rest.
+          console.error(`sync: the picture ${file} was not sent: ${e instanceof Error ? e.message : e}`);
+        }
       }
       store.assetSent(file);
     }
@@ -504,6 +551,10 @@ export class Sync {
     const s = this.store;
     const sd = s.syncDoc(docId);
     if (!sd || sd.space !== space || s.isGone('doc', docId)) return;
+    // A page pulled again (after a crash, say): what is already confirmed here is not news.
+    const confirmed = s.confirmedOids(docId);
+    rows = rows.filter((r) => !confirmed.has(r.oid));
+    if (!rows.length) return;
     const pending = s.pendingOps(docId);
     const read = (r: LogRow) => JSON.parse(r.body) as { v: number; ts: number; actor: Actor; ops: Op[] };
     // One step in cloud order; an op that no longer applies is a conflict: a version that changes nothing.

@@ -218,6 +218,33 @@ Kept as they are, on purpose:
 - With sync, sign-in for an email this machine doesn't know takes a cloud lookup (slower), so timing tells whether
   the email is local; it doesn't tell whether the account exists.
 
+### From the code review
+
+A sonnet reviewer read the whole diff and reproduced each finding with scripts. Fixed, with tests in `sync.test.ts`
+and `accounts.test.ts`:
+
+- A first upload split across requests could lose a document's history: a document's state and history now always go
+  in one request, and each request is a transaction (a request that breaks off leaves nothing half sent).
+- A document deleted while its first upload was on its way came back on other machines: deleting always sends the
+  deletion.
+- Pointed at a new or restored cloud database, a machine stopped syncing: the cloud carries an id (`edgy_meta`); a
+  different one starts the machine's sync again from nothing.
+- A page pulled twice applied ops twice: confirmed ops are recognised and left alone.
+- Pictures uploaded before sync was on now go up once; a picture the cloud refuses (too large) doesn't stop a round;
+  "Syncing" shows only while changes wait or go, not during idle pulls; any failed round waits 30 s before the next.
+- Any `Authorization` header that wasn't an edgy key hid the session cookie (hosting behind basic auth): only
+  `Bearer edgy_…` is a key now. Sign-in's 10 s wait timer is cleared; two sign-ins or sign-ups at once no longer
+  answer 500.
+- The editor's collection pickers listed the signed-in person's collections, not the document's: `GET /api/data?doc=`
+  lists what the document may name; caches are dropped on sign-out. A sync reset keeps the cell being typed in open.
+- `edgy_data` takes `doc`, to read and write records through a document shared with the key's person.
+
+Kept: deleting an account isn't one transaction (each document's deletion is; a failure midway leaves the account,
+which can be deleted again); a sync reset clears undo (its entries refer to a history that was replaced);
+`useLibrary` asking again for the shared count and `summary(id)` scanning link and access tables are cheap at this
+size. The web `Session` has no unit tests for the new events; they are covered by the driven evidence (together,
+viewer, revoked, sync screenshots).
+
 ## Blocked
 
 - *(none)*

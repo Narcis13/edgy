@@ -382,7 +382,8 @@ export class Session {
       const live = indexTree(doc.root).byId;
       this.patch({
         doc: this.rebase(), unsaved: this.pending.length, canUndo: false, canRedo: false,
-        selection: this.s.selection.filter((id) => live.has(id)), editing: null,
+        // A cell being typed in stays open if it is still there.
+        selection: this.s.selection.filter((id) => live.has(id)), editing: this.s.editing && live.has(this.s.editing) ? this.s.editing : null,
         log: log.map((e) => ({ ...e, mine: isYou(e.actor, this.you) })),
       }, true);
       for (const name of Object.keys(this.s.collections)) void this.loadCollection(name);

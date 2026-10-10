@@ -292,10 +292,10 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     if (internal) return { kind: 'guest', level: 'edit', doc: internal.doc, token: '', collections: reaches(internal.doc) };
     const token = c.req.header(SHARE_HEADER) ?? c.req.query('share');
     if (token) return guestFor(store, token, reaches);
-    const auth = c.req.header('authorization');
-    if (auth) {
-      const m = /^Bearer\s+(\S+)$/i.exec(auth);
-      const key = m && m[1].startsWith(KEY_PREFIX) ? store.keyByHash(digest(m[1])) : null;
+    // Only an edgy key is a key: another Authorization (a proxy's basic auth, say) leaves the cookie to speak.
+    const m = /^Bearer\s+(\S+)$/i.exec(c.req.header('authorization') ?? '');
+    if (m && m[1].startsWith(KEY_PREFIX)) {
+      const key = store.keyByHash(digest(m[1]));
       if (!key) return { status: 401, error: 'this API key is not valid; make one in your profile (Profile → API keys)', reason: 'signin' };
       if (key.revokedAt != null) return { status: 401, error: 'this API key was revoked; make a new one in your profile', reason: 'signin' };
       const user = store.user(key.userId);
@@ -649,7 +649,10 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     if (elsewhere === 'unknown') return c.json({ error: 'The cloud cannot be reached to check this email. Try again in a moment.' }, 503);
     if (elsewhere) return c.json({ error: 'An account with this email already exists. Sign in instead.' }, 409);
     const name = cleanName(body.name, 60) || email.split('@')[0];
-    const user = store.createUser({ email, name, color: colorFor(email), password: await hashPassword(body.password as string) });
+    const hash = await hashPassword(body.password as string);
+    // Someone else may have taken the email while this one was being checked and hashed.
+    if (store.userByEmail(email)) return c.json({ error: 'An account with this email already exists. Sign in instead.' }, 409);
+    const user = store.createUser({ email, name, color: colorFor(email), password: hash });
     // Someone new starts with the tour, unless (the first account) they own what was here before.
     if (!store.listDocs(user.id).length) create(undefined, 'tour', undefined, { kind: 'agent', name: 'Edgy' }, user.id);
     signIn(c, user);
@@ -673,11 +676,14 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     if (!user && sync && email) {
       const there = await sync.findAccount(email).catch(() => null);
       if (there?.password && (await verifyPassword(password, there.password))) {
-        user = store.createUser({ id: there.id, email, name: there.name, color: there.color, password: there.password, createdAt: there.createdAt, fromCloud: true });
+        // Two sign-ins at once: the first one brings the account down, the second finds it here.
+        user = store.user(there.id) ?? store.createUser({ id: there.id, email, name: there.name, color: there.color, password: there.password, createdAt: there.createdAt, fromCloud: true });
         if (there.theme === 'light' || there.theme === 'dark') store.quietly(() => store.updateUser(user!.id, { theme: there.theme as 'light' | 'dark' }));
         ok = true;
         // Bring its documents down before showing the library (or carry on, if that takes long).
-        await Promise.race([sync.round(), new Promise((r) => setTimeout(r, 10_000))]);
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([sync.round(), new Promise((r) => { timer = setTimeout(r, 10_000); })]);
+        clearTimeout(timer);
       }
     }
     if (!user || !ok) {
@@ -1306,7 +1312,16 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
 
   const dataOwner = (c: C) => c.get('checked').dataOwner ?? null;
 
-  app.get('/api/data', need('user'), (c) => c.json(store.collections(myId(c))));
+  // Your collections; with ?doc=, the ones that document may name (all its owner's for the owner, those it reaches for others).
+  app.get('/api/data', need('user'), (c) => {
+    const doc = c.req.query('doc');
+    if (!doc) return c.json(store.collections(myId(c)));
+    const role = store.roleOf(doc, myId(c)!);
+    if (!role) return c.json({ error: 'no such document' }, 404);
+    const owner = store.docOwner(doc) ?? null;
+    const names = new Set(collectionsFor(doc, role));
+    return c.json(store.collections(owner).filter((x) => names.has(x.name)));
+  });
   app.get('/api/data/:name', need({ data: 'read', link: 'view' }), (c) => c.json(store.rows(dataOwner(c), c.req.param('name'))));
 
   app.post('/api/data/:name', need({ data: 'write', link: 'edit' }), async (c) => {

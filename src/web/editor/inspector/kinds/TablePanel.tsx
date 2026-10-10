@@ -110,11 +110,13 @@ function TableData({ e, rows, source }: { e: Edit; rows: Rec[]; source: Source }
 function CollectionPick({ current, onPick }: { current: string | null; onPick: (name: string) => void }) {
   const [list, setList] = useState<{ name: string; count: number }[] | null>(null);
   const [adding, setAdding] = useState(false);
+  const id = useSession().id;
   useEffect(() => {
     let live = true;
-    api<{ name: string; count: number }[]>('GET', '/api/data').then((l) => live && setList(l)).catch(() => live && setList([]));
+    // The collections this document may name: the owner's own, or those it reaches for an editor.
+    api<{ name: string; count: number }[]>('GET', `/api/data?doc=${encodeURIComponent(id)}`).then((l) => live && setList(l)).catch(() => live && setList([]));
     return () => { live = false; };
-  }, []);
+  }, [id]);
   const names = list ?? [];
   return (
     <>

@@ -417,8 +417,8 @@ export class Store {
       // The pinned close up behind it.
       if (ok) this.renumberPins(owner ?? null);
       if (ok) this.gone('doc', id);
-      if (ok && synced) this.dirty('doc', id, owner ?? null);
-      // Never sent: nothing to take back, and nothing left to send.
+      // Sent or on its way (a push may be in flight): other machines must hear it went.
+      if (ok) this.dirty('doc', id, owner ?? null);
       if (ok && !synced) this.db.prepare("DELETE FROM sync_dirty WHERE kind = 'doclib' AND key = ?").run(id);
       this.db.exec('COMMIT');
     } catch (e) {
@@ -1265,6 +1265,29 @@ export class Store {
 
   assetSent(file: string): void {
     this.db.prepare('DELETE FROM sync_assets WHERE file = ?').run(file);
+  }
+
+  /**
+   * The cloud is another database than the one this file synced with (new, or restored):
+   * start again, as if never synced. Everything here goes up; what the cloud has comes down.
+   */
+  resetSync(): void {
+    this.db.exec('BEGIN');
+    try {
+      this.db.prepare('UPDATE sync_spaces SET cursor = 0, ready = 0').run();
+      this.db.prepare('DELETE FROM sync_docs').run();
+      this.db.prepare("DELETE FROM sync_meta WHERE key LIKE 'base:%'").run();
+      this.db.prepare('UPDATE ops SET seq = NULL').run();
+      this.db.exec('COMMIT');
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      throw e;
+    }
+  }
+
+  /** The ops of a document the cloud already confirmed, by oid. */
+  confirmedOids(docId: string): Set<string> {
+    return new Set(this.db.prepare('SELECT oid FROM ops WHERE doc_id = ? AND seq IS NOT NULL AND oid IS NOT NULL').all(docId).map((r) => r.oid as string));
   }
 
   /** Forget an account's sync state (it was deleted). */

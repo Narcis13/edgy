@@ -12,7 +12,8 @@ import { describeDiagram, elementsOf } from '../../core/diagram';
 import { type Computed, display, plainValue } from '../../core/engine';
 import { walk } from '../../core/tree';
 import { api } from '../lib/api';
-import { useS } from '../editor/ctx';
+import { useS, useSession } from '../editor/ctx';
+import { onSignedOut } from '../lib/api';
 import { kindOption } from '../editor/KindMenu';
 import type { CellInfo } from './docs';
 import type { Known } from './lexer';
@@ -88,24 +89,32 @@ export function useDocInfo(): DocInfo {
   }, [doc, computed]);
 }
 
-let collections: Promise<string[]> | null = null;
+/** Per document: the collections it may name (its owner's, or those it reaches for someone else). */
+const collections = new Map<string, Promise<string[]>>();
+// Someone else may sign in in this tab next: what this person could name is not theirs.
+onSignedOut(() => collections.clear());
 
-/** The collection names on the server, fetched once per page. */
+/** The collection names this document may use, fetched once per document. */
 export function useCollections(): string[] {
   const loaded = useS((s) => s.collections);
+  const id = useSession().id;
   const [names, setNames] = useState<string[]>([]);
   useEffect(() => {
     let alive = true;
-    collections ??= api<{ name: string; count: number }[]>('GET', '/api/data')
-      .then((list) => list.map((c) => c.name))
-      .catch(() => {
-        collections = null;
-        return [];
-      });
-    void collections.then((n) => alive && setNames(n));
+    let asked = collections.get(id);
+    if (!asked) {
+      asked = api<{ name: string; count: number }[]>('GET', `/api/data?doc=${encodeURIComponent(id)}`)
+        .then((list) => list.map((c) => c.name))
+        .catch(() => {
+          collections.delete(id);
+          return [];
+        });
+      collections.set(id, asked);
+    }
+    void asked.then((n) => alive && setNames(n));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [id]);
   return useMemo(() => [...new Set([...names, ...Object.keys(loaded)])].sort(), [names, loaded]);
 }

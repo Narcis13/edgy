@@ -264,22 +264,24 @@ server.registerTool('edgy_eval', {
 }));
 
 server.registerTool('edgy_data', {
-  description: 'Work with the collections documents save records into. action: "collections" lists them, "rows" reads one, "insert" adds a record, "update" merges the fields of record into the record with id, "delete" removes a record by id, "clear" empties a collection.',
+  description: 'Work with the collections documents save records into. Collections belong to an account: without doc these are your own; with doc (an id or title of a document someone shared with you, or your own) they are the collections that document reads, its owner\'s. action: "collections" lists them, "rows" reads one, "insert" adds a record, "update" merges the fields of record into the record with id, "delete" removes a record by id, "clear" empties a collection.',
   inputSchema: {
     action: z.enum(['collections', 'rows', 'insert', 'update', 'delete', 'clear']),
     collection: z.string().optional(),
     record: z.record(z.string(), z.any()).optional(),
     id: z.string().optional(),
+    doc: z.string().optional().describe('Work through this document: its owner\'s collections, those it reaches'),
   },
-}, safely(async ({ action, collection, record, id }) => {
-  if (action === 'collections') return text(JSON.stringify(await api('GET', '/api/data')));
+}, safely(async ({ action, collection, record, id, doc }) => {
+  const through = doc ? `?doc=${encodeURIComponent(await docId(doc))}` : '';
+  if (action === 'collections') return text(JSON.stringify(await api('GET', `/api/data${through}`)));
   if (!collection) throw new Error('name the collection');
   const path = `/api/data/${encodeURIComponent(collection)}`;
-  if (action === 'rows') return text(JSON.stringify(await api('GET', path)));
-  if (action === 'insert') return text(JSON.stringify(await api('POST', path, { record: record ?? {}, source: { actor } })));
-  if (action === 'update') return text(JSON.stringify(await api('PATCH', `${path}/${encodeURIComponent(id ?? '')}`, { fields: record ?? {} })));
-  if (action === 'delete') return text(JSON.stringify(await api('DELETE', `${path}/${encodeURIComponent(id ?? '')}`)));
-  return text(JSON.stringify(await api('DELETE', path)));
+  if (action === 'rows') return text(JSON.stringify(await api('GET', path + through)));
+  if (action === 'insert') return text(JSON.stringify(await api('POST', path + through, { record: record ?? {}, source: { actor } })));
+  if (action === 'update') return text(JSON.stringify(await api('PATCH', `${path}/${encodeURIComponent(id ?? '')}${through}`, { fields: record ?? {} })));
+  if (action === 'delete') return text(JSON.stringify(await api('DELETE', `${path}/${encodeURIComponent(id ?? '')}${through}`)));
+  return text(JSON.stringify(await api('DELETE', path + through)));
 }));
 
 server.registerTool('edgy_say', {

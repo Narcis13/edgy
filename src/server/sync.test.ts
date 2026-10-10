@@ -8,10 +8,10 @@ import { Store } from './store';
 import { LocalCloud, pipelineUrl } from './cloud';
 
 /** One machine: its own database, the same cloud as the others. Sync runs only when asked (round). */
-function machine(cloud: LocalCloud) {
-  const store = new Store(':memory:');
+function machine(cloud: LocalCloud, store = new Store(':memory:'), cookieFrom?: { cookie: () => Record<string, string> }) {
+  // (A store and a session can be carried over: the same machine pointed at another cloud.)
   const { app, sync } = createApp(store, join(mkdtempSync(join(tmpdir(), 'edgy-')), 'assets'), undefined, { auth: 'accounts', cloud, syncInterval: 0 });
-  let cookie: Record<string, string> = {};
+  let cookie: Record<string, string> = cookieFrom?.cookie() ?? {};
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await app.request(path, {
       method,
@@ -26,7 +26,7 @@ function machine(cloud: LocalCloud) {
   const doc = async (id: string) => (await call('GET', `/api/docs/${id}`)).json;
   const values = async (id: string) => (await call('GET', `/api/docs/${id}/read`)).json.values;
   const log = (id: string) => store.fullLog(id).map((e) => ({ v: e.v, oid: e.oid, ops: e.ops, conflict: e.conflict, who: e.actor.name }));
-  return { store, sync: sync!, call, round, doc, values, log };
+  return { store, sync: sync!, call, round, doc, values, log, cookie: () => cookie };
 }
 
 /** Two machines, one account: made on the first, signed in on the second. */
@@ -229,4 +229,66 @@ test("rows in one account's space never touch another account's things; a row th
   await two.round();
   assert.equal(two.sync.status().skipped, 1);
   assert.equal(two.store.getDoc(id)!.root.children![0].value, 42, 'the edit after the bad row arrived');
+});
+
+// ── from the code review ──
+
+test('a first upload that breaks off midway leaves nothing half sent: every document arrives with its whole history', async () => {
+  const { cloud, one, two } = await pair();
+  cloud.down = true;
+  const ids: string[] = [];
+  for (let i = 0; i < 40; i++) {
+    const id = (await one.call('POST', '/api/docs', { title: `Doc ${i}`, root: ROOT })).json.id;
+    for (let n = 2; n < 6; n++) await one.call('POST', `/api/docs/${id}/ops`, { ops: [['set', 'qty', 'value', n]] });
+    ids.push(id);
+  }
+  cloud.down = false;
+  // The second request of the upload breaks off.
+  let pushes = 0;
+  cloud.failIf = (stmts) => stmts[0]?.sql === 'BEGIN' && ++pushes === 2;
+  await one.round().catch(() => {});
+  cloud.failIf = null;
+  await settle(one, two);
+  for (const id of ids) assert.deepEqual(two.log(id), one.log(id), `${id}: the same history on both`);
+});
+
+test('a document deleted while its first upload is on its way stays deleted everywhere', async () => {
+  const { cloud, one, two } = await pair();
+  const id = (await one.call('POST', '/api/docs', { title: 'Zombie' })).json.id;
+  // The upload goes; the pull that would confirm it breaks off.
+  let sent = false;
+  cloud.failIf = (stmts) => {
+    if (stmts.some((s) => /INSERT INTO edgy_log/.test(s.sql) && s.args?.[2] === 'create')) sent = true;
+    return sent && /^SELECT seq/.test(stmts[0]?.sql ?? '');
+  };
+  await one.round().catch(() => {});
+  cloud.failIf = null;
+  await one.call('DELETE', `/api/docs/${id}`);
+  await settle(one, two);
+  assert.equal((await two.call('GET', `/api/docs/${id}`)).status, 404);
+});
+
+test('pointed at a new cloud database, a machine sends everything again', async () => {
+  const { one } = await pair();
+  for (const t of ['A', 'B', 'C']) await one.call('POST', '/api/docs', { title: t, root: ROOT });
+  await one.round();
+  const fresh = new LocalCloud();
+  const again = machine(fresh, one.store, one);
+  await again.round();
+  await again.round();
+  const creates = new Set(fresh.db.prepare("SELECT key FROM edgy_log WHERE kind = 'create'").all().map((r: any) => r.key));
+  assert.equal(creates.size, one.store.listDocs(one.store.users()[0].id).length, 'every document is in the new cloud');
+  assert.equal(again.sync.status().pending, 0);
+});
+
+test('a page pulled again is not news: nothing is applied twice or skipped', async () => {
+  const { one, two } = await pair();
+  const id = (await one.call('POST', '/api/docs', { title: 'Twice', root: ROOT })).json.id;
+  await one.call('POST', `/api/docs/${id}/ops`, { ops: [['set', 'qty', 'value', 3]] });
+  await settle(one, two);
+  const before = two.log(id);
+  for (const s of two.store.spaces()) two.store.setCursor(s.space, 0);
+  await two.round();
+  assert.deepEqual(two.log(id), before);
+  assert.equal(two.sync.status().skipped, 0);
 });

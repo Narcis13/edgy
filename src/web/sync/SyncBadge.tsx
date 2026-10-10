@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { Cloud, CloudOff, RefreshCw } from 'lucide-react';
-import { api } from '../lib/api';
+import { api, onSignedOut } from '../lib/api';
 import './sync.css';
 
 export interface SyncStatus {
@@ -30,6 +30,8 @@ export function describeSync(s: SyncStatus): { label: string; title: string } {
 let shared: SyncStatus | null = null;
 const listeners = new Set<(s: SyncStatus) => void>();
 let timer: ReturnType<typeof setInterval> | null = null;
+// Another person may sign in in this tab next.
+onSignedOut(() => { shared = null; });
 
 async function poll(now = false): Promise<void> {
   try {
