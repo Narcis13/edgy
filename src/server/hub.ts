@@ -19,7 +19,27 @@ export type DocEvent =
   | { type: 'fetch'; cell: string; state: FetchState }
   | { type: 'deleted' }
   /** A share link was turned off; whoever opened the document with it is told. */
-  | { type: 'unshared'; token: string };
+  | { type: 'unshared'; token: string }
+  /** Who has the document open now, and the cell each has selected. */
+  | { type: 'people'; people: Present[] }
+  /** This stream's access changed (a new role), or ended (revoked: it closes after this). */
+  | { type: 'access'; role: string }
+  | { type: 'revoked'; why: 'access' | 'signedout' | 'deleted' }
+  /** The document was replaced (sync rewrote its history): load it again. */
+  | { type: 'reset'; v: number };
+
+/** Someone with the document open: one entry per person, however many tabs. */
+export interface Present {
+  id: string;
+  name: string;
+  color: string;
+  kind: 'human' | 'agent';
+  /** The cell they have selected in Edit, or null. */
+  selected: string | null;
+  mode: string;
+  /** Their browser session ids (so a tab can tell itself apart from the person's other tabs). */
+  clients: string[];
+}
 
 type Listener = (e: DocEvent) => void;
 
@@ -44,9 +64,9 @@ export class Hub {
     for (const fn of [...(this.rooms.get(docId) ?? [])]) fn(e);
   }
 
-  /** Data belongs to no single document, so everyone hears about it. */
-  publishAll(e: DocEvent): void {
-    for (const id of [...this.rooms.keys()]) this.publish(id, e);
+  /** The documents someone is watching now. */
+  roomIds(): string[] {
+    return [...this.rooms.keys()];
   }
 
   /** An agent is waiting on this document; call the returned function when it stops. */

@@ -148,7 +148,12 @@ export type Op = [string, ...Json[]];
 export interface Actor {
   kind: 'human' | 'agent';
   name: string;
+  /** A person's account id; an agent's is the person it acts for. Browsers' own session ids before accounts. */
   id?: string;
+  /** An agent acting for a person (with their API key): that person's name. */
+  for?: string;
+  /** Someone who came in by a share link. */
+  guest?: boolean;
 }
 
 const GROUPS = new Set<string>(GROUP_KINDS);

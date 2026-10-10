@@ -75,12 +75,22 @@ export class FetchError extends Error {
   }
 }
 
+/** Records, as a document reads and writes them: its owner's collections, the ones it reaches (see access.ts). */
+export interface DocData {
+  rows(doc: string, collection: string): unknown[];
+  /** Carry out insert, update, delete or clear; false when the document may not. */
+  write(doc: string, e: { type: string } & Record<string, unknown>): boolean;
+  /** Whether the server's secrets (EDGY_SECRET_…) may go out with this document's fetches. */
+  secrets(doc: string): boolean;
+}
+
 export interface RunnerDeps {
   store: Store;
   hub: Hub;
+  data: DocData;
   clock?: Clock;
-  /** Answers a path on this server ("/api/demo/rate") in process. */
-  local?: (path: string, headers: Record<string, string>) => Promise<Got>;
+  /** Answers a path on this server ("/api/demo/rate") in process, as the document. */
+  local?: (doc: string, path: string, headers: Record<string, string>) => Promise<Got>;
   /** Gets an http(s) address; by default with node's http, refusing private addresses. */
   get?: Getter;
   env?: Record<string, string | undefined>;
@@ -244,7 +254,7 @@ export class Runner {
 
   world(doc: string): World {
     const states = this.fetched.get(doc);
-    return { rows: (name) => this.deps.store.rows(name), now: this.clock.now(), fetched: (id) => states?.get(id) };
+    return { rows: (name) => this.deps.data.rows(doc, name), now: this.clock.now(), fetched: (id) => states?.get(id) };
   }
 
   /** Fetch states of a document, by cell id, for browsers and agents. */
@@ -286,15 +296,8 @@ export class Runner {
 
   /** Records and fetches a handler asked for. */
   effect(docId: string, e: { type: string } & Record<string, unknown>): void {
-    const { store, hub } = this.deps;
-    const plain = (v: unknown) => JSON.parse(JSON.stringify(v ?? null)) as Record<string, Json>;
-    if (e.type === 'insert') store.insert(String(e.collection), plain(e.record), { doc: docId, events: true });
-    else if (e.type === 'update') store.update(String(e.collection), String(e.id), plain(e.fields));
-    else if (e.type === 'delete') store.deleteRow(String(e.collection), String(e.id));
-    else if (e.type === 'clear') store.clear(String(e.collection));
-    else if (e.type === 'refresh') return void this.refresh(docId, String(e.cell));
-    else return;
-    hub.publishAll({ type: 'data', collection: String(e.collection) });
+    if (e.type === 'refresh') return void this.refresh(docId, String(e.cell));
+    if (['insert', 'update', 'delete', 'clear'].includes(e.type)) this.deps.data.write(docId, e);
   }
 
   // ── fetching ──
@@ -358,7 +361,7 @@ export class Runner {
     let st: FetchState & { url?: string };
     let events: Fired[];
     try {
-      const data = await this.getJson(url, cell.headers);
+      const data = await this.getJson(url, cell.headers, docId);
       st = { state: 'ready', data, at: this.clock.now(), url };
       events = [{ cell: cellId, name: 'load', data: { data, value: data } }];
     } catch (e) {
@@ -378,7 +381,7 @@ export class Runner {
   }
 
   /** The secret a header names ("secret:RATES_KEY" → EDGY_SECRET_RATES_KEY), never stored in the document. */
-  private headers(h: Json | undefined): Record<string, string> {
+  private headers(h: Json | undefined, docId?: string): Record<string, string> {
     const out: Record<string, string> = { accept: 'application/json' };
     if (!h || typeof h !== 'object' || Array.isArray(h)) return out;
     const env = this.deps.env ?? process.env;
@@ -386,6 +389,7 @@ export class Runner {
       if (typeof v !== 'string') continue;
       const m = /^secret:([A-Za-z_][\w]*)$/.exec(v.trim());
       if (m) {
+        if (docId && !this.deps.data.secrets(docId)) throw new FetchError(`only documents of this server's owner can use its secrets (${m[1]})`);
         const s = env[`EDGY_SECRET_${m[1]}`];
         if (!s) throw new FetchError(`the secret ${m[1]} is not set on this server (EDGY_SECRET_${m[1]})`);
         out[k.toLowerCase()] = s;
@@ -394,15 +398,15 @@ export class Runner {
     return out;
   }
 
-  async getJson(url: string, headers?: Json): Promise<Json> {
+  async getJson(url: string, headers?: Json, docId = ''): Promise<Json> {
     if (!url) throw new FetchError('the fetch has no address');
-    const h = this.headers(headers);
+    const h = this.headers(headers, docId || undefined);
     let got: Got;
     if (url.startsWith('/')) {
       if (!this.deps.local) throw new FetchError('this server cannot answer its own paths');
       // Only read-only answers that end: saved records and the demo answers, never streams or another document.
       if (!LOCAL_PATHS.some((re) => re.test(url))) throw new FetchError('a path on this server can be /api/data/<collection> or /api/demo/…');
-      got = await withDeadline(this.deps.local(url, h), this.limits.ms);
+      got = await withDeadline(this.deps.local(docId, url, h), this.limits.ms);
     } else {
       let u: URL;
       try { u = new URL(url); } catch { throw new FetchError(`"${url}" is not an address`); }

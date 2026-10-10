@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createApp } from './app';
 import { SCHEMA, Store } from './store';
-import { allows, grantFor } from './access';
+import { check } from './access';
 
 function api(store = new Store(':memory:')) {
 
@@ -64,7 +64,7 @@ test('a description is part of the document: an op in its history, readable insi
   assert.equal((await call('GET', `/api/docs/${id}`)).json.meta.description, 'Beds, seeds and the watering rota');
   const log = (await call('GET', `/api/docs/${id}/log`)).json;
   assert.deepEqual(log.at(-1).ops, [['meta', 'description', 'Beds, seeds and the watering rota']]);
-  assert.equal(log.at(-1).actor.name, 'Ana');
+  assert.equal(log.at(-1).actor.name, 'You', 'the server names who did it: the account, not what the request says');
   // Set from inside the document, with an op, the library sees it too.
   await call('POST', `/api/docs/${id}/ops`, { ops: [['meta', 'description', 'Only seeds now']] });
   assert.equal((await call('GET', '/api/docs')).json.find((d: any) => d.id === id).description, 'Only seeds now');
@@ -190,21 +190,27 @@ test('share links: long random tokens; view reads only its document; edit change
   assert.equal((await call('GET', `/api/docs/${id}`, undefined, as(view.token))).status, 410, 'the old one stays off');
 });
 
-test('the access rules on their own', () => {
+test('the access rules for a link, on their own', async () => {
   const store = new Store(':memory:');
-  assert.deepEqual(grantFor(store, undefined), { level: 'owner' });
-  const grant = { level: 'view' as const, doc: 'd1', token: 't', collections: ['orders'] };
-  assert.equal(allows(grant, 'GET', '/api/docs/d1'), true);
-  assert.equal(allows(grant, 'GET', '/api/docs/d1/events'), true);
-  assert.equal(allows(grant, 'GET', '/api/docs/d1/read') === true, false, 'not the outline (it shows fetch addresses)');
-  assert.equal(allows(grant, 'GET', '/api/docs/d2') === true, false);
-  assert.equal(allows(grant, 'POST', '/api/docs/d1/ops') === true, false);
-  assert.equal(allows({ ...grant, level: 'edit' }, 'POST', '/api/docs/d1/ops'), true);
-  assert.equal(allows({ ...grant, level: 'edit' }, 'PATCH', '/api/docs/d1') === true, false, 'not the title or the library');
-  assert.equal(allows(grant, 'GET', '/api/data/orders'), true);
-  assert.equal(allows(grant, 'GET', '/api/data/other') === true, false);
-  assert.equal(allows(grant, 'GET', '/api/docs/%E0%A4%A') === true, false, 'a broken encoding is refused, not a crash');
-  assert.equal(allows({ level: 'owner' }, 'DELETE', '/api/docs/d1'), true);
+  const deps = { store, reaches: () => ['orders'] };
+  const guest = { kind: 'guest' as const, level: 'view' as const, doc: 'd1', token: 't', collections: ['orders'] };
+  const param = (v: string) => (k: string) => (k === 'id' || k === 'name' ? v : undefined);
+  const none = () => undefined;
+  const ok = (r: object) => !('status' in r);
+  assert.ok(ok(check(deps, guest, { doc: 'view', link: 'view' }, param('d1'), none)), 'the document and its stream');
+  assert.ok(!ok(check(deps, guest, { doc: 'view' }, param('d1'), none)), 'not the outline (it shows fetch addresses)');
+  assert.ok(!ok(check(deps, guest, { doc: 'view', link: 'view' }, param('d2'), none)), 'not another document');
+  assert.ok(!ok(check(deps, guest, { doc: 'edit', link: 'edit' }, param('d1'), none)), 'view can not post ops');
+  assert.ok(ok(check(deps, { ...guest, level: 'edit' }, { doc: 'edit', link: 'edit' }, param('d1'), none)));
+  assert.ok(!ok(check(deps, { ...guest, level: 'edit' }, { doc: 'edit' }, param('d1'), none)), 'not the title or the library');
+  assert.ok(ok(check(deps, guest, { data: 'read', link: 'view' }, param('orders'), none)));
+  assert.ok(!ok(check(deps, guest, { data: 'read', link: 'view' }, param('other'), none)));
+  assert.ok(!ok(check(deps, guest, 'user', param(''), none)), 'not the library');
+  const { call } = api(store);
+  const id = await make(call, 'Linked');
+  const link = (await call('POST', `/api/docs/${id}/shares`, { access: 'view' })).json;
+  const broken = await call('GET', '/api/docs/%E0%A4%A', undefined, { 'x-edgy-share': link.token });
+  assert.ok(broken.status >= 400 && broken.status < 500, 'a broken encoding is refused, not a crash');
 });
 
 test('a guest\'s own changes never widen what its link reaches, and a link turned off hears nothing more', async () => {
@@ -291,7 +297,7 @@ test('a database from the previous version opens with every document, its histor
   assert.equal(store.version(), SCHEMA);
   assert.deepEqual(store.getDoc(body.id), body);
   assert.deepEqual(store.log(body.id).map((e) => [e.v, e.actor.name]), [[1, 'Ann'], [2, 'Claude']]);
-  assert.deepEqual(store.rows('quotes'), [{ total: 120, id: 'r1', at: 1800 }]);
+  assert.deepEqual(store.rows(null, 'quotes'), [{ total: 120, id: 'r1', at: 1800 }]);
   assert.equal(store.messages(body.id)[0].text, 'looks good');
   const summary = store.summary(body.id)!;
   assert.deepEqual([summary.description, summary.createdAt, summary.updatedAt, summary.pinned, summary.archivedAt], ['kept from before', 1000, 2000, null, null]);

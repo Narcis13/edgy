@@ -1,69 +1,169 @@
 # Progress
 
-Goal: the home page becomes a library that stays usable with hundreds of documents: search (titles,
-descriptions, the text inside), sort, filters, grid and list; descriptions; pinned documents in an order
-people set; archive and delete, one or many; share links (view or edit, turned off again); decks that play
-as slides; a document or deck exported as one self-contained `.html`; all of it over HTTP and MCP.
+Goal (brief 3 in `FEATURES_PROMPTS.md`): edgy becomes multi-user. Sign up, sign in and sign out with email
+and password; a profile (name, avatar colour and initials, email, password, theme, API keys, delete account);
+every document has an owner who gives other accounts view or edit access; the live stream carries real
+identities (presence, the cell each person has selected, names in Activity); collections stop leaking
+between people; MCP and HTTP clients use per-person API keys; and the local SQLite file syncs both ways with
+a Turso database, so the same account finds the same documents, history and records on another machine,
+offline included.
 
-Started 2026-10-02 on branch `main` at `40b398d`. Brief: given inline to `/goal-loop` (library brief).
+Started 2026-10-10 on branch `main` at `056806e`. Brief: `/goal-loop Brief 3 in FEATURES_PROMPTS.md, that brief only`.
 
-**Next:** nothing — every contract item passes (final audit 2026-10-02).
+**Next:** milestone 2 server side is mostly in (people, presence, revocation landed with milestone 1); go to milestone 3, the web: sign-in/up pages, the gate, profile, people in the Share dialog, presence, Activity names.
 
 ## Contract (Done means)
 
 | # | criterion | verified by | evidence | status |
 |---|---|---|---|---|
-| G1 | Typecheck, all tests and the production build (app and offline bundle) pass, no chunk warning | `gates.sh` | Log | pass — typecheck, 198 tests, app + offline build, no chunk warning (final audit) |
-| G2 | Zero console/network problems on every screen at 1440×900 and 390×844 (home, deck, play, shared, not-found, export), plus 820×1180 and dark for the new UI | `sweep.sh` + `cdp.mjs` | Log | pass — sweep of 8 showcase documents × every screen and viewport on a fresh instance: 0 problems; 50 shoot.sh runs (home, deck, play, shared, not found, no longer shared, exports; 1440×900, 390×844, 820×1180, dark) all exit 0 |
-| G3 | A showcase library (seed script) using every feature together: described, pinned, archived, shared documents and a deck, verified on desktop and phone | `docs/showcase/library/shoot.sh` | `docs/showcase/library/` | pass — `docs/showcase/library/` (seed.mjs + shoot.sh, regenerated from empty data), `INDEX.md` |
-| L1 | 300 seeded documents: home loads, scrolls and answers typing in search without visible lag at 1440×900 and 390×844 (measured: time to first cards, keystroke → results, frame gaps while scrolling); `GET /api/docs` no longer carries whole documents (bytes before/after in the Log) | seed + `drive.mjs` timings | `perf.txt`, `home-300*.png`, Log | pass — `library.txt` L1: /api/docs 126,499 B for 309 docs (was 393,854 B for 301); first cards 144 ms desktop / 120 ms phone; keystroke → next frame 12–29 ms, → results 131–153 ms (incl. 120 ms debounce); longest frame while scrolling ≤ 19 ms; `home-300.png`, `home-300-phone.png` |
-| L2 | Search finds a document by a word only in its title, only in its description, only inside one of its cells; clearing restores the list; no results shows an empty state | unit tests + typing in the box | `search-*.png`, `library.test.ts` | pass — `library.txt` L2 (ledger: title, tablet: description, lighthouse: text, zeppelin: empty state, cleared: 8 cards), `search-*.png`, `library.test.ts` |
-| L3 | A description typed on a card survives a reload and can be read and changed inside the document (Document panel) | drive + reload + `/read` meta | `describe-*.png` | pass — `library.txt` L3, `describe-card.png`, `describe-inside.png` (changed inside, read back over HTTP) |
-| L4 | A pinned document stays in the Pinned section across reloads and every sort; the pinned order can be changed (drag, and keyboard/menu) and is kept; unpinning puts it back | drive + reload; unit test | `pinned-*.png`, tests | pass — `library.txt` L4 (same pins under all three sorts, Move up kept after reload and on the server, unpin back in the list), `pinned.png`, tests |
-| L5 | Archive takes a document out of the default list, it appears under Archived, and Restore brings it back with content and history unchanged (`/api/docs/:id` and `/log` equal before/after); Delete asks first (an in-page dialog); afterwards `/d/<id>` shows a clear "not found" page | drive + API diff; unit test | `archive-*.png`, `deleted.png`, tests | pass — `library.txt` L5 (out of the list, under Archived, restore: document and log identical), `archived.png`, `delete-dialog.png`, `deleted.png` |
-| L6 | Selecting several documents offers Pin, Archive, Delete and Group, by keyboard (Tab/Space/Enter) and on a phone (tap) | `--press` keys at 1440×900; taps at 390×844 `--mobile` | `select-keyboard.png`, `select-phone.png` | pass — `select-keyboard.png` (Space on two checkboxes: Pin, Archive, Delete, Group, Clear), `select-phone.png` (taps, bar at the bottom, every target ≥ 40 px, no overflow) |
-| S1 | A share link opened in a fresh profile shows the document in Live with no editing controls and no navigation (no Edit, inspector, logo link or home link) | cdp fresh profile + DOM check | `shared-view.png`, `shared-phone.png` | pass — `shared-view.png`, `shared-phone.png`; library.txt S1: no editor, no logo, no links, Live |
-| S2 | A "can view" link cannot change the stored document: ops POST with its token → 403, document unchanged; other documents, the library, data browser and log are refused | curl + unit tests (`access.test.ts`) | `share.txt`, tests | pass — library.txt S2 (ops POST 403, value unchanged; other docs, library, data, log 403), `library.test.ts` |
-| S3 | A "can edit" link's changes appear live for the owner (owner's open editor shows the guest's change without reload) | two pages driven at once | `shared-edit-owner.png`, `share.txt` | pass — `shared-edit-owner.png` (guest typed on the right, owner's open editor shows it), library.txt S3 |
-| S4 | A link that was turned off shows a clear "no longer shared" page; tokens are ≥ 43 random base64url characters | cdp + unit test | `unshared.png`, tests | pass — `unshared.png`, library.txt S4 (43-character tokens), stream closed after `unshared` (test) |
-| K1 | Grouping three selected documents makes one deck card; the deck's documents leave the main list; reordering is kept across reloads; ungrouping leaves the documents intact (content and history) | drive + API; unit tests | `deck-card.png`, `deck-page.png`, tests | pass — `group.png`, `deck-page.png`, `deck-page-phone.png`, library.txt K1 (reorder kept, ungroup: every document 200), tests |
-| K2 | Play: → and ← move slides, a swipe on a phone moves them, a click on the side moves them; the counter shows n / N; full screen button; each slide fits 1440×900 and 390×844 with no horizontal overflow (scrollWidth ≤ clientWidth on every slide); an input changed on slide 1 is still changed after slide 2 and back; Esc returns to where Play started | drive with real keys and touch | `play-*.png`, `play.txt` | pass — library.txt K2 (→ to 2/3, swipes, no horizontal overflow on any slide at both sizes, input 22 kept after → ←, Esc → from=), `play-*.png`, `fit.test.ts` |
-| E1 | The exported HTML of the showcase document, opened from `file://` with the network disabled, looks like its Live view (side by side), recalculates a formula when an input changes, and makes zero network requests | drive offline + request count | `export-side-by-side.png`, `export.txt` | pass — `export-side-by-side.png`, library.txt E1 (Total €8,450 → €9,890 offline, 0 requests, 0 external src/href/url()); 1,064,560 B |
-| E2 | The exported deck plays every slide offline; file sizes of both exports in the Log | drive offline | `export-deck-*.png`, `export.txt` | pass — `export-deck-play.png` (3 / 3 offline), library.txt E1/E2; deck file 1,911,522 B |
-| E3 | An export holds only what its document shows and reads: no other documents, no unrelated collections, no keys or fetch addresses, no external URLs | unit test on the composer + the real file | tests, `export.txt` | pass — `export.test.ts` (no URL at all in a file built from a stub bundle, no keys, no other documents or collections, fetch addresses stripped from cells and answers) |
-| A1 | Over the HTTP API and MCP an agent can search, describe, pin, archive and restore documents, create and reorder a deck (and share, export); the guide describes how | MCP client against the isolated server; `/api/guide` | `mcp.txt`, `guide.txt` | pass — `mcp.txt` (every call as expected: search, describe, pin, order pins, archive, restore, deck create/reorder/remove, share on/list/off, export), guide Library section |
-| M1 | A database made by the old code (commit `40b398d`) opens after the upgrade with every document, its history and its records in place | unit test on the v1 schema + old server run, copy, new server | `migration.txt`, tests | pass — `migration.txt` (a database written by 40b398d: every document, log, message and collection identical after the upgrade), migration test |
-| T1 | New tests cover search matching, pinned order, archive and restore, deck ordering, the share token access rules, the migration, and an export with no external URLs | `npm test` count goes up | Log | pass — 170 → 198 tests (library, library server, export, fit, library text) |
+| G1 | Typecheck, all tests and the production build (app and offline bundle) pass, no chunk warning | `gates.sh` | Log | open |
+| G2 | Zero console/network problems on every screen signed in at 1440×900 and 390×844 (home, data, every showcase document in Edit/Live/Page, deck, play, shared link), plus sign-in, sign-up and profile signed out/in; 820×1180 and dark for the new screens | `sweep.sh` with the session cookie + `cdp.mjs` | Log | open |
+| G3 | A reproducible showcase: two accounts, a document one shares with the other (editor) and one shared as viewer, a collection each, presence, an API key used through MCP, sync between two instances; evidence and `INDEX.md` | `docs/showcase/accounts/seed.mjs` + `shoot.sh` | `docs/showcase/accounts/` | open |
+| A1 | Sign up, sign out and sign in work in the browser at 1440×900 and 390×844; a wrong password gives a clear message; repeated failures are slowed down (measured); passwords are stored with scrypt and a per-password salt; the session cookie is `HttpOnly` and `SameSite=Lax` (Set-Cookie read back) | cdp drive + curl + `auth.test.ts` | `signin-*.png`, `auth.txt` | open |
+| A2 | Signed out, every page except sign-in, sign-up and share links leads to sign-in; every `/api` route except the public few (health, sign-in/up, share-link landing) answers 401 without a session or a key; a test walks Hono's route table, so a route added later without an access rule fails the test | cdp + `routes.test.ts` | `signed-out.png`, tests | open |
+| A3 | User B cannot list, read, change, delete or listen to user A's document over any route until A gives access; a viewer cannot post ops, an editor can; taking access away takes effect at once, an already open event stream included | `access.test.ts` (every route) + a live stream check | tests, `auth.txt` | open |
+| A4 | A database made by the current code (commit `056806e`): after the upgrade the first account owns every document, deck, link and collection, and nothing is lost (documents, history, records, messages compared) | migration test + `migration.sh` on an old-code database | `migration.txt`, tests | open |
+| C1 | Two browsers signed in as two people in one document: each sees the other present and the cell they selected; an edit appears on the other side within a second (measured); simultaneous edits to different cells both survive; Activity shows both names; screenshots of both sides | two headless pages driven at once | `together-*.png`, `together.txt` | open |
+| P1 | Profile: a changed name shows in presence and in Activity; a password change signs out the person's other sessions (their open stream closes too); deleting the account asks first (in-page dialog) and does what Decisions says | drive + API + tests | `profile-*.png`, `auth.txt` | open |
+| K1 | API keys: create one, it is shown once; through the MCP server (`EDGY_API_KEY`) it lists only that person's documents and applies an op, traced as the agent acting for the person; a revoked or missing key fails with a clear message on every tool; the key appears in no log, document or response after creation | MCP client against the isolated server + grep of logs and responses | `mcp.txt`, tests | open |
+| D1 | Collections follow the rule in Decisions; tests show B cannot read A's records through `/api/data`, through `(rows …)` in B's own document, or through a document A shared beyond what the rule allows | `collections.test.ts` | tests | open |
+| S1 | Sync, two isolated instances, one account, the Turso database in `.env`: a document created on one appears on the other; edits travel both ways; edits made while the cloud is unreachable are delivered when it returns with no lost or duplicated ops (the two op logs compared); conflicting offline edits resolve as Decisions says; the UI shows synced, syncing and offline; row counts on both sides in the Log | `docs/showcase/accounts/sync.sh` (two servers, a cut-able gate to Turso) | `sync.txt`, `sync-*.png` | open |
+| S2 | Without `TURSO_URL`/`TURSO_AUTH_TOKEN` edgy runs local-only as before and the UI says sync is off | server without the variables + cdp | `sync-off.png` | open |
+| S3 | Turso costs stay small: an idle pull reads 0 rows and every pull reads from an indexed position (rows_read per query in the Log); each verification run works in its own account and removes what it created (counts before and after) | `rows_read` from the HTTP answers | `sync.txt` | open |
+| S4 | The sync engine is unit-tested against a local stand-in for the cloud: create, edits both ways, offline catch-up, interleaved conflicting edits converge to identical logs and documents, records merge, deletes | `sync.test.ts` | tests | open |
+| L0 | `npm run dev` with nothing configured needs no sign-up: a single local account is signed in automatically (local mode, see Decisions); the user's MCP setup keeps working there | server in local mode + cdp + MCP call | `local-mode.png`, Log | open |
+| R1 | The review before the final audit includes a security pass (authorization on every route, token and key handling, CSRF on cookie writes); findings fixed or listed with the reason | reviewer agent + fixes | Log, Decisions | open |
+| R2 | `.claude/goal-loop/` (`project.md`, `serve.sh`, `screens`, the cdp recipes) lets later loops verify signed-in screens, and the full sweep passes signed in | `serve.sh` + `sweep.sh` | Log | open |
+| R3 | README covers accounts, sharing with people, API keys for agents, local mode and setting up sync; the guide (`/api/guide`) tells agents about keys | read | `README.md`, guide | open |
+| T1 | New tests cover password hashing, sessions, throttling, the route table, the access matrix, collections per owner, API keys, presence, the migration and the sync engine | `npm test` count goes up | Log | open |
 
 Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 
 ## Milestones
 
-1. [x] **Core + store**: `core/library.ts` (document text, search match and snippet, shape for the card, arrange: filter/sort/pinned), store migration v2 (description, pinned, archived, search, shape columns; shares; decks), tests (L2, L4, L5, K1, M1, T1 part)
-2. [x] **API + access + MCP + guide**: library list/search, PATCH doc, bulk actions, pins order, decks, shares, the share-token check in one place (`server/access.ts`) with a filtered event stream, MCP tools, guide section, tests (S2, S4, A1, T1 part)
-3. [x] **Home library UI**: search, sort, filters, grid/list, pinned section with reorder, selection bar, card menu, describe on the card, delete dialog, archive/restore, incremental rendering; not-found page; description in the Document panel (L1–L6)
-4. [x] **Sharing UI**: Share dialog in the editor, `/s/<token>` view (Live only, view or edit), banners, "no longer shared" (S1–S4)
-5. [x] **Decks + Play**: deck card and page (reorder, add, remove, ungroup), Play with fit-to-screen slides, keys, click, swipe, counter, full screen, Esc (K1, K2)
-6. [x] **Export**: offline bundle (second Vite build), composer (fonts and pictures inlined, records and fetch answers as of export), in-page stand-in for the server, offline doc view and deck player (E1–E3)
-7. [x] **Showcase + evidence**: seed, shoot.sh, perf, migration on an old-code database, MCP check (G3, L1, M1, A1)
-8. [x] **Final audit**: review, clean build, empty data, gates, full sweep, every contract item checked
+1. [x] **Store + accounts core**: schema 4 (users, sessions, api_keys, owners, doc_access, records by owner, what a document reaches), scrypt, sessions, keys, throttling, `access.ts` rewritten around declared routes, auth routes, first-account ownership, local mode, CSRF; existing tests run in local mode; new tests (A1–A4 server side, D1, T1 part)
+2. [ ] **Sharing with people + live identities**: people endpoints, Mine / Shared with me, streams that know who listens (presence, selection, revocation closes them), actor from the session, collections through a document (C1 and A3 server side, P1 server side)
+3. [ ] **Web: sign-in, profile, people, presence**: sign-in/up pages and the gate, user menu, profile page with keys and delete, Share dialog people section, Mine / Shared with me, presence stack and remote selections, Activity names (A1, A2, C1, P1, L0)
+4. [ ] **MCP + guide**: `EDGY_API_KEY`, clear messages, actor for the person, guide section (K1)
+5. [ ] **Sync engine**: cloud client (Turso over HTTP, local stand-in), outbox/dirty tracking, push/pull, rebase of document ops, records and library state, assets, status endpoint and UI (S1–S4)
+6. [ ] **Verification tooling**: cdp `--cookie`, `serve.sh` signed in, screens, project.md (R2)
+7. [ ] **Showcase + evidence**: two accounts seed, together/profile/keys/sync scripts, two-instance sync against Turso with a cut-able gate (G3, C1, S1, S3)
+8. [ ] **Review (with security pass) + final audit** (R1, everything)
 
 ## Decisions
 
-- **Offline records (asked in the brief; the user chose the recommendation):** in an exported file, `insert!`, `update!`, `delete!` and `clear!` work on the records in memory for that session; a visible "Offline copy" note says nothing is saved. Ops (typing, ticking, buttons) also apply in memory only.
-- **Hosting is out of scope** (as the brief says): links and access rules only; the server still listens on 127.0.0.1.
-- **What is library state and what is document state.** The description is part of the document (`meta.description`, set with an op like the title), so it has history, undo, and agents set it with ops too; a copy sits in a column for listing and search. Pinned (with its position), archived, share links and deck membership describe how the library is arranged, not what the document says: they live in their own columns and tables, outside the ops history, and don't change "last changed".
-- **Search** is server-side, over a normalised text column kept up to date on every save: title, description and every word a reader sees in the cells (text, labels, placeholders, list items, table rows, panel and diagram texts, options), without markdown marks, `{{templates}}`, names or code. Every word of the query must appear (AND), case- and accent-insensitive, anywhere in a word (prefixes and parts match). Results put title matches first, then description, then text, each kept in the chosen sort; each says where it matched with a snippet. The browser waits 120 ms after the last key and keeps the old results on screen until the new ones arrive.
-- **The list request** sends summaries only: id, title, description, times, flags and a small "shape" (kinds and sizes, at most 3 levels and 8 children per group) for the card's minimap. The home page renders 60 cards at a time and more as the list scrolls near its end, with `content-visibility: auto` on cards.
-- **Archive** clears the pin (restore doesn't re-pin); an archived document still opens from its link, with a banner and Restore. Delete is permanent after an in-page dialog (no `window.confirm`), removes the document's history, messages, share links and deck membership; records saved into collections stay (they belong to the collection).
-- **Share links**: per document, a "can view" link and a "can edit" link, each on or off. A token is 32 random bytes in base64url (43 characters). Turning a link off keeps its row (revoked), so the old link says "no longer shared" rather than "not found"; turning it on again makes a new token, so an old link never comes back. Without a token a request is the owner's (the person running edgy on this machine); brief 3 adds accounts in the same function. The check is one function, `server/access.ts`, run as middleware on every `/api` request that carries a token (header `x-edgy-share` or `?share=`): the token's document only; view reads the document, its values, the records it reads, fetch answers and its event stream (ops, data, fetch, deleted, unshared; not messages, presence, compose requests or traces); edit also sends ops, saves records to the collections the document uses, and refreshes fetches. Everything else is 403. A view guest can still type into inputs to try the document: changes stay in their tab and a note says so.
-- **What a link reaches is fixed by the owner** (from the review): a link reaches the collections the document used when the link was made or when its owner last changed it, stored with the link (schema 3), never what a guest's own ops make the document read. Guests never see fetch addresses or headers (the document, fetch answers and fetch events reach them without them) and don't get the outline (`/read`). A view guest's open page doesn't count as someone in Live, so it doesn't keep timers and fetches running (they could change the stored document). A turned-off link's event stream is told and then closed.
-- **Pins and filters**: pins can be reordered only under All and Pinned (where every pin shows); Undo after archiving puts the pins back. Under every filter but All, a deck's documents show on their own (Shared shows a shared document that is in a deck).
-- **Kept as they are** (from the review): an emptied deck stays (its page says it has no documents and offers Add); in development, React's StrictMode double mount runs a slide's `close` handler once when Play opens (production doesn't double mount).
-- **Decks are folders that play**: a document is in at most one deck; its documents leave the main list and show in the deck's card; ungrouping (or deleting the deck) puts them back; deleting a document takes it out of its deck. Decks have a title, description, pin and archive like documents. Search finds documents inside decks too, labelled with their deck. Play skips archived documents.
-- **A document as a slide**: it is laid out at its own width (meta.width, default 880) or the screen's when narrower, so a phone gets the phone layout and nothing is ever wider than the screen (tables and diagrams scroll inside their own box). Then it is scaled: up to fill a big screen (at most 1.5×), down to fit the height when that keeps it readable (at least 0.62×); a document that would need more shrinking keeps a readable scale and scrolls vertically inside its slide, with a fade and "more below"; ↓ ↑ Space PgDn PgUp scroll it, → ← move between slides. Each slide is its own live session (evaluates on its own); only the current slide keeps a stream to the server, so a long deck doesn't use up the browser's connections; a slide's state is kept while Play is open. The document's `open` handler runs the first time its slide shows, `close` when Play ends.
-- **Export** is a second Vite build (`vite.offline.config.ts`, one JS file and one CSS file, no code splitting) of the same components Live uses. The server composes the file: the bundle inline, the document(s) as JSON, the records of every collection they read (as of the export), fetch cells' last answers (their addresses and headers removed, since they are never fetched offline and may hold keys), uploaded and external pictures as data URIs, and only the font files the document's text needs (its families, the subsets its characters fall in). In the page, a stand-in for the server answers the app's requests from memory (`web/lib/transport.ts` is the one seam), so formulas, inputs, buttons and handlers run unchanged. A Content-Security-Policy meta tag (`default-src 'none'`, data: for images and fonts) guarantees no request leaves the file. Timers don't tick and fetches don't refresh offline. When the bundle isn't built (development), the server builds it once on first export.
-- **"No external URLs"** means nothing the page loads or calls is outside the file: no `src`, `href`, `url()` or `@import` to a host, no fetch addresses or picture URLs in the data. Links a person wrote into text stay clickable (they are content, not requests), and URL-shaped strings inside the bundled library code (React's error links, the SVG namespace) are not requests either; the CSP and the zero-request run prove it.
+*(the access model and the sync design were thought through before code; overrule anything here)*
+
+### Accounts
+
+- **Email and password only.** No OAuth (it needs client credentials the brief doesn't give). Emails are
+  stored lower-cased and trimmed; a password has at least 8 characters.
+- **Hashing:** `node:crypto` scrypt, N=2^15, r=8, p=1, 16-byte random salt, 32-byte key, stored as
+  `scrypt$15$8$1$<salt>$<hash>` so the cost can be raised later; compared with `timingSafeEqual`. A sign-in
+  for an unknown email still runs one scrypt so timing doesn't tell which emails exist. No library.
+- **Sessions:** a random 32-byte token in the cookie `edgy_session` (`HttpOnly; SameSite=Lax; Path=/`,
+  `Secure` when the request came over https, 30 days, renewed while used). Only its SHA-256 is stored
+  (`sessions` table), so they survive a restart and a stolen database doesn't hold live cookies.
+- **Throttling:** failures are counted per email and per client address in memory over 15 minutes. From the
+  fifth failure on, sign-in answers 429 "Too many tries. Wait N seconds." with N doubling (2, 4, 8 … 300).
+  A success clears the email's count. (In memory: a restart resets it; that is acceptable for a slow-down.)
+- **CSRF:** the cookie is SameSite=Lax, and every write (POST, PATCH, PUT, DELETE) that is authenticated by
+  the cookie, or by local mode, must come from the app itself: `Sec-Fetch-Site` same-origin/none when the
+  browser sends it, otherwise an `Origin` equal to the server's own or the dev web origin. Requests with an
+  API key or a share token carry their own secret and aren't checked. In local mode the `Host` must also be
+  a loopback name, so a DNS-rebinding page can't act as the local account.
+- **Local mode (one-command start).** `EDGY_AUTH=local|accounts`. Default: `local` when the server listens
+  on a loopback address (the default `127.0.0.1`), `accounts` otherwise, so a server reachable from other
+  machines always asks for sign-in. In local mode a request from this machine with no session and no key is
+  the local account's (created on first start, called "You", no email or password needed): `npm run dev`
+  opens straight into the library and `.mcp.json` keeps working without a key, as before. Sign-in, other
+  accounts and keys all still work in local mode; giving the local account an email and password in the
+  profile is how it is used on another machine. `serve.sh` (verification) runs `accounts`.
+- **Public routes** (no session, no key): `GET /api/health`, sign-up, sign-in, the auth status
+  (`GET /api/me` answers 401 with `{signedIn:false, signup:…}` when signed out), local sign-in in local mode,
+  and the share-link routes when a link token is sent. Everything else under `/api` is 401 signed out.
+- **Sign-up is open** to whoever reaches the server (a server on 127.0.0.1 is reached only from this
+  machine). The first account created owns every document, deck, link and collection that has no owner.
+- **Deleting an account** (asks first, needs the password): its documents and decks are deleted (with their
+  history, messages, links and access lists), its collections' records are deleted, its sessions and keys
+  go, and its access to other people's documents is removed. Its name stays as text on changes it made to
+  other people's documents. With sync on, its space in the cloud is deleted too (a tombstone row says so).
+
+### Access model (one place: `server/access.ts`)
+
+- **Principals:** a person by session cookie; an agent by API key, acting for its person; a guest by share
+  link; nobody. Every request is resolved to one of them once, in middleware.
+- **Every route declares what it needs** when it is registered (`route(method, path, need, handler)`):
+  `public`, `signed-in`, `doc:view|edit|owner`, `deck:owner`, `key-free` … The guard runs before the handler
+  with the route's own params. A test walks `app.routes`: every `/api` route must have a declaration, every
+  non-public one must answer 401 signed out, and every document route must refuse a stranger. Deny is the
+  default: a route without a declaration answers 403.
+- **Document roles:** owner > editor > viewer. A stranger gets 404 "no such document" (it doesn't learn the
+  document exists); someone with too low a role gets 403 with what they can do. Viewers read the document,
+  its values, the records it reads, fetch answers, its outline and history, and listen to its stream.
+  Editors also post ops, refresh fetches, save records into the collections it reaches, send messages and
+  compose. Only the owner renames from the library, archives, pins, deletes, exports, manages links and
+  people, and puts it in a deck.
+- **Library state is the owner's**: pins, archive and decks arrange the owner's own documents. The home page
+  has two scopes: **Mine** (as before) and **Shared with me** (documents others gave me access to, newest
+  first, with the owner's name and my role; I can leave one). Share links still work and belong to the owner.
+- **Access is given to existing accounts by email** (no email is sent). The owner adds someone as viewer or
+  editor, changes the role, removes them. Adding an unknown email says there is no such account.
+- **Taking access away is immediate:** every open event stream knows whose it is; when a document's access
+  changes, its streams are re-checked: a stream that lost access gets `revoked` and is closed, one whose role
+  changed gets `access` with the new role. Signing out, a password change and account deletion close the
+  streams of the sessions that ended.
+- **Who did it:** the server stamps the actor, never the body: a session is `{kind:'human', id, name}`, a key
+  is `{kind:'agent', name: <agent name or key name>, id: <user id>, for: <person's name>}`, a guest is a human
+  named as they say, marked as a guest. Activity shows a person's current name by id.
+
+### Collections (per owner)
+
+- A collection belongs to an account: (owner, name). Two people can each have "orders"; they never see each
+  other's. `/api/data` and the Data page list and change the signed-in person's own collections.
+- **A document reads and writes its owner's collections**, whoever is looking: it is the owner's app. So B,
+  editing A's shared document, sees and saves A's records through it, and `(rows "orders")` in B's own
+  document reads B's "orders".
+- **What a document reaches is fixed by its owner:** the collections the document used at the owner's last
+  change (stored per document, `reaches`; the rule links already had). A collaborator who adds
+  `(rows "salaries")` to A's document doesn't reach A's salaries: the cell shows an error until A changes the
+  document. The browser reads records through the document (`/api/data/<name>?doc=<id>`); the server checks
+  the role (view to read, edit to write) and the reach set.
+- Server-run handlers and fetch cells reading `/api/data/…` act for the document's owner under the same rule.
+
+### Sync (Turso)
+
+- **Client: plain HTTP to Turso's `/v2/pipeline` (Hrana over HTTP) with `fetch`.** No dependency: the protocol
+  is one JSON POST, and `@libsql/client` would add a native module for nothing. A local stand-in (node:sqlite
+  running the same SQL) implements the same interface for tests.
+- **Turned on by the environment only:** `TURSO_URL` and `TURSO_AUTH_TOKEN`. Plain `npm run dev` doesn't read
+  `.env`, so the user's own `data/edgy.db` never syncs by surprise; `npm run dev:sync` passes `--env-file=.env`.
+- **The cloud is an append-only log per account ("space")**: `edgy_log(seq AUTOINCREMENT, space, oid UNIQUE,
+  kind, key, origin, ts, body)` with an index on (space, seq), plus `edgy_accounts` (for signing in on a new
+  machine) and `edgy_assets` (pictures by hash). A pull is `WHERE space=? AND seq>? ORDER BY seq LIMIT 500`:
+  an index range, never a scan; an idle pull reads nothing. A push is `INSERT … ON CONFLICT(oid) DO NOTHING`,
+  so a retried push never duplicates. libSQL has one writer, so seq order is commit order and a pull past a
+  seq never misses a row.
+- **What syncs:** everything an account owns: its documents (created as a snapshot plus their history, then
+  every op), deletions, its records, pins, archive, decks, share links and the access it gave, its profile,
+  and uploaded pictures (fetched by hash when first needed). Not synced: sessions, API keys (credentials of
+  one server), messages with agents, presence. A machine syncs every account that exists on it; signing in
+  on a new machine with an email that is only in the cloud brings the account (and then its space) down.
+- **The cloud's order is the truth.** Ops are the unit for documents: each local op gets a global id (oid)
+  when it is saved. After a pull, a document is: its last confirmed state, the confirmed ops in cloud order,
+  then this machine's ops not yet confirmed, replayed on top. Both machines end with the same ops in the same
+  order, so the op logs compare equal.
+- **Conflicts:** concurrent edits to different cells both survive. On the same property, the edit that
+  reaches the cloud last wins (it is applied last everywhere). An op that no longer applies (its cell was
+  removed by the other side) is skipped on every machine, kept in the history, and shown in Activity as
+  "skipped: conflict". A document deleted on one side stays deleted (later edits to it are dropped).
+  Records merge field by field (different fields both survive, the same field: the one reaching the cloud
+  last); a deleted record stays deleted; clearing a collection deletes the records that machine had, so a
+  record added elsewhere meanwhile survives. Pins, archive, deck contents, links and access are
+  last-writer-wins per item, in cloud order.
+- **Rounds:** a change pushes within ~300 ms; a pull runs every 3 s (`EDGY_SYNC_INTERVAL`) and backs off to
+  30 s while the cloud is unreachable. The status is `off`, `synced`, `syncing` (changes waiting) or
+  `offline` (the cloud didn't answer), shown in the home and editor top bars (`GET /api/sync`).
 
 ## Blocked
 
@@ -73,18 +173,12 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 
 - No git identity is configured on this machine: commit with `git -c user.name="Narcis Brindusescu" -c user.email="narcis75@gmail.com" commit …`.
 - Most source files are CRLF.
-- Git Bash heredocs lose backslashes, and the Write/Edit tools turn \uXXXX escapes into characters: write patch scripts with the Write tool and build backslashes with String.fromCharCode(92) when a string needs one.
-- A background headless tab has no focus: element.focus()/blur() fire nothing, so fields that save on blur need FocusEvent('focusin'/'focusout') dispatched (shoot.sh SETV helpers).
-- Expected 4xx answers count as console problems: landing questions answer 200 with what is (not) there (GET /api/library/:id, GET /api/shared).
-- `GET /api/docs` before this goal, 301 documents (300 seeded with `scripts/seed-library.mjs` + the tour): 393,854 bytes.
+- Git Bash heredocs lose backslashes, and the Write/Edit tools turn \uXXXX escapes into characters: write patch scripts with the Write tool.
+- Set `TMPDIR` explicitly in every Bash call (`TMPDIR=C:/Users/User1/AppData/Local/Temp/claude/C--dev-edgy/c2f5bc2a-3d9b-427d-a6af-f75601ba2b9b/scratchpad`); with it unset, `cat > "$TMPDIR/x"` writes to `/x` and waits on stdin.
+- Turso: `TURSO_URL` is `libsql://…` → `https://…/v2/pipeline`; answers carry `rows_read`/`rows_written`; one statement's error in a pipeline doesn't stop the others. Never print the token: read it only through `node --env-file=.env`.
+- The web client trusts nothing about identity today: `session.ts` actor is `{kind:'human', name:'You', id: client}`; presence is keyed by name; Activity special-cases "You". Concurrent ops already merge: the server applies ops to its current document and the browser rebases its pending batches on remote ops.
 
 ## Log
 
-- 2026-10-02: baseline: typecheck, 170 tests, build pass; sweep (home, data, showcase in edit/live/page/phone/pdf) with 300 seeded documents: 0 problems. `GET /api/docs` with 301 docs: 393,854 bytes.
-- 2026-10-02: M1+M2: core/library.ts (document text, search match + snippet, card shape, arrange), store schema 2 with in-place migration (docs columns, decks, deck_docs, shares), server/access.ts (one check for share tokens, filtered event stream), library/pins/bulk/decks/shares endpoints, MCP tools edgy_docs (search), edgy_organize, edgy_deck, edgy_share, edgy_export, guide Library section. 170 → 185 tests (search, pins, archive/restore, decks, share rules, migration from the v1 schema). Pushed 0ca480c.
-- 2026-10-02: M4/M5 in progress: transport seam (share token header / stream param), Session options (guest view/edit, embedded, pause/resume), Notice page (not found / no longer shared), Description in the Document panel, Share dialog + editor Share button, /s/<token> page (Live only), deck page, Play (fit.ts, keys, click beside, swipe, counter, full screen, Esc). Checked headless: shared view has no brand/mode/home link; Play 1440×900 scale 1.07, phone fits (scrollWidth 390 = clientWidth) and a real touch swipe moves 1→2; input typed on slide 1 kept after → ←; Esc returns to from=.
-- 2026-10-02: M6 export: vite.offline.config.ts (one JS 526 KB + one CSS), server/export.ts (fonts filtered by family, subset and italics, pictures inlined via the guarded getter, fetch url/headers stripped, CSP default-src none), web/offline (stand-in server behind the transport seam, offline doc bar, deck overview + Play). Showcase export 1.06 MB, opens from file:// with the network off: 0 requests, total recalculates (8,450 → 9,890); deck export plays 3/3 offline. 196 tests.
-- 2026-10-02: M3 home library (subagent, verified by the lead): search/sort/filters/grid-list, pinned section with drag and Move up/down, describe on card, selection bar, menus, delete dialog, archive toast with Undo, 60 cards at a time. Lead added the archived banner, 200-answer probes for missing docs and turned-off links, 40 px checkbox targets.
-- 2026-10-02: M7 evidence: shoot.sh (49 shots, all exit 0), migration.sh on a real old-code database (identical before/after), mcp-check.mjs (every MCP call as expected). 300 docs: GET /api/docs 126,499 bytes for 309 docs (was 393,854 for 301); first cards 124 ms desktop / 128 ms phone; keystroke → next frame 10–28 ms, → results 132–162 ms (incl. the 120 ms debounce); longest frame while scrolling 18–19 ms.
-- 2026-10-02: review (fresh reviewer, 12 findings, all fixed but two kept and noted): link collections frozen by the owner (schema 3), revoked streams closed, fetch addresses stripped for guests and exports, view guests don't run timers, pin renumbering on delete, guest resync, paused slides, pins reorder only under All/Pinned, Undo restores pins, Shared filter and decks, stand-in delete answer, Play key ownership, malformed encodings. 196 → 198 tests.
-- 2026-10-02: final audit: gates (198 tests); shoot.sh from a fresh build and empty data (50 runs, all exit 0, mcp-check every call as expected); migration.sh on an old-code database (identical; fixed the script so the old server really stops on Windows); sweep of 8 documents on a fresh instance, 0 problems; every evidence image re-read; servers stopped.
+- 2026-10-10: baseline at `056806e`: typecheck, build pass; 198 tests pass. Turso reachable over `/v2/pipeline`, empty database.
+- 2026-10-10: M1 store + accounts core: schema 4 (users, sessions, api_keys, doc_access, owner columns, reaches), `auth.ts` (scrypt, secrets, throttle), `access.ts` rewritten (principals, `need(…)` guards on every route), app routes for sign-up/in/out, me, password, delete, keys, people; streams know whose they are (presence with selection, revocation closes them); collections per owner and through documents; runner reads and writes records through the app. The 198 old tests run in local mode (3 expectations changed: the server names the actor; the guide is for people only; the access-rule unit test uses the new `check`). New `accounts.test.ts` (14). Gates pass: 212 tests.

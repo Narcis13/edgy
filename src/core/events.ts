@@ -192,12 +192,16 @@ export function customEvents(doc: Doc): string[] {
   return [...names].sort();
 }
 
-/** Collections the document's actions read with (rows "name"), so they can be loaded before a handler runs. */
+/**
+ * Collections the document's actions read with (rows "name") or save into
+ * (insert!, update!, delete!, clear!), and those its fetch cells read from this
+ * server (/api/data/name): loaded before a handler runs, and what its owner lets it reach.
+ */
 export function collectionsUsed(doc: Doc): string[] {
   const names = new Set<string>();
   const scan = (x: unknown): void => {
     if (Array.isArray(x)) {
-      if (x[0] === 'rows' && typeof x[1] === 'string') names.add(x[1]);
+      if (['rows', 'insert!', 'update!', 'delete!', 'clear!'].includes(x[0] as string) && typeof x[1] === 'string') names.add(x[1]);
       x.forEach(scan);
     } else if (x && typeof x === 'object') Object.values(x).forEach(scan);
   };
@@ -205,6 +209,8 @@ export function collectionsUsed(doc: Doc): string[] {
     scan(c.on);
     scan(c.do);
     scan(c.actions);
+    const fetched = c.kind === 'fetch' && typeof c.url === 'string' && /^\/api\/data\/([\w-]+)/.exec(c.url);
+    if (fetched) names.add(fetched[1]);
   });
   scan(doc.meta.on);
   scan(doc.meta.actions);

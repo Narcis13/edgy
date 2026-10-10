@@ -17,10 +17,18 @@ const built = existsSync(join(dist, 'index.html')) && process.env.NODE_ENV === '
 // In development the app is served by Vite; tell agents where people should look.
 const webUrl = process.env.EDGY_WEB_URL ?? (built ? undefined : 'http://localhost:5173');
 
+// Local mode (no sign-in from this machine) only while the server can't be reached from elsewhere.
+const loopback = ['127.0.0.1', 'localhost', '::1'].includes(hostname);
+const auth = process.env.EDGY_AUTH === 'accounts' || process.env.EDGY_AUTH === 'local' ? process.env.EDGY_AUTH : loopback ? 'local' : 'accounts';
+if (auth === 'local' && !loopback) {
+  console.error(`EDGY_AUTH=local needs a loopback HOST; ${hostname} can be reached from other machines`);
+  process.exit(1);
+}
+
 const store = new Store(join(dataDir, 'edgy.db'));
 // Exports use the offline build: next to a production build, or built once on the first export in development.
 const offline = built ? bundleLoader(join(dist, 'offline'), false) : bundleLoader(mkdtempSync(join(tmpdir(), 'edgy-offline-')), true);
-const { app } = createApp(store, join(dataDir, 'assets'), webUrl, { offline });
+const { app } = createApp(store, join(dataDir, 'assets'), webUrl, { offline, auth });
 
 // After `npm run build`, this one process serves the app too.
 if (built) {
@@ -29,5 +37,5 @@ if (built) {
 }
 
 serve({ fetch: app.fetch, port, hostname }, (info) => {
-  console.log(`edgy api on http://${hostname}:${info.port}  (data in ${dataDir})`);
+  console.log(`edgy api on http://${hostname}:${info.port}  (data in ${dataDir}; ${auth === 'local' ? 'local mode: this machine is signed in' : 'accounts: sign in to use it'})`);
 });

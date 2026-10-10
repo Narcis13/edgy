@@ -46,16 +46,16 @@ const ROOT: Json = ['col',
 
 function fixture() {
   const store = new Store(':memory:');
-  store.insert('quotes', { client: 'Acme', total: 120 });
-  store.insert('quotes', { client: 'Beta', total: 80 });
-  store.insert('feedback', { rating: 4, comment: 'fine' });
-  store.insert('feedback', { rating: 5, comment: 'great' });
-  store.insert('orders', { status: 'paid', total: 10 });
-  store.insert('orders', { status: 'open', total: 30 });
+  store.insert(null, 'quotes', { client: 'Acme', total: 120 });
+  store.insert(null, 'quotes', { client: 'Beta', total: 80 });
+  store.insert(null, 'feedback', { rating: 4, comment: 'fine' });
+  store.insert(null, 'feedback', { rating: 5, comment: 'great' });
+  store.insert(null, 'orders', { status: 'paid', total: 10 });
+  store.insert(null, 'orders', { status: 'open', total: 30 });
   const doc = applyOps(newDoc('t'), [['put', 'c1', ROOT]]).doc;
-  const world = { rows: (n: string) => store.rows(n), now: Date.UTC(2026, 9, 1) };
+  const world = { rows: (n: string) => store.rows(null, n), now: Date.UTC(2026, 9, 1) };
   const ctx = (target: Target = 'expr', cell?: string, current = '') =>
-    context(doc, world, store.collections().map((c) => c.name), { target, cell, current });
+    context(doc, world, store.collections(null).map((c) => c.name), { target, cell, current });
   return { store, doc, world, ctx };
 }
 
