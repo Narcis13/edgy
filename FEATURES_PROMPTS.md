@@ -211,7 +211,10 @@ the access model and the sync design** before writing code; both touch every rou
 - **Cloud sync (ultrathink).** The local SQLite file stays the working store and syncs in both directions
   with a database in the cloud, so the same account finds the same documents, history and records on
   another machine. It works offline and catches up afterwards. The ops log is already an ordered,
-  replayable history; consider it as the unit of sync.
+  replayable history; consider it as the unit of sync. The cloud database is **Turso** (hosted libSQL,
+  the same SQL dialect as the local file). Its credentials are in `.env` as `TURSO_URL` (`libsql://…`) and
+  `TURSO_AUTH_TOKEN`; they have been checked to read and write, and the database starts empty. Once the
+  sync is built, test it against this database.
 
 ### Done means ALL of
 
@@ -239,9 +242,10 @@ the access model and the sync design** before writing code; both touch every rou
 - Sync, with two isolated instances on the same account and the same cloud target: a document created on
   one appears on the other; edits travel both ways; edits made while the cloud is unreachable are delivered
   when it returns, with no lost or duplicated ops (the two op logs are compared); conflicting offline edits
-  resolve the way Decisions describes; the UI shows synced, syncing or offline. Verified against the real
-  provider when credentials are present; otherwise against a local stand-in, with the provider listed under
-  Blocked and exactly what is needed.
+  resolve the way Decisions describes; the UI shows synced, syncing or offline. Verified end to end against
+  the Turso database in `.env`, with the row counts on both sides in the Log. A local stand-in is fine for
+  unit tests; if the Turso credentials stop working, list the provider under Blocked with exactly what is
+  needed rather than passing on the stand-in alone.
 - The review before the final audit includes a security pass: authorization on every route, token and key
   handling, CSRF on writes made with the cookie. Findings are fixed, or listed with the reason they were not.
 - `.claude/goal-loop/` (`project.md`, `serve.sh`, `screens`, the `cdp.mjs` recipes) is updated so
@@ -257,14 +261,20 @@ the access model and the sync design** before writing code; both touch every rou
 - No email is sent. Access is given to existing accounts or by an invitation link. Delivery by email is out
   of scope unless SMTP credentials are provided.
 - Never run a migration or a sync against `data/edgy.db` while verifying.
+- The Turso database is for development and verification. Each verification run works in a space of its
+  own (a fresh account, or a prefix or schema of its own) and removes what it created, or says in the Log
+  what it left there. The token never appears in the Log, evidence, screenshots or command output.
+- Turso bills by rows read and written, counting every row a query scans. Pulls read from an indexed
+  position in the log and never scan whole tables.
+- Without `TURSO_URL` and `TURSO_AUTH_TOKEN`, edgy runs local-only exactly as before, and the UI says sync is off.
 - Keep the one-command local start: decide whether `npm run dev` with nothing configured signs a single
   local account in automatically (recommended), and write it down.
 
 ### Decide before running
 
-- **Cloud database.** A hosted libSQL database is the closest to the current SQLite schema; Postgres
-  (Supabase, Neon) is the other candidate. Put the credentials in `.env` before the run. Without them the
-  sync is built and verified against the local stand-in only.
+- **Cloud database (settled).** Turso, credentials in `.env` (`TURSO_URL`, `TURSO_AUTH_TOKEN`). Chosen
+  because it speaks the same SQLite dialect as the local store and has the most generous free tier (100
+  databases, 5 GB). Name the client used (`@libsql/client` or plain HTTP) under Decisions.
 - **Sign-in.** Email and password only (the default above), or also Google or GitHub, which needs OAuth
   client credentials.
 - **Collections.** Per owner (the recommended default), or shared explicitly the way documents are.
