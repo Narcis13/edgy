@@ -12,7 +12,7 @@ import { type Op, newDoc } from '../core/types';
 import { leaves } from '../core/tree';
 
 function api() {
-  const { app, hub } = createApp(new Store(':memory:'), join(mkdtempSync(join(tmpdir(), 'edgy-')), 'assets'));
+  const { app, hub } = createApp(new Store(':memory:'), join(mkdtempSync(join(tmpdir(), 'edgy-')), 'assets'), undefined, { auth: 'local' });
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await app.request(path, {
       method,

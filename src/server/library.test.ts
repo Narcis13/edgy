@@ -10,7 +10,7 @@ import { check } from './access';
 
 function api(store = new Store(':memory:')) {
 
-  const { app, hub } = createApp(store, join(mkdtempSync(join(tmpdir(), 'edgy-')), 'assets'));
+  const { app, hub } = createApp(store, join(mkdtempSync(join(tmpdir(), 'edgy-')), 'assets'), undefined, { auth: 'local' });
   const call = async (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) => {
     const res = await app.request(path, {
       method,

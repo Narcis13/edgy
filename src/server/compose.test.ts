@@ -446,7 +446,7 @@ test('a reply from Claude is split into code and explanation', () => {
 
 function api() {
   const store = new Store(':memory:');
-  const { app } = createApp(store, join(mkdtempSync(join(tmpdir(), 'edgy-')), 'assets'));
+  const { app } = createApp(store, join(mkdtempSync(join(tmpdir(), 'edgy-')), 'assets'), undefined, { auth: 'local' });
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await app.request(path, {
       method,

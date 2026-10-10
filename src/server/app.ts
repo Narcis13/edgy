@@ -17,7 +17,7 @@ import { type Computed, type World, evalIn, evaluate, plainValue } from '../core
 import { toNotation } from '../core/notation';
 import { outline } from '../core/outline';
 import { SxError, read } from '../core/sx';
-import { indexTree } from '../core/tree';
+import { indexTree, walk } from '../core/tree';
 import { GUIDE } from '../core/reference';
 import { TEMPLATES, tour } from '../core/templates';
 import { type Entry, type Filter, type Sort, FILTERS, SORTS, arrange, match, queryWords } from '../core/library';
@@ -33,7 +33,7 @@ import {
 import { type DocEvent, Hub, type Present } from './hub';
 import { type Clock, type Getter, EVENTS_ACTOR, Runner } from './runner';
 import { type Provider, ComposeError, Requests, TARGETS, accept, claudeConfig, compose, context, eventOf, eventProblem, isTarget } from './compose';
-import { type Bundle, type Pictures, composeHtml, dataUri, fileName, forExport, quietState, sniffImage, withoutAddresses } from './export';
+import { type Bundle, type Pictures, composeHtml, dataUri, fileName, forExport, quietState, sniffImage, withoutAddresses, withoutAddressesIn } from './export';
 import { getGuarded } from './runner';
 import type { ExportPayload } from '../core/offline';
 import { shapeOf } from '../core/library';
@@ -87,11 +87,14 @@ interface Listener {
 }
 
 export function createApp(store: Store, assetsDir: string, webUrl?: string, opts: AppOptions = {}) {
-  const mode: AuthMode = opts.auth ?? 'local';
+  const mode: AuthMode = opts.auth ?? 'accounts';
   const app = new Hono<AppEnv>();
   const hub = new Hub();
   const requests = new Requests();
-  const throttle = new Throttle({ now: opts.now ?? Date.now });
+  // Failed sign-ins slow down the guesser: fast for one email from one address, much later for an email
+  // (so someone else can't lock a person out) or for an address (a proxy's, shared by many) alone.
+  const clock = { now: opts.now ?? Date.now };
+  const throttles = { pair: new Throttle(clock, 4), email: new Throttle(clock, 50), address: new Throttle(clock, 30) };
 
   // ── records, as each document sees them ──
 
@@ -109,14 +112,69 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     return names;
   }
 
-  /** The collections a document's owner let it use: those it used at the owner's last change. */
+  /**
+   * The collections a document's owner let it use: those it used at the owner's
+   * last change (see `approve`). Never worked out from what someone else made it say.
+   */
   function reaches(docId: string): string[] {
-    const known = store.reaches(docId);
-    if (known) return known;
-    if (store.docOwner(docId) === undefined) return [];
-    const names = reads(docId);
-    store.setReaches(docId, names);
-    return names;
+    return store.reaches(docId) ?? [];
+  }
+
+  /** The collections Ask AI may name for this document: all its owner's for the owner, those it reaches for anyone else. */
+  const collectionsFor = (docId: string, role: string | undefined) =>
+    role === 'owner' ? store.collections(store.docOwner(docId) ?? null).map((x) => x.name) : reaches(docId);
+
+  /** Who sees fetch cells' addresses and headers: the owner and editors (who can change them anyway). */
+  const seesAddresses = (role: string | undefined) => role === 'owner' || role === 'editor';
+
+  /** A document's fetch cells, by id and by name. */
+  function fetchCells(docId: string): Set<string> {
+    const out = new Set<string>();
+    const doc = store.getDoc(docId);
+    if (doc) walk(doc.root, (c) => {
+      if (c.kind !== 'fetch') return;
+      out.add(c.id);
+      if (c.name) out.add(c.name);
+    });
+    return out;
+  }
+
+  /** Where a fetch goes, for approving secrets: this server, or an origin. */
+  const originOf = (url: string) => {
+    if (url.startsWith('/')) return 'this-server';
+    try { return new URL(url).origin; } catch { return ''; }
+  };
+
+  /** Each fetch cell's secrets and where they go, as the document says now: "<cell> <origin> <SECRET>". */
+  function secretUses(docId: string): string[] {
+    const doc = store.getDoc(docId);
+    if (!doc) return [];
+    const out: string[] = [];
+    let computed: Computed | null = null;
+    walk(doc.root, (c) => {
+      if (c.kind !== 'fetch' || !c.headers || typeof c.headers !== 'object' || Array.isArray(c.headers)) return;
+      const names = Object.values(c.headers as Record<string, unknown>).map((v) => (typeof v === 'string' ? /^secret:([A-Za-z_]\w*)$/.exec(v.trim())?.[1] : undefined)).filter((n): n is string => !!n);
+      if (!names.length) return;
+      computed ??= evaluate(doc, world(docId, true));
+      const url = String(computed.cells[c.id]?.props?.url ?? c.url ?? '');
+      for (const n of names) out.push(`${c.id} ${originOf(url)} ${n}`);
+    });
+    return out.sort();
+  }
+
+  /**
+   * The owner stands behind the document as it is now: the collections it uses
+   * become what it reaches, and its fetch cells' secrets may go where they point.
+   * Called on the owner's own changes (`touched`: the cells that change touched)
+   * and when the owner first lets someone else in. A secret is approved only for a
+   * cell the owner's own change touched, or where it was approved before: an
+   * owner renaming the document doesn't send a secret where an editor pointed a cell.
+   */
+  function approve(docId: string, touched?: string[]) {
+    store.setReaches(docId, reads(docId));
+    const before = store.trusted(docId);
+    const now = secretUses(docId);
+    store.setTrusted(docId, touched ? now.filter((e) => before.includes(e) || touched.includes(e.split(' ')[0])) : now);
   }
 
   const unreached = (name: string) => new Error(`this document does not reach the collection "${name}"; its owner's next change to it lets it`);
@@ -158,10 +216,11 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
         dataChanged(owner, name);
         return true;
       },
-      // The server's secrets are its owner's: the first account's documents may use them.
-      secrets: (doc) => {
-        const first = store.users()[0];
-        return mode === 'local' || (!!first && store.docOwner(doc) === first.id);
+      // The server's secrets are its owner's: only that account's documents send them, and only from the cell
+      // and to the origin the owner left them in (an editor who points the cell elsewhere sends nothing).
+      secret: (doc, cell, url, name) => {
+        const owner = store.serverOwner();
+        return !!owner && store.docOwner(doc) === owner && store.trusted(doc).includes(`${cell} ${originOf(url)} ${name}`);
       },
     },
     // A fetch cell's path on this server is answered here, in process, as the document (see access.ts).
@@ -198,9 +257,14 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
           for (const doc of store.deleteUser(id)) gone(doc);
           recheck();
         },
+        access: (doc) => recheck(doc),
+        unshared: (doc, token) => hub.publish(doc, { type: 'unshared', token }),
       }, { interval: opts.syncInterval, assetsDir })
     : null;
   if (sync) store.onChange = () => sync.kick();
+
+  // Documents nobody but their owner could have changed (from before reaches were kept, say) are approved as they are.
+  for (const id of store.unapproved()) approve(id);
 
   // ── who is asking ──
 
@@ -254,7 +318,9 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
         return { kind: 'user', user, via: 'session', session: hash };
       }
     }
-    if (mode === 'local' && fromHere(c) && loopbackHost(c.req.header('host'))) return { kind: 'user', user: localUser(), via: 'local' };
+    // A request a proxy forwarded came from somewhere else, whatever its socket says.
+    const forwarded = ['forwarded', 'x-forwarded-for', 'x-real-ip'].some((h) => c.req.header(h));
+    if (mode === 'local' && !forwarded && fromHere(c) && loopbackHost(c.req.header('host'))) return { kind: 'user', user: localUser(), via: 'local' };
     return { kind: 'none' };
   }
 
@@ -372,7 +438,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const ops = raw.length === 1 ? [r.op] : (r.op.slice(1) as Op[]);
     const ts = store.saveDoc(next, actor, ops);
     // The owner's changes decide which collections the document (and its links) reach; nobody else's do.
-    if (o.owner) store.setReaches(doc.id, reads(doc.id));
+    if (o.owner) approve(doc.id, r.touched);
     hub.publish(doc.id, { type: 'ops', v: next.v, ts, actor, ops, touched: r.touched, client: o.client, batch: o.batch });
     runner.changed(doc.id);
     return { next, ops, touched: r.touched };
@@ -524,6 +590,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     if (content != null) ops.push(['put', 'c1', content]);
     if (!ops.length) {
       store.createDoc(doc, owner);
+      approve(doc.id);
       return doc;
     }
     const r = applyOps(doc, ops);
@@ -536,8 +603,18 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     }
     store.createDoc({ ...doc, v: 0 }, owner);
     store.saveDoc(doc, actor, ops.length === 1 ? [r.op] : (r.op.slice(1) as Op[]));
-    store.setReaches(doc.id, reads(doc.id));
+    approve(doc.id);
     return doc;
+  }
+
+  /** With sync: the id of the account the cloud knows by this email, null, or 'unknown' when the cloud can't be asked. */
+  async function emailElsewhere(email: string): Promise<string | null> {
+    if (!sync) return null;
+    try {
+      return (await sync.findAccount(email))?.id ?? null;
+    } catch {
+      return 'unknown';
+    }
   }
 
   /** A session for this account, and its cookie on the answer. */
@@ -567,8 +644,10 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const wrong = emailProblem(email) ?? passwordProblem(body.password);
     if (wrong) return c.json({ error: wrong }, 400);
     if (store.userByEmail(email)) return c.json({ error: 'An account with this email already exists. Sign in instead.' }, 409);
-    // With sync, an account made on another machine counts too.
-    if (sync && (await sync.findAccount(email).catch(() => null))) return c.json({ error: 'An account with this email already exists. Sign in instead.' }, 409);
+    // With sync, an account made on another machine counts too; one email is one account everywhere.
+    const elsewhere = await emailElsewhere(email);
+    if (elsewhere === 'unknown') return c.json({ error: 'The cloud cannot be reached to check this email. Try again in a moment.' }, 503);
+    if (elsewhere) return c.json({ error: 'An account with this email already exists. Sign in instead.' }, 409);
     const name = cleanName(body.name, 60) || email.split('@')[0];
     const user = store.createUser({ email, name, color: colorFor(email), password: await hashPassword(body.password as string) });
     // Someone new starts with the tour, unless (the first account) they own what was here before.
@@ -580,8 +659,8 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   app.post('/api/auth/signin', need('public'), async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { email?: unknown; password?: unknown };
     const email = normalEmail(body.email);
-    const keys = ['email:' + email, 'address:' + address(c)];
-    const wait = throttle.wait(...keys);
+    const pair = email + ' ' + address(c);
+    const wait = Math.max(throttles.pair.wait(pair), throttles.email.wait(email), throttles.address.wait(address(c)));
     if (wait > 0) {
       const s = Math.ceil(wait / 1000);
       c.header('retry-after', String(s));
@@ -602,10 +681,12 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
       }
     }
     if (!user || !ok) {
-      throttle.fail(...keys);
+      throttles.pair.fail(pair);
+      throttles.email.fail(email);
+      throttles.address.fail(address(c));
       return c.json({ error: 'Wrong email or password.' }, 401);
     }
-    throttle.clear('email:' + email);
+    throttles.pair.clear(pair);
     signIn(c, user);
     return c.json({ user: profile(user) });
   });
@@ -647,6 +728,9 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
       if (wrong) return c.json({ error: wrong }, 400);
       const other = store.userByEmail(email);
       if (other && other.id !== user.id) return c.json({ error: 'Another account uses that email.' }, 409);
+      const elsewhere = await emailElsewhere(email);
+      if (elsewhere === 'unknown') return c.json({ error: 'The cloud cannot be reached to check this email. Try again in a moment.' }, 503);
+      if (elsewhere && elsewhere !== user.id) return c.json({ error: 'Another account uses that email.' }, 409);
       fields.email = email;
     }
     const next = store.updateUser(user.id, fields)!;
@@ -727,7 +811,8 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     if (!doc) return c.json({ error: 'no such document' }, 404);
     const name = c.req.query('agent');
     if (name) hub.publish(doc.id, { type: 'presence', actor: { ...actorOf(c, { name }), kind: 'agent' }, state: 'reading', ts: Date.now() });
-    return c.json(view(doc, c.req.query('format') ?? 'outline', c.get('checked').role === 'owner'));
+    const role = c.get('checked').role;
+    return c.json(view(seesAddresses(role) ? doc : withoutAddresses(doc), c.req.query('format') ?? 'outline', role === 'owner'));
   });
 
   app.delete('/api/docs/:id', need({ doc: 'owner' }), (c) => {
@@ -782,7 +867,8 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
 
   app.get('/api/docs/:id/log', need({ doc: 'view' }), (c) => {
     const id = c.req.param('id');
-    return c.json(store.log(id, Number(c.req.query('since') ?? 0), Math.min(500, Number(c.req.query('limit') ?? 200))));
+    const log = store.log(id, Number(c.req.query('since') ?? 0), Math.min(500, Number(c.req.query('limit') ?? 200)));
+    return c.json(seesAddresses(c.get('checked').role) ? log : withoutAddressesIn(log, fetchCells(id)));
   });
 
   app.post('/api/docs/:id/eval', need({ doc: 'view' }), async (c) => {
@@ -819,7 +905,15 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
       const unsubscribe = hub.subscribe(id, (e) => {
         // Someone with a link hears changes, not the conversation, the people or the agents' work.
         if (!guestHears(who, e as { type: string })) return;
-        const sent = who.kind === 'guest' && e.type === 'fetch' ? { ...e, state: quietState(e.state) } : e;
+        // Records of the owner's that this document doesn't reach are none of a collaborator's business, not even by name.
+        if (e.type === 'data' && role !== 'owner' && !reaches(id).includes(e.collection)) return;
+        // Viewers and links see what fetch cells answered, never where from (nor what handlers did with addresses).
+        let sent: DocEvent = e;
+        if (!seesAddresses(role)) {
+          if (e.type === 'trace') return;
+          if (e.type === 'fetch') sent = { ...e, state: quietState(e.state) as typeof e.state };
+          if (e.type === 'ops') sent = { ...e, ops: withoutAddressesIn(e.ops, fetchCells(id)) };
+        }
         const written = write(sent as DocEvent);
         // A link turned off hears that, and then nothing more.
         if (e.type === 'unshared' && who.kind === 'guest') {
@@ -845,6 +939,11 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
       if (who.kind === 'user') announce(id);
       while (!stream.aborted && !stream.closed && !gone) {
         await stream.sleep(10_000);
+        // A session that ran out while the stream was open ends it too.
+        if (who.kind === 'user' && who.via === 'session' && !store.session(who.session)) {
+          me.close(write({ type: 'revoked', why: 'signedout' }));
+          break;
+        }
         if (!gone) await stream.writeSSE({ event: 'ping', data: '{}' }).catch(() => {});
       }
       off();
@@ -860,10 +959,13 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const role = c.get('checked').role;
     const viewOnly = role === 'viewer' || (who.kind === 'guest' && who.level === 'view');
     const client = body.client.slice(0, 40);
+    // Only the caller's own tabs: a viewer can't take someone else out of Live by naming their client.
+    const mine = (l: Listener) => (who.kind === 'user' && l.who.kind === 'user' ? l.who.user.id === who.user.id : who.kind === 'guest' && l.who.kind === 'guest' && l.who.token === who.token);
+    if ([...listeners].some((l) => l.doc === id && l.client === client && !mine(l))) return c.json({ error: 'that is not your tab' }, 403);
     runner.mode(id, client, viewOnly ? 'page' : body.mode!);
     let moved = false;
     for (const l of listeners) {
-      if (l.doc !== id || l.client !== client) continue;
+      if (l.doc !== id || l.client !== client || !mine(l)) continue;
       const selected = typeof body.selected === 'string' ? body.selected.slice(0, 40) : null;
       if (l.selected !== selected || l.mode !== body.mode) moved = true;
       l.selected = selected;
@@ -889,6 +991,8 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const user = store.userByEmail(normalEmail(body.email));
     if (!user) return c.json({ error: 'There is no account with that email on this server. Ask them to sign up first.' }, 404);
     if (user.id === myId(c)) return c.json({ error: 'You own this document already.' }, 400);
+    // Letting someone in: the document as it stands is what its owner stands behind.
+    if (store.reaches(id) === null) approve(id);
     store.setRole(id, user.id, role as Role);
     recheck(id);
     return c.json({ people: store.people(id) });
@@ -962,7 +1066,8 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const who = c.get('who');
     const reach = who.kind === 'guest' ? who.doc === id : who.kind === 'user' && !!store.roleOf(id, who.user.id);
     const entry = reach ? store.summary(id) : null;
-    return c.json({ entry: entry && who.kind === 'user' && entry.owner !== who.user.id ? { ...entry, pinned: null, archivedAt: null, deck: null } : entry });
+    // Someone else's document: not its owner's arrangement (pins, archive, deck), nor who the owner is.
+    return c.json({ entry: entry && !(who.kind === 'user' && entry.owner === who.user.id) ? { ...entry, owner: null, pinned: null, archivedAt: null, deck: null } : entry });
   });
 
   app.get('/api/decks', need('user'), (c) => c.json(store.decks(myId(c))));
@@ -1038,6 +1143,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const body = (await c.req.json().catch(() => ({}))) as { access?: string };
     const access = (body.access ?? 'view') as Access;
     if (access !== 'view' && access !== 'edit') return c.json({ error: 'access is "view" or "edit"' }, 400);
+    if (store.reaches(id) === null) approve(id);
     return c.json(shareView(store.openShare(id, access, reaches(id)), new URL(c.req.url).origin), 201);
   });
 
@@ -1151,8 +1257,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     if (!isTarget(target)) return c.json({ error: `target is one of ${TARGETS.join(', ')} or on.<event>` }, 400);
     const provider = body.provider as Provider | undefined;
     if (provider && !['claude', 'agent', 'local'].includes(provider)) return c.json({ error: 'provider is claude, agent or local' }, 400);
-    const owner = store.docOwner(doc.id) ?? null;
-    const ctx = context(doc, world(doc.id, c.get('checked').role === 'owner'), store.collections(owner).map((x) => x.name), { cell: body.cell, target, current: typeof body.current === 'string' ? body.current : '' });
+    const ctx = context(doc, world(doc.id, c.get('checked').role === 'owner'), collectionsFor(doc.id, c.get('checked').role), { cell: body.cell, target, current: typeof body.current === 'string' ? body.current : '' });
     if (body.cell && !ctx.cell) return c.json({ error: `no cell "${body.cell}"` }, 400);
     const event = eventOf(target);
     const wrong = event && eventProblem(ctx.cell ?? null, event);
@@ -1185,8 +1290,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const body = (await c.req.json()) as { code?: unknown; explanation?: string; actor?: unknown };
     let answer: ReturnType<typeof accept>;
     try {
-      const owner = store.docOwner(id) ?? null;
-      const ctx = context(doc, world(id, c.get('checked').role === 'owner'), store.collections(owner).map((x) => x.name), { cell: request.cell, target: request.target, current: request.current });
+      const ctx = context(doc, world(id, c.get('checked').role === 'owner'), collectionsFor(id, c.get('checked').role), { cell: request.cell, target: request.target, current: request.current });
       // For target events, code is the ops: a JSON array, {ops}, or that as text.
       answer = accept(ctx, body.code);
     } catch (e) {
@@ -1240,6 +1344,8 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
 
   // ── sync ──
 
+  const missingAssets = new Map<string, number>();
+
   /** Whether this machine's changes have reached the cloud: off, synced, syncing (changes waiting) or offline. */
   app.get('/api/sync', need('user'), (c) => c.json(sync ? sync.status(myId(c) ?? undefined) : { state: 'off', pending: 0, lastSyncAt: null, error: null }));
 
@@ -1274,8 +1380,10 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const type = Object.entries(ASSET_TYPES).find(([, e]) => e === ext)?.[0];
     if (!/^[a-f0-9]{20}\.\w+$/.test(file) || !type) return c.notFound();
     // Uploaded on another machine: fetched from the cloud once, then kept here.
-    if (!existsSync(join(assetsDir, file)) && sync) {
+    if (!existsSync(join(assetsDir, file)) && sync && (missingAssets.get(file) ?? 0) < Date.now()) {
       const got = await sync.fetchAsset(file).catch(() => null);
+      // Not there either: don't ask the cloud again for a while (each ask is a read it bills).
+      if (!got) missingAssets.set(file, Date.now() + 10 * 60_000);
       if (got) {
         mkdirSync(assetsDir, { recursive: true });
         writeFileSync(join(assetsDir, file), got.bytes);

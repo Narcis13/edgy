@@ -102,6 +102,38 @@ export function withoutAddresses(doc: Doc): Doc {
   return copy;
 }
 
+/**
+ * Ops (or anything holding cells) as someone who may not see fetch addresses
+ * sees them: a fetch cell in a put has no address and no headers, and an op
+ * that sets a fetch cell's address or headers shows "…" for the value. The
+ * document's own fetch cells are named in `fetchCells`.
+ */
+export function withoutAddressesIn<T>(value: T, fetchCells: Set<string>): T {
+  const scrub = (x: unknown): unknown => {
+    if (Array.isArray(x)) {
+      if (x[0] === 'set' && typeof x[1] === 'string' && fetchCells.has(x[1]) && (x[2] === 'url' || x[2] === 'headers')) return [x[0], x[1], x[2], '…'];
+      // Notation: ["fetch", {props}, "address"].
+      if (x[0] === 'fetch') {
+        const [, props, ...rest] = x;
+        const p = props && typeof props === 'object' && !Array.isArray(props) ? Object.fromEntries(Object.entries(props).filter(([k]) => k !== 'headers' && k !== 'url')) : props;
+        return ['fetch', p, ...rest.filter((r) => typeof r !== 'string').map(scrub)];
+      }
+      return x.map(scrub);
+    }
+    if (x && typeof x === 'object') {
+      const o = x as Record<string, unknown>;
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(o)) {
+        if (o.kind === 'fetch' && (k === 'url' || k === 'headers')) continue;
+        out[k] = scrub(v);
+      }
+      return out;
+    }
+    return x;
+  };
+  return scrub(value) as T;
+}
+
 /** A fetch answer without the address it came from. */
 export function quietState<T extends object>(st: T): Omit<T, 'url'> {
   const { url: _u, ...rest } = st as T & { url?: unknown };

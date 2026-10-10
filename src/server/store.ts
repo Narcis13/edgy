@@ -134,8 +134,8 @@ export const shortId = (n = 8) => randomBytes(n).toString('base64url').replace(/
 /** A share link's secret: 32 random bytes, 43 characters. */
 export const newToken = () => randomBytes(32).toString('base64url');
 
-/** The schema this code writes. 1: docs, ops, records, messages. 2: the library. 3: the collections a link reaches. 4: accounts. 5: sync. */
-export const SCHEMA = 5;
+/** The schema this code writes. 1: docs, ops, records, messages. 2: the library. 3: the collections a link reaches. 4: accounts. 5: sync. 6: secrets a document's owner approved. */
+export const SCHEMA = 6;
 
 /** A globally unique id for something to sync (an op, a change). */
 export const newOid = () => randomBytes(9).toString('base64url');
@@ -193,6 +193,7 @@ export class Store {
       if (!this.columns('shares').has('collections')) this.db.exec("ALTER TABLE shares ADD COLUMN collections TEXT NOT NULL DEFAULT '[]'");
       if (version < 4) this.toAccounts();
       if (version < 5) this.toSync();
+      if (version < 6) this.toTrusted();
       this.db.exec(`PRAGMA user_version = ${SCHEMA}`);
       this.db.exec('COMMIT');
     } catch (e) {
@@ -272,6 +273,17 @@ export class Store {
    * what changed here and is still to send; sync_gone what was deleted, so a
    * late change to it doesn't bring it back.
    */
+  /**
+   * 6: a document's `trusted` list says which fetch cell may send which of the
+   * server's secrets to which origin, as its owner last left it; and the server
+   * remembers whose secrets those are (its first account), rather than guessing.
+   */
+  private toTrusted(): void {
+    if (!this.columns('docs').has('trusted')) this.db.exec('ALTER TABLE docs ADD COLUMN trusted TEXT');
+    const first = this.db.prepare('SELECT id FROM users ORDER BY created_at LIMIT 1').get();
+    if (first) this.db.prepare("INSERT OR IGNORE INTO sync_meta (key, value) VALUES ('server-owner', ?)").run(first.id as string);
+  }
+
   private toSync(): void {
     const have = this.columns('ops');
     for (const [col, def] of [['oid', 'TEXT'], ['seq', 'INTEGER'], ['conflict', 'INTEGER']]) if (!have.has(col)) this.db.exec(`ALTER TABLE ops ADD COLUMN ${col} ${def}`);
@@ -502,7 +514,8 @@ export class Store {
   setPinsFromCloud(owner: string, ids: string[]): void {
     this.quietly(() => {
       for (const t of ['docs', 'decks']) this.db.prepare(`UPDATE ${t} SET pinned = NULL WHERE owner = ?`).run(owner);
-      ids.filter((id) => this.exists(id)).forEach((id, i) => this.db.prepare(`UPDATE ${this.table(id)} SET pinned = ? WHERE id = ?`).run(i + 1, id));
+      // Only this owner's things can be in this owner's pins.
+      ids.filter((id) => this.exists(id) && this.ownerOf(id) === owner).forEach((id, i) => this.db.prepare(`UPDATE ${this.table(id)} SET pinned = ? WHERE id = ?`).run(i + 1, id));
     });
   }
 
@@ -772,7 +785,11 @@ export class Store {
       const first = !u.fromCloud && !this.db.prepare('SELECT 1 FROM users LIMIT 1').get();
       this.db.prepare('INSERT INTO users (id, email, name, color, password, local, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
         .run(id, u.email, u.name, u.color, u.password, u.local ? 1 : 0, now, now);
-      if (first) this.claimOrphans(id);
+      if (first) {
+        this.claimOrphans(id);
+        // Its secrets (EDGY_SECRET_…) are this account's to use.
+        this.setSyncMeta('server-owner', id);
+      }
       if (u.fromCloud) this.db.prepare('INSERT OR IGNORE INTO sync_spaces (space, cursor, ready) VALUES (?, 0, 1)').run(id);
       else this.dirty('account', id, id);
       this.db.exec('COMMIT');
@@ -1130,13 +1147,43 @@ export class Store {
   }
 
   /** A document's library flags, as the cloud says. */
-  setDocLibrary(id: string, archivedAt: number | null, reaches: string[] | null): void {
-    this.db.prepare('UPDATE docs SET archived_at = ?, reaches = ? WHERE id = ?').run(archivedAt, reaches ? JSON.stringify(reaches) : null, id);
+  setDocLibrary(id: string, archivedAt: number | null, reaches: string[] | null, trusted: string[] | null): void {
+    this.db.prepare('UPDATE docs SET archived_at = ?, reaches = ?, trusted = ? WHERE id = ?')
+      .run(archivedAt, reaches ? JSON.stringify(reaches) : null, trusted ? JSON.stringify(trusted) : null, id);
   }
 
-  docLibrary(id: string): { archivedAt: number | null; reaches: string[] | null } | null {
-    const r = this.db.prepare('SELECT archived_at, reaches FROM docs WHERE id = ?').get(id);
-    return r ? { archivedAt: num(r.archived_at), reaches: r.reaches ? (JSON.parse(r.reaches as string) as string[]) : null } : null;
+  docLibrary(id: string): { archivedAt: number | null; reaches: string[] | null; trusted: string[] | null } | null {
+    const r = this.db.prepare('SELECT archived_at, reaches, trusted FROM docs WHERE id = ?').get(id);
+    return r ? {
+      archivedAt: num(r.archived_at),
+      reaches: r.reaches ? (JSON.parse(r.reaches as string) as string[]) : null,
+      trusted: r.trusted ? (JSON.parse(r.trusted as string) as string[]) : null,
+    } : null;
+  }
+
+  /** The account whose secrets this server holds (its first account here), or null. */
+  serverOwner(): string | null {
+    return this.syncMeta('server-owner');
+  }
+
+  /** Which fetch cell may send which secret where ("<cell> <origin> <SECRET>"), as the owner last left the document. */
+  trusted(docId: string): string[] {
+    const r = this.db.prepare('SELECT trusted FROM docs WHERE id = ?').get(docId);
+    return r?.trusted ? (JSON.parse(r.trusted as string) as string[]) : [];
+  }
+
+  setTrusted(docId: string, entries: string[]): void {
+    const json = JSON.stringify(entries);
+    if (this.db.prepare('SELECT trusted FROM docs WHERE id = ?').get(docId)?.trusted === json) return;
+    this.db.prepare('UPDATE docs SET trusted = ? WHERE id = ?').run(json, docId);
+    this.dirty('doclib', docId, this.docOwner(docId) ?? null);
+  }
+
+  /** Documents whose reach was never worked out and that nobody but their owner can change: safe to work out now. */
+  unapproved(): string[] {
+    return this.db.prepare(`SELECT id FROM docs d WHERE reaches IS NULL AND owner IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM doc_access a WHERE a.doc_id = d.id)
+      AND NOT EXISTS (SELECT 1 FROM shares s WHERE s.doc_id = d.id AND s.access = 'edit' AND s.revoked_at IS NULL)`).all().map((r) => r.id as string);
   }
 
   /** A record as stored, with its owner and collection, or null. */

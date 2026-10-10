@@ -9,7 +9,7 @@ import { api } from '../lib/api';
 import './sync.css';
 
 export interface SyncStatus {
-  state: 'off' | 'synced' | 'syncing' | 'offline';
+  state: 'off' | 'synced' | 'syncing' | 'offline' | 'error';
   pending: number;
   lastSyncAt: number | null;
   error: string | null;
@@ -22,6 +22,7 @@ export function describeSync(s: SyncStatus): { label: string; title: string } {
     case 'off': return { label: 'Sync off', title: 'Sync is off: documents stay on this machine. Set TURSO_URL and TURSO_AUTH_TOKEN to sync them.' };
     case 'synced': return { label: 'Synced', title: 'Every change here is in the cloud. Click to sync now.' };
     case 'syncing': return { label: 'Syncing', title: s.pending ? `${waiting} on the way to the cloud.` : 'Syncing with the cloud.' };
+    case 'error': return { label: 'Sync stopped', title: `The cloud refused something: ${s.error ?? 'see the server log'}. Changes stay here. Click to try again.` };
     case 'offline': return { label: 'Offline', title: `The cloud can't be reached${s.pending ? `; ${waiting} wait here and go when it answers` : ''}. Click to try now.` };
   }
 }
@@ -61,7 +62,7 @@ export function SyncBadge({ compact }: { compact?: boolean }) {
   const [s, now] = useSync();
   if (!s) return null;
   const { label, title } = describeSync(s);
-  const Icon = s.state === 'off' || s.state === 'offline' ? CloudOff : s.state === 'syncing' ? RefreshCw : Cloud;
+  const Icon = s.state === 'off' || s.state === 'offline' || s.state === 'error' ? CloudOff : s.state === 'syncing' ? RefreshCw : Cloud;
   return (
     <button type="button" className={`sync-badge is-${s.state}`} title={title} aria-label={`${label}. ${title}`} onClick={now} disabled={s.state === 'off'}>
       <Icon size={14} className={s.state === 'syncing' ? 'spin' : undefined} />

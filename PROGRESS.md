@@ -10,7 +10,7 @@ offline included.
 
 Started 2026-10-10 on branch `main` at `056806e`. Brief: `/goal-loop Brief 3 in FEATURES_PROMPTS.md, that brief only`.
 
-**Next:** milestone 7: evidence. Write project.md (accounts mode, serve.sh session, CDP_COOKIE, sync.sh), then docs/showcase/accounts/: seed.mjs (Ana, Ben, shared docs, a collection each, a key), shoot.sh (sign-in/up desktop+phone+dark, wrong password, throttle, signed-out redirect, profile, keys shown once, delete dialog, Mine/Shared with me, share dialog people, together-*.png two browsers + latency, viewer, revoked, local mode, sync badges), mcp-check (key: list, apply, revoked, missing), migration.sh on a 056806e database, then README; then the review with a security pass; then the final audit.
+**Next:** milestone 8: two reviewers are running (security pass on opus, correctness on sonnet). Fix what holds up, then the final audit: fresh servers, gates, full sweep signed in, rerun docs/showcase/accounts/shoot.sh and SHOTS=1 sync.sh, read every evidence file, tick the contract.
 
 ## Contract (Done means)
 
@@ -46,8 +46,8 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 3. [x] **Web: sign-in, profile, people, presence**: sign-in/up pages and the gate, user menu, profile page with keys and delete, Share dialog people section, Mine / Shared with me, presence stack and remote selections, Activity names (A1, A2, C1, P1, L0)
 4. [x] **MCP + guide**: `EDGY_API_KEY`, clear messages, actor for the person, guide section (K1)
 5. [x] **Sync engine**: cloud client (Turso over HTTP, local stand-in), outbox/dirty tracking, push/pull, rebase of document ops, records and library state, assets, status endpoint and UI (S1–S4)
-6. [~] **Verification tooling** (cdp --cookie/none, serve.sh session + accounts mode, screens done; project.md to write): cdp `--cookie`, `serve.sh` signed in, screens, project.md (R2)
-7. [ ] **Showcase + evidence**: two accounts seed, together/profile/keys/sync scripts, two-instance sync against Turso with a cut-able gate (G3, C1, S1, S3)
+6. [x] **Verification tooling**: cdp `--cookie`, `serve.sh` signed in, screens, project.md (R2)
+7. [x] **Showcase + evidence**: two accounts seed, together/profile/keys/sync scripts, two-instance sync against Turso with a cut-able gate (G3, C1, S1, S3)
 8. [ ] **Review (with security pass) + final audit** (R1, everything)
 
 ## Decisions
@@ -174,6 +174,49 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 - **Rounds:** a change pushes within ~300 ms; a pull runs every 3 s (`EDGY_SYNC_INTERVAL`) and backs off to
   30 s while the cloud is unreachable. The status is `off`, `synced`, `syncing` (changes waiting) or
   `offline` (the cloud didn't answer), shown in the home and editor top bars (`GET /api/sync`).
+
+### From the security review (R1)
+
+An opus reviewer went through every route, the streams, tokens, CSRF, local mode and sync; findings reproduced
+with a throwaway test. Fixed (each with a regression test in `accounts.test.ts` or `sync.test.ts`):
+
+- **High: server secrets sent where an editor pointed a fetch cell.** Secrets now go out only from documents of
+  the server's owner (stored explicitly as `server-owner` when the first account is made here, not "the oldest
+  user"), and only from a cell, to an origin, for a secret name the owner approved (`docs.trusted`, schema 6). An
+  owner's change approves secrets only for cells it touched, so renaming the document doesn't bless an editor's
+  new address. Local mode no longer hands secrets to every document.
+- **Medium: a blank document's reach worked out from a collaborator's edit.** `reaches` is set only by the owner
+  (creation, own changes, and the first time they let someone in: a person or a link); a document never approved
+  reaches nothing. Documents nobody else can change are approved at startup.
+- **Medium: an email clash stopping sync for everyone on a machine.** Sign-up and email changes check the cloud
+  (and refuse, 503, when it can't be asked); the email index in `edgy_accounts` is written on its own, so a clash
+  stops nothing else; every pulled row is applied on its own: one that can't be applied is skipped and counted
+  (`skipped` in `/api/sync`), and the badge says **Sync stopped** when a round fails for a reason other than the network.
+- **Medium: cloud rows trusted whatever space they were in.** A row now changes only what belongs to its space's
+  account (its profile, its documents, records, decks, pins, links, access lists); anything else is ignored.
+- **Medium-low: viewers and links could read fetch addresses** through the outline, the log and the stream.
+  Viewers and links get documents, outlines, history and ops without fetch addresses and headers, no handler traces,
+  and fetch answers without their address; data events for collections the document doesn't reach go only to its owner.
+- **Low:** sign-in throttling no longer lets someone lock a person out (fast per email+address, much later per email
+  alone or per address alone); `/viewer` changes only the caller's own tabs; Ask AI for an editor names only the
+  collections the document reaches (it answered 500 before); a session that expires closes its streams; access
+  taken away and links turned off on another machine reach streams here; local mode refuses requests a proxy
+  forwarded, and `createApp` defaults to accounts (the server picks local only on a loopback host); a malformed
+  cookie is no session rather than a 500; a picture missing in the cloud too isn't asked for again for 10 minutes;
+  `/api/library/:id` no longer tells someone else who owns a document.
+
+Kept as they are, on purpose:
+
+- People with access see each other's names and emails in the People list (as in shared documents elsewhere).
+- Sign-up and "add people" say when an email has no account / has one: enumeration is the price of adding people
+  by email; a server reachable from outside should be behind its own sign-up policy (out of scope).
+- A password change ends sessions, not API keys: keys are separate, long-lived credentials with their own
+  revoke, listed with when each was last used. Changing the email needs a signed-in session (cookie writes are
+  CSRF-checked), not the password.
+- The owner's next change approves what collaborators made the document read (the reach rule): that is what
+  "fixed by its owner" means; secrets are held to the stricter per-cell rule above.
+- With sync, sign-in for an email this machine doesn't know takes a cloud lookup (slower), so timing tells whether
+  the email is local; it doesn't tell whether the account exists.
 
 ## Blocked
 

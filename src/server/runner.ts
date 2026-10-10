@@ -80,8 +80,8 @@ export interface DocData {
   rows(doc: string, collection: string): unknown[];
   /** Carry out insert, update, delete or clear; false when the document may not. */
   write(doc: string, e: { type: string } & Record<string, unknown>): boolean;
-  /** Whether the server's secrets (EDGY_SECRET_…) may go out with this document's fetches. */
-  secrets(doc: string): boolean;
+  /** Whether this fetch cell may send the server's secret NAME (EDGY_SECRET_NAME) to this address. */
+  secret(doc: string, cell: string, url: string, name: string): boolean;
 }
 
 export interface RunnerDeps {
@@ -361,7 +361,7 @@ export class Runner {
     let st: FetchState & { url?: string };
     let events: Fired[];
     try {
-      const data = await this.getJson(url, cell.headers, docId);
+      const data = await this.getJson(url, cell.headers, docId, cellId);
       st = { state: 'ready', data, at: this.clock.now(), url };
       events = [{ cell: cellId, name: 'load', data: { data, value: data } }];
     } catch (e) {
@@ -381,7 +381,7 @@ export class Runner {
   }
 
   /** The secret a header names ("secret:RATES_KEY" → EDGY_SECRET_RATES_KEY), never stored in the document. */
-  private headers(h: Json | undefined, docId?: string): Record<string, string> {
+  private headers(h: Json | undefined, at?: { doc: string; cell: string; url: string }): Record<string, string> {
     const out: Record<string, string> = { accept: 'application/json' };
     if (!h || typeof h !== 'object' || Array.isArray(h)) return out;
     const env = this.deps.env ?? process.env;
@@ -389,7 +389,7 @@ export class Runner {
       if (typeof v !== 'string') continue;
       const m = /^secret:([A-Za-z_][\w]*)$/.exec(v.trim());
       if (m) {
-        if (docId && !this.deps.data.secrets(docId)) throw new FetchError(`only documents of this server's owner can use its secrets (${m[1]})`);
+        if (at && !this.deps.data.secret(at.doc, at.cell, at.url, m[1])) throw new FetchError(`the secret ${m[1]} goes only where the server's owner sent it from this cell; ask them to open and change the document`);
         const s = env[`EDGY_SECRET_${m[1]}`];
         if (!s) throw new FetchError(`the secret ${m[1]} is not set on this server (EDGY_SECRET_${m[1]})`);
         out[k.toLowerCase()] = s;
@@ -398,9 +398,9 @@ export class Runner {
     return out;
   }
 
-  async getJson(url: string, headers?: Json, docId = ''): Promise<Json> {
+  async getJson(url: string, headers?: Json, docId = '', cellId = ''): Promise<Json> {
     if (!url) throw new FetchError('the fetch has no address');
-    const h = this.headers(headers, docId || undefined);
+    const h = this.headers(headers, docId ? { doc: docId, cell: cellId, url } : undefined);
     let got: Got;
     if (url.startsWith('/')) {
       if (!this.deps.local) throw new FetchError('this server cannot answer its own paths');

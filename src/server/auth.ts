@@ -73,7 +73,10 @@ export function sessionCookie(token: string | null, secure: boolean): string {
 export function readCookie(header: string | undefined, name: string): string | undefined {
   for (const part of (header ?? '').split(';')) {
     const i = part.indexOf('=');
-    if (i > 0 && part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim());
+    if (i > 0 && part.slice(0, i).trim() === name) {
+      // A malformed value (planted by a sibling site, say) is no session, not an error.
+      try { return decodeURIComponent(part.slice(i + 1).trim()); } catch { return undefined; }
+    }
   }
   return undefined;
 }
@@ -107,12 +110,12 @@ const WINDOW = 15 * 60_000;
 const MAX_WAIT = 300_000;
 
 /**
- * Counts failed sign-ins by key (an email, an address). From the fifth failure
- * on, a try is refused until a wait has passed: 2 s, then 4, 8 … up to 5 minutes.
+ * Counts failed sign-ins by key. After `free` failures, a try is refused until a
+ * wait has passed: 2 s, then 4, 8 … up to 5 minutes.
  */
 export class Throttle {
   private seen = new Map<string, { fails: number; first: number; until: number }>();
-  constructor(private clock: ThrottleClock = Date) {}
+  constructor(private clock: ThrottleClock = Date, private free = FREE_TRIES) {}
 
   /** Milliseconds to wait before trying again, or 0. */
   wait(...keys: string[]): number {
@@ -135,7 +138,7 @@ export class Throttle {
     for (const k of keys) {
       const s = this.seen.get(k) ?? { fails: 0, first: now, until: 0 };
       s.fails++;
-      if (s.fails > FREE_TRIES) s.until = now + Math.min(MAX_WAIT, 2000 * 2 ** (s.fails - FREE_TRIES - 1));
+      if (s.fails > this.free) s.until = now + Math.min(MAX_WAIT, 2000 * 2 ** (s.fails - this.free - 1));
       this.seen.set(k, s);
     }
   }

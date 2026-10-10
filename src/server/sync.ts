@@ -35,9 +35,14 @@ export interface SyncHooks {
   account(id: string, passwordChanged: boolean): void;
   /** An account was deleted on another machine. */
   accountDeleted(id: string): void;
+  /** Who may open a document changed on another machine: streams here are checked again. */
+  access(doc: string): void;
+  /** A share link was turned off on another machine. */
+  unshared(doc: string, token: string): void;
 }
 
-export type SyncState = 'off' | 'synced' | 'syncing' | 'offline';
+/** error: the cloud answered, but something it sent (or refused) stopped a round; see `error`. */
+export type SyncState = 'off' | 'synced' | 'syncing' | 'offline' | 'error';
 
 export interface SyncStatus {
   state: SyncState;
@@ -49,6 +54,8 @@ export interface SyncStatus {
   stats: { requests: number; rowsRead: number; rowsWritten: number };
   /** Ops another machine's order left with nothing to change. */
   conflicts: number;
+  /** Rows from the cloud that could not be applied here (skipped, and why the last one was). */
+  skipped: number;
 }
 
 interface LogRow {
@@ -95,6 +102,7 @@ export class Sync {
   private lastError: unknown = null;
   private lastSyncAt: number | null = null;
   private conflicts = 0;
+  private skipped = 0;
 
   constructor(
     private store: Store,
@@ -168,12 +176,13 @@ export class Sync {
     const pending = this.store.pendingCount(space);
     const down = this.lastError instanceof CloudDown;
     return {
-      state: down ? 'offline' : this.running || pending > 0 ? 'syncing' : 'synced',
+      state: down ? 'offline' : this.lastError ? 'error' : this.running || pending > 0 ? 'syncing' : 'synced',
       pending,
       lastSyncAt: this.lastSyncAt,
       error: this.lastError ? (this.lastError instanceof Error ? this.lastError.message : String(this.lastError)) : null,
       stats: { ...this.cloud.stats },
       conflicts: this.conflicts,
+      skipped: this.skipped,
     };
   }
 
@@ -233,6 +242,7 @@ export class Sync {
   private async push(): Promise<boolean> {
     const stmts: Stmt[] = [];
     const after: (() => void)[] = [];
+    const accounts: { id: string; body: { email: string | null } }[] = [];
     const store = this.store;
 
     // Documents the cloud doesn't have: their state now, and their history up to it.
@@ -255,13 +265,7 @@ export class Sync {
       const body = this.describe(d.kind, d.key, d.fields);
       if (body !== undefined) {
         stmts.push(insert(d.space, `${this.origin}:${d.n}`, d.kind, d.key, this.origin, body));
-        if (d.kind === 'account' && body && typeof body === 'object' && 'email' in body) {
-          const a = body as { email: string | null };
-          stmts.push({
-            sql: 'INSERT INTO edgy_accounts (id, email, body, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET email = excluded.email, body = excluded.body, updated_at = excluded.updated_at',
-            args: [d.key, a.email, JSON.stringify(body), Date.now()],
-          });
-        }
+        if (d.kind === 'account' && body && typeof body === 'object' && 'email' in body) accounts.push({ id: d.key, body: body as { email: string | null } });
       }
       after.push(() => store.clearDirty(d.kind, d.key, d.n));
     }
@@ -271,6 +275,19 @@ export class Sync {
     }
     for (let i = 0; i < stmts.length; i += STMTS_PER_REQUEST) await this.cloud.run(stmts.slice(i, i + STMTS_PER_REQUEST));
     for (const fn of after) fn();
+    // How another machine finds the account by email. Each on its own: an email another account has there is refused
+    // alone (the profile still travels in the log), and is reported.
+    for (const a of accounts) {
+      try {
+        await this.cloud.run([{
+          sql: 'INSERT INTO edgy_accounts (id, email, body, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET email = excluded.email, body = excluded.body, updated_at = excluded.updated_at',
+          args: [a.id, a.body.email, JSON.stringify(a.body), Date.now()],
+        }]);
+      } catch (e) {
+        if (e instanceof CloudDown) throw e;
+        console.error(`sync: the account ${a.id} could not be listed by its email: ${e instanceof Error ? e.message : e}`);
+      }
+    }
     // Pictures, one request each (they can be large).
     for (const file of store.unsentAssets()) {
       const path = this.opts.assetsDir ? join(this.opts.assetsDir, file) : '';
@@ -295,10 +312,8 @@ export class Sync {
       }
       case 'doc':
         return s.getDoc(key) ? undefined : { deleted: true };
-      case 'doclib': {
-        const lib = s.docLibrary(key);
-        return lib ?? undefined;
-      }
+      case 'doclib':
+        return s.docLibrary(key) ?? undefined;
       case 'pins':
         return { ids: s.pins(key) };
       case 'deck': {
@@ -350,7 +365,7 @@ export class Sync {
       const waiting = ops.get(doc);
       if (waiting) {
         ops.delete(doc);
-        this.applyOps(doc, waiting);
+        this.safely(waiting[0], () => this.applyOps(doc, space, waiting));
       }
     };
     for (const row of rows) {
@@ -365,18 +380,35 @@ export class Sync {
         this.hooks.accountDeleted(space);
         return;
       }
-      this.applyOne(space, row);
+      this.safely(row, () => this.applyOne(space, row));
     }
     for (const doc of [...ops.keys()]) flush(doc);
   }
 
+  /** A row that can't be applied here (it clashes with something local) is skipped and counted, never a wall for the rest. */
+  private safely(row: LogRow, fn: () => void): void {
+    try {
+      fn();
+    } catch (e) {
+      this.skipped++;
+      console.error(`sync: skipped ${row.kind} ${row.key} (seq ${row.seq}): ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
+  /**
+   * One row, applied only to what belongs to its space (the account whose log
+   * it is in): a row naming another account's document, record or profile is
+   * ignored, whoever wrote it to the cloud.
+   */
   private applyOne(space: string, row: LogRow): void {
     const s = this.store;
     const body = JSON.parse(row.body) as Record<string, unknown>;
     const key = row.key;
+    const ownDoc = (id: string) => s.docOwner(id) === space;
     switch (row.kind) {
       case 'create': {
         if (s.isGone('doc', key) || s.syncDoc(key)) return;
+        if (s.docOwner(key) !== undefined && !ownDoc(key)) return;
         const doc = body.doc as Doc;
         // Ours, coming back: the cloud has it now, as of the version we sent.
         if (!s.getDoc(key)) s.receiveDoc(doc, space, Number(body.createdAt), Number(body.updatedAt));
@@ -386,6 +418,7 @@ export class Sync {
       }
       case 'hist': {
         const sd = s.syncDoc(key);
+        if (sd && sd.space !== space) return;
         // History of a snapshot that wasn't the one the cloud kept: not ours to use.
         if (!sd || Number(body.base) !== s.firstBase(key, sd.baseV)) return;
         const base = Number(body.base);
@@ -393,7 +426,7 @@ export class Sync {
         return;
       }
       case 'doc': {
-        if (!body.deleted) return;
+        if (!body.deleted || (s.docOwner(key) !== undefined && !ownDoc(key))) return;
         s.markGone('doc', key);
         if (s.getDoc(key)) {
           s.quietly(() => s.deleteDoc(key));
@@ -402,8 +435,8 @@ export class Sync {
         return;
       }
       case 'doclib': {
-        if (s.dirtyFields('doclib', key) || !s.getDoc(key)) return;
-        s.setDocLibrary(key, (body.archivedAt as number | null) ?? null, (body.reaches as string[] | null) ?? null);
+        if (s.dirtyFields('doclib', key) || !ownDoc(key)) return;
+        s.setDocLibrary(key, (body.archivedAt as number | null) ?? null, (body.reaches as string[] | null) ?? null, (body.trusted as string[] | null) ?? null);
         return;
       }
       case 'pins': {
@@ -413,23 +446,29 @@ export class Sync {
       }
       case 'deck': {
         if (s.dirtyFields('deck', key)) return;
+        if (s.deck(key) && s.ownerOf(key) !== space) return;
         if (body.deleted) s.receiveDeck(space, null, key);
         else if (!s.isGone('deck', key)) s.receiveDeck(space, body as never, key);
         return;
       }
       case 'share': {
-        if (s.dirtyFields('share', key) || !s.getDoc(String(body.doc))) return;
+        const known = s.share(key);
+        if (s.dirtyFields('share', key) || !ownDoc(String(body.doc)) || (known && known.doc !== String(body.doc))) return;
         s.receiveShare(body as never);
+        if (body.revokedAt != null && !known?.revokedAt) this.hooks.unshared(String(body.doc), key);
         return;
       }
       case 'access': {
-        if (s.dirtyFields('access', key) || !s.getDoc(String(body.doc))) return;
+        if (s.dirtyFields('access', key) || !ownDoc(String(body.doc))) return;
         s.receiveAccess(String(body.doc), String(body.user), (body.role as Role | null) ?? null);
+        this.hooks.access(String(body.doc));
         return;
       }
       case 'record': {
+        const here = s.record(key);
+        if (here && here.owner !== space) return;
         if (body.deleted) {
-          const had = s.record(key);
+          const had = here;
           s.dropRecord(key);
           s.dropDirty('record', key);
           if (had) this.hooks.data(space, had.collection);
@@ -445,7 +484,7 @@ export class Sync {
         return;
       }
       case 'account': {
-        if (s.dirtyFields('account', key) || !s.user(key)) return;
+        if (key !== space || s.dirtyFields('account', key) || !s.user(key)) return;
         const before = s.accountRow(key);
         const a = body as { email: string | null; name: string; color: string; theme: string | null; password: string | null };
         s.receiveAccount({ id: key, email: a.email, name: a.name, color: a.color, theme: a.theme, password: a.password });
@@ -461,10 +500,10 @@ export class Sync {
    * confirmed state moves to include them, in their order, and this machine's
    * unconfirmed ops are replayed after them (one that no longer applies is dropped).
    */
-  private applyOps(docId: string, rows: LogRow[]): void {
+  private applyOps(docId: string, space: string, rows: LogRow[]): void {
     const s = this.store;
     const sd = s.syncDoc(docId);
-    if (!sd || s.isGone('doc', docId)) return;
+    if (!sd || sd.space !== space || s.isGone('doc', docId)) return;
     const pending = s.pendingOps(docId);
     const read = (r: LogRow) => JSON.parse(r.body) as { v: number; ts: number; actor: Actor; ops: Op[] };
     // One step in cloud order; an op that no longer applies is a conflict: a version that changes nothing.

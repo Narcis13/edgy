@@ -195,7 +195,38 @@ test('a new password on one machine ends the sessions on the other; deleting the
 
 test('without the cloud, nothing changes: sync is off', async () => {
   const store = new Store(':memory:');
-  const { app } = createApp(store, join(mkdtempSync(join(tmpdir(), 'edgy-')), 'assets'));
+  const { app } = createApp(store, join(mkdtempSync(join(tmpdir(), 'edgy-')), 'assets'), undefined, { auth: 'local' });
   const r = (await (await app.request('/api/sync')).json()) as any;
   assert.equal(r.state, 'off');
+});
+
+test("rows in one account's space never touch another account's things; a row that can't be applied is skipped, not a wall", async () => {
+  const { cloud, one, two } = await pair();
+  const id = (await one.call('POST', '/api/docs', { title: 'Ana only', root: ROOT })).json.id;
+  await settle(one, two);
+  // Mallory has an account on machine two; her space syncs there.
+  assert.equal((await two.call('POST', '/api/auth/signout')).status, 200);
+  const m = await two.call('POST', '/api/auth/signup', { email: 'mallory@example.test', password: 'correct horse', name: 'Mallory' });
+  const mid = m.json.user.id as string;
+  const ana = two.store.userByEmail('ana@example.test')!;
+  await two.round();
+  // Rows written into Mallory's space that name Ana's things.
+  const forge = (kind: string, key: string, body: unknown) =>
+    cloud.db.prepare('INSERT INTO edgy_log (space, oid, kind, key, origin, ts, body) VALUES (?, ?, ?, ?, ?, ?, ?)').run(mid, `forged-${kind}-${Math.random()}`, kind, key, 'x', Date.now(), JSON.stringify(body));
+  forge('account', ana.id, { email: 'ana@example.test', name: 'Pwned', color: '#000000', theme: null, password: 'scrypt$1$1$1$x$y' });
+  forge('access', `${id} ${mid}`, { doc: id, user: mid, role: 'editor' });
+  forge('doc', id, { deleted: true });
+  forge('share', 'forged-token', { token: 'forged-token', doc: id, access: 'edit', createdAt: 1, revokedAt: null, collections: [] });
+  await two.round();
+  assert.equal(two.store.user(ana.id)!.name, 'Ana', 'her profile stays hers');
+  assert.equal(two.store.roleOf(id, mid), null, 'no access was given');
+  assert.ok(two.store.getDoc(id), 'her document is still there');
+  assert.equal(two.store.share('forged-token'), null, 'no link was made');
+  // A row of Ana's own that clashes here (an email Mallory has on this machine) is skipped; what comes after still arrives.
+  cloud.db.prepare('INSERT INTO edgy_log (space, oid, kind, key, origin, ts, body) VALUES (?, ?, ?, ?, ?, ?, ?)').run(ana.id, 'clash-1', 'account', ana.id, 'x', Date.now(), JSON.stringify({ email: 'mallory@example.test', name: 'Ana', color: '#000000', theme: null, password: two.store.passwordOf(ana.id) }));
+  await one.call('POST', `/api/docs/${id}/ops`, { ops: [['set', 'qty', 'value', 42]] });
+  await one.round();
+  await two.round();
+  assert.equal(two.sync.status().skipped, 1);
+  assert.equal(two.store.getDoc(id)!.root.children![0].value, 42, 'the edit after the bad row arrived');
 });

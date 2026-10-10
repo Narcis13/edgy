@@ -38,7 +38,7 @@ class FakeClock implements Clock {
 
 function setup(opts: AppOptions = {}) {
   const clock = new FakeClock();
-  const { app, hub, runner } = createApp(new Store(':memory:'), join(mkdtempSync(join(tmpdir(), 'edgy-')), 'assets'), undefined, { clock, ...opts });
+  const { app, hub, runner } = createApp(new Store(':memory:'), join(mkdtempSync(join(tmpdir(), 'edgy-')), 'assets'), undefined, { auth: 'local', clock, ...opts });
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await app.request(path, {
       method,
