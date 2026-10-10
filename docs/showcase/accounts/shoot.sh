@@ -62,7 +62,8 @@ echo "  the right password now: $code $(cat "$WORK/try.json")"
 shot "$URL/signin" $OUT/slowed.png --size 1440x900 --cookie none --js "$SETV
   setv(document.querySelector('input[name=email]'), 'ben@example.test');
   setv(document.querySelector('input[type=password]'), 'still wrong');
-  document.querySelector('.auth-submit').click(); await wait(700);
+  document.querySelector('.auth-submit').click(); await wait(900);
+  setv(document.querySelector('input[type=password]'), 'still wrong');
   document.querySelector('.auth-submit').click(); await wait(1200);
   [document.querySelector('.auth-error')?.textContent, document.querySelector('.auth-submit').textContent.trim(), document.querySelector('.auth-submit').disabled]"
 
@@ -95,6 +96,8 @@ shot "$URL/d/$QUOTE?view=live" $OUT/share-people-phone.png --size 390x844 --mobi
 say "P1 the profile; a key shown once; deleting asks first"
 shot "$URL/profile" $OUT/profile.png --size 1440x900 --cookie "$ANA" --full
 shot "$URL/profile" $OUT/profile-phone.png --size 390x844 --mobile --cookie "$BEN"
+shot "$URL/profile" $OUT/profile-tablet-dark.png --size 820x1180 --dark --cookie "$ANA"
+shot "$URL/?scope=shared" $OUT/shared-with-me-tablet-dark.png --size 820x1180 --dark --cookie "$BEN"
 shot "$URL/profile" $OUT/key-created.png --size 1440x900 --cookie "$BEN" --js "$SETV
   const name = [...document.querySelectorAll('input')].find((i) => /laptop|key/i.test(i.placeholder || ''));
   setv(name, 'Ben’s scripts'); [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Create key').click(); await wait(1200);

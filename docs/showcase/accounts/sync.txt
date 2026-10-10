@@ -1,9 +1,9 @@
-# Sync, end to end, 2026-10-10T16:15:54.728Z
+# Sync, end to end, 2026-10-10T16:52:48.214Z
 servers http://127.0.0.1:8795 and http://127.0.0.1:8796; cloud: Turso, through the gate at http://127.0.0.1:9900
-account sync-1791648954728@edgy.test (made for this run, deleted at the end)
+account sync-1791651168214@edgy.test (made for this run, deleted at the end)
 PASS  sign up on one (201)
 PASS  one is synced: {"state":"synced","pending":0}
-PASS  the same account signs in on two, from the cloud (200, 316 ms)
+PASS  the same account signs in on two, from the cloud (200, 284 ms)
 PASS  two finds the same documents: ["Start here"]
 PASS  "Synced order", made on one, is on two
 PASS  an edit on one shows on two: total 30

@@ -1,54 +1,54 @@
-Accounts and MCP, 2026-10-10T16:09Z: an agent holding Ana's API key, against http://127.0.0.1:8797
+Accounts and MCP, 2026-10-10T16:53Z: an agent holding Ana's API key, against http://127.0.0.1:8797
 
 1. Setup over HTTP (not MCP)
-POST /api/auth/signup {email: ana@example.test, name: Ana} -> 201, signed in as Ana (udec1wmuwx)
-POST /api/auth/signup {email: ben@example.test, name: Ben} -> 201, signed in as Ben (ubru1v4bpr)
-Ana makes "Ana's budget" -> 201, id x6zkc2da
-Ana makes "Ana's reading list" -> 201, id mzznhp5x
-Ben makes "Ben's private notes" -> 201, id rgszrxxq
-Ben makes "Ben's shared plan" -> 201, id fyrvqe3p
-Ben gives Ana editor access to "Ben's shared plan": POST /api/docs/fyrvqe3p/people {email: ana@example.test, role: editor} -> 200
+POST /api/auth/signup {email: ana@example.test, name: Ana} -> 201, signed in as Ana (ucl0gppryd)
+POST /api/auth/signup {email: ben@example.test, name: Ben} -> 201, signed in as Ben (u9iwmxgaju)
+Ana makes "Ana's budget" -> 201, id rnc3jlsy
+Ana makes "Ana's reading list" -> 201, id 3saxjxhw
+Ben makes "Ben's private notes" -> 201, id kgl9h0x5
+Ben makes "Ben's shared plan" -> 201, id 5xezsvtr
+Ben gives Ana editor access to "Ben's shared plan": POST /api/docs/5xezsvtr/people {email: ana@example.test, role: editor} -> 200
     [{"name":"Ben","role":"owner"},{"name":"Ana","role":"editor"}]
 Ana creates a key with her session: POST /api/me/keys {name: "Claude on Ana's laptop"} -> 201
-    {"id":"kkvnsvq9nj","userId":"udec1wmuwx","name":"Claude on Ana's laptop","prefix":"edgy_-bvMkD","createdAt":1791648569562,"lastUsedAt":null,"revokedAt":null,"key":"edgy_-bvMkD… (48 characters, shown once)"}
+    {"id":"klkng1sbfk","userId":"ucl0gppryd","name":"Claude on Ana's laptop","prefix":"edgy_orWhyj","createdAt":1791651214828,"lastUsedAt":null,"revokedAt":null,"key":"edgy_orWhyj… (48 characters, shown once)"}
   ok   the answer carries the key itself, once
 
 2. The agent, started with EDGY_API_KEY = Ana's key
   Tools (14): edgy_guide, edgy_docs, edgy_organize, edgy_deck, edgy_share, edgy_export, edgy_create, edgy_read, edgy_apply, edgy_eval, edgy_data, edgy_say, edgy_listen, edgy_answer
 
   > edgy_docs {}
-    mzznhp5x  "Ana's reading list"  version 1, changed 2026-10-10T16:09:29.498Z  http://127.0.0.1:8797/d/mzznhp5x
-    x6zkc2da  "Ana's budget"  version 1, changed 2026-10-10T16:09:29.484Z  http://127.0.0.1:8797/d/x6zkc2da
-    rybz0ttj  "Start here"  version 1, changed 2026-10-10T16:09:29.384Z  http://127.0.0.1:8797/d/rybz0ttj
+    3saxjxhw  "Ana's reading list"  version 1, changed 2026-10-10T16:53:34.735Z  http://127.0.0.1:8797/d/3saxjxhw
+    rnc3jlsy  "Ana's budget"  version 1, changed 2026-10-10T16:53:34.703Z  http://127.0.0.1:8797/d/rnc3jlsy
+    dmltxsc9  "Start here"  version 1, changed 2026-10-10T16:53:34.587Z  http://127.0.0.1:8797/d/dmltxsc9
   ok   Ben's private notes are not in Ana's list
   ok   Ben's shared plan is not among "mine" either
 
   > edgy_docs {"scope":"shared"}
-    fyrvqe3p  "Ben's shared plan"  version 1, changed 2026-10-10T16:09:29.532Z  http://127.0.0.1:8797/d/fyrvqe3p  [Ben's, you can edit]
+    5xezsvtr  "Ben's shared plan"  version 1, changed 2026-10-10T16:53:34.786Z  http://127.0.0.1:8797/d/5xezsvtr  [Ben's, you can edit]
   ok   Ben's private notes are not shared with her
 
   > edgy_apply {"doc":"Ana's budget","ops":[["set","qty","value",5]]}
     Applied 1 op; now version 2.
     
-    "Ana's budget" — doc x6zkc2da, version 2
+    "Ana's budget" — doc rnc3jlsy, version 2
     c1 col
     ├─ c2 text "Rent and food for the month"
     └─ c3 input:number qty = 5
     
     No errors.
 
-  > edgy_read {"doc":"x6zkc2da"}
-    "Ana's budget" — doc x6zkc2da, version 2
+  > edgy_read {"doc":"rnc3jlsy"}
+    "Ana's budget" — doc rnc3jlsy, version 2
     c1 col
     ├─ c2 text "Rent and food for the month"
     └─ c3 input:number qty = 5
     
     No errors.
 
-  > edgy_apply {"doc":"fyrvqe3p","ops":[["set","weeks","value",6]]}
+  > edgy_apply {"doc":"5xezsvtr","ops":[["set","weeks","value",6]]}
     Applied 1 op; now version 2.
     
-    "Ben's shared plan" — doc fyrvqe3p, version 2
+    "Ben's shared plan" — doc 5xezsvtr, version 2
     c1 col
     ├─ c2 text "The plan for May"
     └─ c3 input:number weeks = 6
@@ -56,42 +56,42 @@ Ana creates a key with her session: POST /api/me/keys {name: "Claude on Ana's la
     No errors.
   (the shared plan is Ana's to edit, so that one works)
 
-   What Ana's history says about it (GET /api/docs/x6zkc2da/log with her cookie):
-    { "v": 2, "ts": 1791648569862, "actor": { "kind": "agent", "name": "Claude", "id": "udec1wmuwx", "for": "Ana" }, "ops": [ [ "set", "c3", "value", 5 ] ] }
-  ok   the last entry's actor is the agent acting for Ana: {"kind":"agent","name":"Claude","id":"udec1wmuwx","for":"Ana"}
-  ok   on Ben's shared plan too, the actor is the agent for Ana (Ben sees who really did it): {"kind":"agent","name":"Claude","id":"udec1wmuwx","for":"Ana"}
+   What Ana's history says about it (GET /api/docs/rnc3jlsy/log with her cookie):
+    { "v": 2, "ts": 1791651215193, "actor": { "kind": "agent", "name": "Claude", "id": "ucl0gppryd", "for": "Ana" }, "ops": [ [ "set", "c3", "value", 5 ] ] }
+  ok   the last entry's actor is the agent acting for Ana: {"kind":"agent","name":"Claude","id":"ucl0gppryd","for":"Ana"}
+  ok   on Ben's shared plan too, the actor is the agent for Ana (Ben sees who really did it): {"kind":"agent","name":"Claude","id":"ucl0gppryd","for":"Ana"}
 
 3. What the agent can not reach
 
-  > edgy_apply {"doc":"rgszrxxq","ops":[["set","qty","value",9]]}   (an error answer)
-    no document "rgszrxxq". Known: x6zkc2da (Ana's budget), mzznhp5x (Ana's reading list), rybz0ttj (Start here), fyrvqe3p (Ben's shared plan)
+  > edgy_apply {"doc":"kgl9h0x5","ops":[["set","qty","value",9]]}   (an error answer)
+    no document "kgl9h0x5". Known: rnc3jlsy (Ana's budget), 3saxjxhw (Ana's reading list), dmltxsc9 (Start here), 5xezsvtr (Ben's shared plan)
   ok   the error does not give away Ben's document
 
   > edgy_read {"doc":"Ben's private notes"}   (an error answer)
-    no document "Ben's private notes". Known: x6zkc2da (Ana's budget), mzznhp5x (Ana's reading list), rybz0ttj (Start here), fyrvqe3p (Ben's shared plan)
+    no document "Ben's private notes". Known: rnc3jlsy (Ana's budget), 3saxjxhw (Ana's reading list), dmltxsc9 (Start here), 5xezsvtr (Ben's shared plan)
   ok   asked directly over HTTP with the key, Ben's document answers 404: 404
   ok   a key can not make keys: 403
 
 4. The key shows nowhere after it was made
   GET /api/me/keys -> 200
-    [{"id":"kkvnsvq9nj","userId":"udec1wmuwx","name":"Claude on Ana's laptop","prefix":"edgy_-bvMkD","createdAt":1791648569562,"lastUsedAt":1791648569819,"revokedAt":null}]
+    [{"id":"klkng1sbfk","userId":"ucl0gppryd","name":"Claude on Ana's laptop","prefix":"edgy_orWhyj","createdAt":1791651214828,"lastUsedAt":1791651215137,"revokedAt":null}]
   ok   the list shows only the prefix
   Searched 15 answers and files for the whole key and for its secret part (37 characters after the prefix):
     MCP edgy_docs
     MCP edgy_apply
     MCP edgy_read
-    GET /api/docs/x6zkc2da/log (Ana's cookie)
-    GET /api/docs/fyrvqe3p/log (Ben's cookie)
+    GET /api/docs/rnc3jlsy/log (Ana's cookie)
+    GET /api/docs/5xezsvtr/log (Ben's cookie)
     GET /api/me/keys (Ana cookie)
-    GET /api/docs/x6zkc2da (Ana's cookie)
-    GET /api/docs/x6zkc2da/log (Ana's cookie, again)
+    GET /api/docs/rnc3jlsy (Ana's cookie)
+    GET /api/docs/rnc3jlsy/log (Ana's cookie, again)
     GET /api/me (with the key)
     GET /api/health
-    server log (C:\Users\User1\AppData\Local\Temp\claude\C--dev-edgy\c2f5bc2a-3d9b-427d-a6af-f75601ba2b9b\scratchpad\e1\goal-loop-serve-8797.log)
+    server log (C:\Users\User1\AppData\Local\Temp\claude\C--dev-edgy\c2f5bc2a-3d9b-427d-a6af-f75601ba2b9b\scratchpad\goal-loop-serve-8797.log)
   ok   the key appears in none of: GET /api/me/keys, the document, its log, /api/me, the MCP outputs, the server log
 
 5. Ana revokes the key
-  DELETE /api/me/keys/kkvnsvq9nj -> 200, revokedAt 1791648570152
+  DELETE /api/me/keys/klkng1sbfk -> 200, revokedAt 1791651215479
   ok   the revoke answered 200: 200
 
    Every tool, with the revoked key still in the agent's settings:

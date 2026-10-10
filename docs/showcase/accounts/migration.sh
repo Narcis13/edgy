@@ -148,7 +148,9 @@ verdict() { # label ok-condition(0 = ok) detail
   printf '%s' "$OWNERS"
   echo
   verdict "schema version before" "$([ "$V_BEFORE" = 3 ]; echo $?)" "$V_BEFORE"
-  verdict "schema version after" "$([ "$V_AFTER" = 5 ]; echo $?)" "$V_AFTER"
+  # The schema this code writes (SCHEMA in src/server/store.ts).
+  WANT=$(node -e "console.log(/export const SCHEMA = (\d+)/.exec(require('fs').readFileSync('src/server/store.ts','utf8'))[1])")
+  verdict "schema version after (this code writes $WANT)" "$([ "$V_AFTER" = "$WANT" ]; echo $?)" "$V_AFTER"
   verdict "signed out, the documents are refused" "$([ "$SIGNED_OUT" = 401 ]; echo $?)" "$SIGNED_OUT"
   verdict "every document is owned by the first account" "$([ "$ALLMINE" = yes ]; echo $?)"
   verdict "the view link made before accounts still opens its document for a guest" "$([ "$LINK_GUEST" = 200 ]; echo $?)" "$LINK_GUEST"
