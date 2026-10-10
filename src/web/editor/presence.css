@@ -39,3 +39,8 @@
   .presence .avatar { width: 22px !important; height: 22px !important; font-size: 9px !important; }
   .presence-more { margin-left: 2px; font-size: 11.5px; }
 }
+
+/* An op sync kept in the history that changed nothing: struck through, with why. */
+.ops li.is-conflict { flex-wrap: wrap; }
+.ops li.is-conflict code { text-decoration: line-through; color: var(--faint); }
+.ops small.conflict-note { color: var(--warn); }

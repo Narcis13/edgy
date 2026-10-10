@@ -16,7 +16,7 @@ interface Block {
   key: string;
   actor: Actor;
   ts: number;
-  ops?: { text: string; n: number; touched?: string }[];
+  ops?: { text: string; n: number; touched?: string; conflict?: boolean }[];
   message?: { text: string; cell?: string };
   /** Handlers that ran: the event, the cell it came from, and what each one changed. */
   events?: TraceItem[];
@@ -36,10 +36,10 @@ const short = (op: Op): string => {
 
 const EVENTS: Actor = { kind: 'agent', name: 'Events' };
 
-function blocks(log: { v: number; ts: number; actor: Actor; ops: Op[] }[], messages: { id: number; ts: number; actor: Actor; text: string; cell?: string }[], trace: TraceItem[]): Block[] {
-  type Item = { t: 'op'; ts: number; actor: Actor; op: Op; v: number } | { t: 'msg'; ts: number; actor: Actor; text: string; cell?: string; id: number } | { t: 'ev'; ts: number; item: TraceItem };
+function blocks(log: { v: number; ts: number; actor: Actor; ops: Op[]; conflict?: boolean }[], messages: { id: number; ts: number; actor: Actor; text: string; cell?: string }[], trace: TraceItem[]): Block[] {
+  type Item = { t: 'op'; ts: number; actor: Actor; op: Op; v: number; conflict?: boolean } | { t: 'msg'; ts: number; actor: Actor; text: string; cell?: string; id: number } | { t: 'ev'; ts: number; item: TraceItem };
   const items: Item[] = [];
-  for (const e of log) for (const op of e.ops) items.push({ t: 'op', ts: e.ts, actor: e.actor, op, v: e.v });
+  for (const e of log) for (const op of e.ops) items.push({ t: 'op', ts: e.ts, actor: e.actor, op, v: e.v, ...(e.conflict ? { conflict: true } : {}) });
   for (const m of messages) items.push({ t: 'msg', ts: m.ts, actor: m.actor, text: m.text, cell: m.cell, id: m.id });
   // An event is listed just before the changes it made.
   for (const item of trace) items.push({ t: 'ev', ts: item.at - 1, item });
@@ -65,9 +65,15 @@ function blocks(log: { v: number; ts: number; actor: Actor; ops: Op[] }[], messa
     const same = last?.ops && sameActor(last.actor, it.actor) && it.ts - last.ts < 8000;
     const text = short(it.op);
     const target = it.op[0] === 'set' ? `${it.op[1]}.${it.op[2]}` : undefined;
+    if (it.conflict) {
+      // Kept apart, so it is clear this one changed nothing.
+      if (same && last) last.ops!.push({ text, n: 1, conflict: true });
+      else out.push({ key: `o${it.v}-${out.length}`, actor: it.actor, ts: it.ts, ops: [{ text, n: 1, conflict: true }] });
+      continue;
+    }
     if (same && last) {
       const prev = last.ops!.at(-1);
-      if (prev && target && prev.touched === target) {
+      if (prev && target && !prev.conflict && prev.touched === target) {
         prev.text = text;
         prev.n++;
       } else last.ops!.push({ text, n: 1, touched: target });
@@ -169,7 +175,10 @@ export function Activity() {
             {b.ops && (
               <ul className="ops">
                 {b.ops.map((o, i) => (
-                  <li key={i}><code>{o.text}</code>{o.n > 1 && <small>×{o.n}</small>}</li>
+                  <li key={i} className={o.conflict ? 'is-conflict' : undefined}>
+                    <code>{o.text}</code>{o.n > 1 && <small>×{o.n}</small>}
+                    {o.conflict && <small className="conflict-note" title="Sync put this change after one from another machine that it no longer applies to.">skipped: conflict, changed nothing</small>}
+                  </li>
                 ))}
               </ul>
             )}

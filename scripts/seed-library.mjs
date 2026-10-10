@@ -5,6 +5,7 @@
 // Uses only POST /api/docs and the ops endpoint, so it works against any version of
 // the server. Every tenth document is a template; the rest are short notes, each with
 // a word of its own ("seedword17") in a cell, so search can be checked by hand.
+// On a server that needs sign-in, pass a session: EDGY_COOKIE="$(.claude/goal-loop/serve.sh session 8791)".
 const [base = 'http://127.0.0.1:8791', count = '300'] = process.argv.slice(2);
 const n = Number(count);
 const TEMPLATES = ['quote', 'savings', 'feedback', 'showcase', 'tables', 'elements', 'events'];
@@ -13,7 +14,7 @@ const TOPICS = ['Budget', 'Roadmap', 'Hiring plan', 'Sprint notes', 'Launch chec
 const PLACES = ['Lisbon', 'Cluj', 'Oslo', 'Porto', 'Kyoto', 'Austin', 'Ghent', 'Turin', 'Bergen', 'Leeds', 'Lyon', 'Graz'];
 
 async function post(path, body) {
-  const res = await fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const res = await fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json', ...(process.env.EDGY_COOKIE ? { cookie: process.env.EDGY_COOKIE } : {}) }, body: JSON.stringify(body) });
   if (!res.ok) throw new Error(`${path}: ${res.status} ${await res.text()}`);
   return res.json();
 }

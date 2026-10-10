@@ -10,7 +10,7 @@ offline included.
 
 Started 2026-10-10 on branch `main` at `056806e`. Brief: `/goal-loop Brief 3 in FEATURES_PROMPTS.md, that brief only`.
 
-**Next:** milestone 2 server side is mostly in (people, presence, revocation landed with milestone 1); go to milestone 3, the web: sign-in/up pages, the gate, profile, people in the Share dialog, presence, Activity names.
+**Next:** milestone 7: evidence. Write project.md (accounts mode, serve.sh session, CDP_COOKIE, sync.sh), then docs/showcase/accounts/: seed.mjs (Ana, Ben, shared docs, a collection each, a key), shoot.sh (sign-in/up desktop+phone+dark, wrong password, throttle, signed-out redirect, profile, keys shown once, delete dialog, Mine/Shared with me, share dialog people, together-*.png two browsers + latency, viewer, revoked, local mode, sync badges), mcp-check (key: list, apply, revoked, missing), migration.sh on a 056806e database, then README; then the review with a security pass; then the final audit.
 
 ## Contract (Done means)
 
@@ -42,11 +42,11 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 ## Milestones
 
 1. [x] **Store + accounts core**: schema 4 (users, sessions, api_keys, owners, doc_access, records by owner, what a document reaches), scrypt, sessions, keys, throttling, `access.ts` rewritten around declared routes, auth routes, first-account ownership, local mode, CSRF; existing tests run in local mode; new tests (A1–A4 server side, D1, T1 part)
-2. [ ] **Sharing with people + live identities**: people endpoints, Mine / Shared with me, streams that know who listens (presence, selection, revocation closes them), actor from the session, collections through a document (C1 and A3 server side, P1 server side)
-3. [ ] **Web: sign-in, profile, people, presence**: sign-in/up pages and the gate, user menu, profile page with keys and delete, Share dialog people section, Mine / Shared with me, presence stack and remote selections, Activity names (A1, A2, C1, P1, L0)
-4. [ ] **MCP + guide**: `EDGY_API_KEY`, clear messages, actor for the person, guide section (K1)
-5. [ ] **Sync engine**: cloud client (Turso over HTTP, local stand-in), outbox/dirty tracking, push/pull, rebase of document ops, records and library state, assets, status endpoint and UI (S1–S4)
-6. [ ] **Verification tooling**: cdp `--cookie`, `serve.sh` signed in, screens, project.md (R2)
+2. [x] **Sharing with people + live identities**: people endpoints, Mine / Shared with me, streams that know who listens (presence, selection, revocation closes them), actor from the session, collections through a document (C1 and A3 server side, P1 server side)
+3. [x] **Web: sign-in, profile, people, presence**: sign-in/up pages and the gate, user menu, profile page with keys and delete, Share dialog people section, Mine / Shared with me, presence stack and remote selections, Activity names (A1, A2, C1, P1, L0)
+4. [x] **MCP + guide**: `EDGY_API_KEY`, clear messages, actor for the person, guide section (K1)
+5. [x] **Sync engine**: cloud client (Turso over HTTP, local stand-in), outbox/dirty tracking, push/pull, rebase of document ops, records and library state, assets, status endpoint and UI (S1–S4)
+6. [~] **Verification tooling** (cdp --cookie/none, serve.sh session + accounts mode, screens done; project.md to write): cdp `--cookie`, `serve.sh` signed in, screens, project.md (R2)
 7. [ ] **Showcase + evidence**: two accounts seed, together/profile/keys/sync scripts, two-instance sync against Turso with a cut-able gate (G3, C1, S1, S3)
 8. [ ] **Review (with security pass) + final audit** (R1, everything)
 
@@ -79,9 +79,10 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
   opens straight into the library and `.mcp.json` keeps working without a key, as before. Sign-in, other
   accounts and keys all still work in local mode; giving the local account an email and password in the
   profile is how it is used on another machine. `serve.sh` (verification) runs `accounts`.
-- **Public routes** (no session, no key): `GET /api/health`, sign-up, sign-in, the auth status
-  (`GET /api/me` answers 401 with `{signedIn:false, signup:…}` when signed out), local sign-in in local mode,
-  and the share-link routes when a link token is sent. Everything else under `/api` is 401 signed out.
+- **Public routes** (no session, no key): `GET /api/health` (which also says `signedIn` and `auth`, so a
+  signed-out page never asks `/api/me` and logs no 401), sign-up and sign-in. Share-link routes answer a link's
+  token. Everything else under `/api` is 401 signed out. Local mode has no route of its own: a request from this
+  machine without a session or key simply is the local account.
 - **Sign-up is open** to whoever reaches the server (a server on 127.0.0.1 is reached only from this
   machine). The first account created owns every document, deck, link and collection that has no owner.
 - **Deleting an account** (asks first, needs the password): its documents and decks are deleted (with their
@@ -141,7 +142,8 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 - **The cloud is an append-only log per account ("space")**: `edgy_log(seq AUTOINCREMENT, space, oid UNIQUE,
   kind, key, origin, ts, body)` with an index on (space, seq), plus `edgy_accounts` (for signing in on a new
   machine) and `edgy_assets` (pictures by hash). A pull is `WHERE space=? AND seq>? ORDER BY seq LIMIT 500`:
-  an index range, never a scan; an idle pull reads nothing. A push is `INSERT … ON CONFLICT(oid) DO NOTHING`,
+  an index range (SEARCH edgy_log USING INDEX edgy_log_space), never a scan; an idle pull reads one row by Turso's count
+  (the index probe) and writes none. A push is `INSERT … ON CONFLICT(oid) DO NOTHING`,
   so a retried push never duplicates. libSQL has one writer, so seq order is commit order and a pull past a
   seq never misses a row.
 - **What syncs:** everything an account owns: its documents (created as a snapshot plus their history, then
@@ -153,10 +155,18 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
   when it is saved. After a pull, a document is: its last confirmed state, the confirmed ops in cloud order,
   then this machine's ops not yet confirmed, replayed on top. Both machines end with the same ops in the same
   order, so the op logs compare equal.
+- **Signing in on a new machine:** an email not known here is looked up in `edgy_accounts`; the password is checked
+  against the hash stored there; the account comes down with its id (it claims nothing local) and its space is pulled
+  before the answer (up to 10 s). Sign-up refuses an email the cloud knows. A password changed on one machine ends
+  the sessions on the others when its profile arrives. With the cloud unreachable, a new machine can't sign in an
+  account it has never seen.
+- **Tours:** an installation no longer makes a tour before any account exists; each new account (and the local
+  account) starts with one unless it owns documents already (the first account owns an upgraded installation's).
 - **Conflicts:** concurrent edits to different cells both survive. On the same property, the edit that
   reaches the cloud last wins (it is applied last everywhere). An op that no longer applies (its cell was
   removed by the other side) is skipped on every machine, kept in the history, and shown in Activity as
-  "skipped: conflict". A document deleted on one side stays deleted (later edits to it are dropped).
+  "skipped: conflict" (`conflict: true` in `/log`). An unsent op that no longer applies after a pull is kept
+  the same way and still sent, so every machine shows it. A document deleted on one side stays deleted (later edits to it are dropped).
   Records merge field by field (different fields both survive, the same field: the one reaching the cloud
   last); a deleted record stays deleted; clearing a collection deletes the records that machine had, so a
   record added elsewhere meanwhile survives. Pins, archive, deck contents, links and access are
@@ -182,3 +192,5 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 
 - 2026-10-10: baseline at `056806e`: typecheck, build pass; 198 tests pass. Turso reachable over `/v2/pipeline`, empty database.
 - 2026-10-10: M1 store + accounts core: schema 4 (users, sessions, api_keys, doc_access, owner columns, reaches), `auth.ts` (scrypt, secrets, throttle), `access.ts` rewritten (principals, `need(…)` guards on every route), app routes for sign-up/in/out, me, password, delete, keys, people; streams know whose they are (presence with selection, revocation closes them); collections per owner and through documents; runner reads and writes records through the app. The 198 old tests run in local mode (3 expectations changed: the server names the actor; the guide is for people only; the access-rule unit test uses the new `check`). New `accounts.test.ts` (14). Gates pass: 212 tests.
+- 2026-10-10: M2–M5. Web (two sonnet agents, disjoint files, briefs in the scratchpad): sign-in/up pages and the gate, user menu, profile (name, colour, email, password, theme, keys shown once, delete), Mine/Shared with me; presence stack, remote selection outlines, Activity names by id ("Claude for Ana"), viewers read-only, revoked page, Share dialog people. I added `account/me.ts`, `Avatar`, the sync badge, `signedIn` on health (no 401 on signed-out pages), owner-only export. MCP: `EDGY_API_KEY`, clear messages, `scope` on edgy_docs; guide sections on data and accounts. Sync: `cloud.ts` (Turso over /v2/pipeline, LocalCloud stand-in), `sync.ts` (push/pull, rebase, conflicts, records merge, LWW library state, assets, account deletion), store schema 5; `sync.test.ts` (9). Real Turso: `docs/showcase/accounts/sync.sh` through `cloud-gate.mjs`: all 22 checks pass (offline edits on both, logs equal 11 = 11, conflict kept, idle pull 1 row read/request, index search plan, cleanup to 0 rows, token in no log). Full sweep signed in on a fresh server (7 templates + one shared by Ben, new screens signed out and in): 0 problems. Gates: 237 tests.
+- Agent notes: the editor agent left 2 small things unverified (Leave after redirect re-run; phone header with many real people); the account agent: "Mine" has no count. To check in the evidence pass.

@@ -8,6 +8,8 @@
 // account's space, and deletes it at the end: the space, its account row and the
 // note that it was deleted. What it did and what it found is printed and written to out.txt.
 import { writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
 
 const [one, two, gate, out] = process.argv.slice(2);
 if (!one || !two || !gate) {
@@ -58,6 +60,19 @@ async function settle(...cs) {
 const values = async (c, id) => (await c.call('GET', `/api/docs/${id}/read`)).json.values;
 const log = async (c, id) => (await c.call('GET', `/api/docs/${id}/log?limit=500`)).json.map((e) => ({ v: e.v, ops: e.ops, by: e.actor.name, conflict: !!e.conflict }));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+/** With SHOTS=1 (and servers that serve the app), a screenshot of a page as this client sees it, next to out.txt. */
+function shoot(c, path, name, extra = []) {
+  if (process.env.SHOTS !== '1' || !out) return;
+  const file = join(dirname(out), name);
+  try {
+    const r = execFileSync(process.execPath, ['goal-loop/scripts/cdp.mjs', 'shot', c.base + path, file, '--size', '1440x900', '--cookie', c.cookie(), '--wait', '3500', ...extra], { encoding: 'utf8' });
+    const problems = r.split(/\r?\n/).filter((l) => l.startsWith('CONSOLE'));
+    say(`  screenshot ${name}${problems.length ? ': ' + problems.join(' ') : ''}`);
+  } catch (e) {
+    // cdp.mjs exits 3 when the page logged a problem.
+    say(`  screenshot ${name}: ${String(e.stdout || e.message).split(/\r?\n/).filter((l) => /CONSOLE|JS/.test(l)).join(' ')}`);
+  }
+}
 
 const A = client(one, 'one');
 const B = client(two, 'two');
@@ -96,6 +111,8 @@ await settle(B, A);
 check((await values(A, id)).total === 36, `an edit on two shows on one: total ${(await values(A, id)).total}`);
 const rec = (await A.call('GET', '/api/data/orders')).json[0];
 check((await B.call('GET', '/api/data/orders')).json[0]?.item === 'tea', 'records travel');
+shoot(A, '/', 'sync-synced.png');
+shoot(B, `/d/${id}?view=live`, 'sync-two.png');
 
 // 3. The cloud is cut off. Both keep working.
 await fetch(gate + '/__gate/close', { method: 'POST' });
@@ -109,6 +126,8 @@ await B.call('POST', `/api/docs/${id}/ops`, { ops: [['set', 'note', 'text', 'Edi
 await B.call('PATCH', `/api/data/orders/${rec.id}`, { fields: { paid: true } });
 const off1 = await syncNow(A);
 const off2 = await syncNow(B);
+shoot(A, `/d/${id}?view=edit`, 'sync-offline.png');
+shoot(A, '/', 'sync-offline-phone.png', ['--size', '390x844', '--mobile']);
 check(off1.state === 'offline' && off2.state === 'offline', `both say offline: one ${off1.state} (${off1.pending} waiting), two ${off2.state} (${off2.pending} waiting)`);
 
 // 4. The cloud is back. One reaches it first, then two.
@@ -125,6 +144,7 @@ check(same(docA, docB), `the document is the same on both (version ${docA.v})`);
 const logA = await log(A, id);
 const logB = await log(B, id);
 check(same(logA, logB), `the two op logs are the same: ${logA.length} entries each`);
+shoot(B, `/d/${id}?view=edit`, 'sync-merged.png');
 const sets = (pred) => logA.filter((e) => e.ops.some(pred)).length;
 check(sets((o) => o[0] === 'set' && o[2] === 'value' && [4, 5, 6, 9].includes(o[3])) === 4, 'every qty edit made offline is in the log once (4, 5, 6 on one; 9 on two)');
 check(sets((o) => o[0] === 'set' && o[2] === 'value' && [20, 25].includes(o[3])) === 2, 'both price edits made offline on two are in the log once');

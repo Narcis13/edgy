@@ -87,7 +87,8 @@ ws.addEventListener('message', (m) => {
   if (msg.method === 'Network.requestWillBeSent' && !/^(data|blob|file|about|chrome|devtools):/.test(p.request.url)) requests.push(p.request.url);
 });
 const send = (method, params = {}) => new Promise((r) => { const n = ++id; waiting.set(n, r); ws.send(JSON.stringify({ id: n, method, params })); });
-const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })).result;
+// replMode: top-level await works, and the last expression is the value.
+const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true, replMode: true })).result;
 const metrics = (height) => send('Emulation.setDeviceMetricsOverride', { width: w, height, deviceScaleFactor: mobile ? 2 : 1, mobile });
 
 await send('Runtime.enable');

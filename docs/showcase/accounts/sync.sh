@@ -18,12 +18,18 @@ stop_port() {
 }
 for p in $GATE $P1 $P2; do stop_port $p; done
 rm -rf "$WORK"; mkdir -p "$WORK"
+# SHOTS=1: the servers also serve the app, and the check takes screenshots of the sync badge (synced, offline, merged).
+MODE=development; DIST="$WORK/none"
+if [ "${SHOTS:-}" = 1 ]; then
+  DIST="$WORK/dist"; MODE=production
+  npx vite build --outDir "$DIST" --emptyOutDir >"$WORK/build.log" 2>&1 && npx vite build -c vite.offline.config.ts --outDir "$DIST/offline" --emptyOutDir >>"$WORK/build.log" 2>&1 || { echo "build failed, see $WORK/build.log"; exit 1; }
+fi
 
 nohup node --env-file=.env "$OUT/cloud-gate.mjs" $GATE >"$WORK/gate.log" 2>&1 &
 for port in $P1 $P2; do
   # The servers never see the token: the gate adds it.
   EDGY_AUTH=accounts EDGY_PORT=$port EDGY_DATA="$WORK/data-$port" EDGY_SYNC_INTERVAL=1000 \
-  TURSO_URL="http://127.0.0.1:$GATE" TURSO_AUTH_TOKEN=gate EDGY_DIST="${EDGY_DIST:-$WORK/none}" NODE_ENV=${NODE_ENV:-development} \
+  TURSO_URL="http://127.0.0.1:$GATE" TURSO_AUTH_TOKEN=gate EDGY_DIST="$DIST" NODE_ENV=$MODE \
     nohup node --disable-warning=ExperimentalWarning --import tsx src/server/index.ts >"$WORK/server-$port.log" 2>&1 &
 done
 for port in $P1 $P2; do

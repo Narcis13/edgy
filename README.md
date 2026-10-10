@@ -19,6 +19,8 @@ npm run dev
 
 Open http://localhost:5173. The API listens on http://127.0.0.1:8787 and keeps everything in `data/edgy.db` (SQLite, JSON columns). On the first run a short tour document is created for you.
 
+With nothing configured, edgy runs in **local mode**: on this machine you are signed in as a local account, with no sign-up, and agents on this machine need no key. A server that other machines can reach (`HOST=0.0.0.0`) always asks people to sign in; `EDGY_AUTH=accounts` asks for it on this machine too. See [Accounts](#accounts-and-people) and [Sync](#sync-between-machines).
+
 Other scripts:
 
 | script | what it does |
@@ -29,7 +31,10 @@ Other scripts:
 | `npm run mcp` | the MCP server for agents (started by Claude Code from `.mcp.json`) |
 | `docs/showcase/data-tables/shoot.sh` | rebuilds the data-table showcase screenshots and PDF from a fresh server |
 | `docs/showcase/library/shoot.sh` | rebuilds the library showcase (search, pins, decks, Play, sharing, exports) from a fresh server |
-| `node scripts/seed-library.mjs <url> 300` | fills a running edgy with 300 documents, to see the library at scale |
+| `node scripts/seed-library.mjs <url> 300` | fills a running edgy with 300 documents, to see the library at scale (`EDGY_COOKIE=edgy_session=…` on a server that needs sign-in) |
+| `npm run dev:sync` | `npm run dev` with `.env` loaded, so the local file syncs with the Turso database named there |
+| `docs/showcase/accounts/shoot.sh` | rebuilds the accounts evidence (sign-in, profile, people, two people in one document, local mode) from a fresh server |
+| `docs/showcase/accounts/sync.sh` | two servers, one account, the Turso database in `.env`, the cloud cut off and brought back; checks the op logs match |
 
 Requires Node 22.13 or newer (it uses `node:sqlite`).
 
@@ -69,6 +74,43 @@ The home page keeps up with hundreds of documents. **Search** finds words in tit
 - **Decks**: select two or more documents and **Group** them. A deck is an ordered set with its own title and description, shown as one card; its documents stay separate documents. On the deck's page reorder them, add more or take some out, and **Ungroup** to put them back in the list. **Play** shows the deck as slides, one live document per slide (inputs and buttons work; each evaluates on its own): → and ← (or a click beside the slide, or a swipe) move between them, ↓ ↑ and Space scroll a slide taller than the screen, F is full screen and Esc goes back to where you started. A slide is laid out at the document's width (or the screen's, so a phone gets the phone layout) and scaled to fill the screen, down to a readable size; a longer one scrolls.
 - **Export** a document or a deck as **one .html file** (the download button in the editor, a card's menu, or a deck's page). It opens from disk with no server and no network: fonts, pictures and icons are inside, formulas, inputs and buttons work, a deck plays as slides, and the records it reads are included as they were at the moment of export. What you change in the file, saved records included, stays in that page until you close it; a note says it is an offline copy. The file holds only that document (or deck), the records it reads and the font files its text needs; fetch addresses and keys are left out.
 
+## Accounts and people
+
+Every document has an **owner**. Sign up with an email and a password (stored as a salted scrypt hash); a session lasts 30 days in an HttpOnly cookie and survives restarts. Five wrong passwords in a row and sign-in starts asking you to wait, a little longer each time. The first account on an installation that existed before accounts owns everything that was there.
+
+- **Mine and Shared with me.** The library shows your documents under Mine; Shared with me lists documents other people gave your account access to, with their owner and what you may do. Pins, archive and decks are your own arrangement of your own documents.
+- **People.** In a document, Share → People: add someone by the email of their account as **can view** or **can edit**, change it, or remove them. Removing takes effect at once, even in a browser that has the document open. Someone you shared with can leave it. Share links keep working, and belong to the owner.
+- **Together.** Everyone in a document sees who else is there (their avatars in the top bar) and the cell each has selected (an outline in their colour, with their name). Edits appear for the others as they are made; two people editing different cells both keep their changes. Activity names who did what, by their current name.
+- **Viewers** see the document in Live and Page; what they type stays in their tab.
+- **Profile** (your avatar → Profile): name, colour, email, password (changing it signs you out everywhere else), the theme (kept with your account), API keys, and deleting the account. Deleting asks for your password; your documents, decks, records and keys go with it, your access to other people's documents ends, and what you changed in their documents stays.
+- **Collections belong to their owner.** Your records are yours: `(rows "orders")` in your document reads your "orders", never someone else's. A document reads its owner's collections, whoever is looking at it, so the people you share it with see what it shows, and only the collections it used at your last change: someone you gave edit access can't make your document read a collection you didn't.
+
+### API keys for agents
+
+An agent (the MCP server, a script) acts for a person with an **API key**: Profile → API keys → Create key. The key is shown once; edgy keeps only a digest of it and shows when each key was last used. Revoke one at any time. Put it next to `EDGY_URL` for the MCP server:
+
+```json
+"env": { "EDGY_URL": "http://127.0.0.1:8787", "EDGY_API_KEY": "edgy_…", "EDGY_AGENT_NAME": "Claude" }
+```
+
+With a key, an agent sees and changes only what its person can, and Activity shows it as "Claude for Ana". A missing or revoked key gets a clear message from every tool. Over HTTP send `Authorization: Bearer edgy_…`. In local mode, agents on this machine need no key.
+
+## Sync between machines
+
+The local SQLite file stays where edgy works; with a [Turso](https://turso.tech) database it also syncs both ways, so the same account finds the same documents, history and records on another machine. Put the database's URL and a token in `.env` (never commit it; `.env` is in `.gitignore`):
+
+```
+TURSO_URL=libsql://your-database.turso.io
+TURSO_AUTH_TOKEN=…
+```
+
+and start with `npm run dev:sync` (or have both variables in the environment). Without them, edgy stays local, and the top bar says **Sync off**. With them, the badge says **Synced**, **Syncing** (changes on their way) or **Offline** (the cloud can't be reached; changes wait here and go when it answers); a click syncs now.
+
+- On another machine, sign in with the same email and password: the account comes down from the cloud with its documents.
+- Each change is pushed within a moment; each machine pulls every few seconds (`EDGY_SYNC_INTERVAL`, in ms), reading only what is new.
+- **Conflicts.** Edits to different cells on two machines both survive. When both changed the same thing, the change that reached the cloud last wins, the same on every machine. A change to a cell another machine removed is kept in the history, marked "skipped: conflict", and changes nothing. Records merge field by field; something deleted on one machine stays deleted.
+- What syncs: documents with their history, records, pins, archive, decks, share links, who has access, profiles and uploaded pictures. Not synced: sessions, API keys (a key belongs to the server it was made on) and conversations with agents.
+
 ## Events: documents that react
 
 Any cell can say what happens when something happens to it, in its **on**: an event's name and an action, written in the same language as a button's. The document has its own (`open`, `close`) and can define **custom actions** once and call them anywhere.
@@ -106,7 +148,7 @@ The project ships an MCP server (`src/mcp/server.ts`) and a `.mcp.json`, so Clau
 | tool | purpose |
 | --- | --- |
 | `edgy_guide` | the notation, the language, the ops — read once |
-| `edgy_docs`, `edgy_create` | list or search the library (pinned first; filters and sorts), start a document (blank, from notation, or from a template) |
+| `edgy_docs`, `edgy_create` | list or search the library (pinned first; filters and sorts; `scope: shared` for documents others gave you), start a document (blank, from notation, or from a template) |
 | `edgy_organize` | describe, pin, unpin, archive, restore documents, and set the order of the pinned |
 | `edgy_deck` | create a deck, reorder it, add or take out documents, describe it, ungroup it |
 | `edgy_share`, `edgy_export` | turn a view or edit link on or off; save a document or deck as one offline .html file |
@@ -119,10 +161,12 @@ The project ships an MCP server (`src/mcp/server.ts`) and a `.mcp.json`, so Clau
 
 Every change an agent makes lands in the open browser immediately, with the agent's name traced on the cells it touched and its ops in the Activity feed. A person can write to the agent from the same panel; `edgy_listen` blocks until they do, so an agent can sit in a document and take requests.
 
+On a server that asks people to sign in, give the MCP server an API key (`EDGY_API_KEY`, see [API keys for agents](#api-keys-for-agents)).
+
 The HTTP API is the same thing without MCP. Anything that speaks JSON can drive a document:
 
 ```bash
-curl -X POST localhost:8787/api/docs/DOC/ops -H 'content-type: application/json' \
+curl -X POST localhost:8787/api/docs/DOC/ops -H 'content-type: application/json' -H "authorization: Bearer $EDGY_API_KEY" \
   -d '{"actor":{"kind":"agent","name":"Bash"},"ops":[["set","qty","value",5]]}'
 ```
 
@@ -142,7 +186,12 @@ src/core      the model, shared by everything, no dependencies
   templates.ts  the starting points, in notation
 src/server    Hono on Node: the API, SQLite storage, live events over SSE, compose (sentence → code)
   runner.ts     timers, fetch cells and the handlers they set off, run once per document while someone is in Live
-src/mcp       the MCP server; each tool calls the HTTP API
+  access.ts     who may do what: every request resolved to a person, an agent with a key, a link's guest or nobody;
+                every route declares what it needs
+  auth.ts       passwords (scrypt), sessions and API keys (kept as digests), slowing down repeated failures
+  sync.ts       the local file and the cloud log: push, pull, and replaying ops in the cloud's order
+  cloud.ts      Turso over HTTP (one JSON request per batch), and a local stand-in for tests
+src/mcp       the MCP server; each tool calls the HTTP API with the person's API key
 src/web       React + Vite: the editor, the home page, the data browser
   code/         the code editor, code studio, Blocks and Ask AI
   kinds/        list, calendar, canvas, stat, break and table cells
@@ -155,7 +204,8 @@ Some decisions worth knowing:
 - **Everything is a cell.** A document is one root cell; `row` and `col` cells hold other cells. Splitting a leaf makes it a group; merging collapses a run of siblings, or a rectangle of a grid, into one cell. A `normalize` pass keeps the tree tidy (no empty groups, no group of one, no group nested in a same-direction group).
 - **Ops are the only way to change a document.** `applyOp` is pure and returns the op with every generated id filled in, so replaying the log is deterministic, and the inverse op, so undo is just another dispatch. The browser applies ops optimistically, sends them, and rebases whatever is still in flight on top of what the server confirms over the event stream.
 - **Formulas are JSON arrays.** `["*", "$qty", "$price"]` is stored; `(* qty price)` is what people see and type; `{{total | currency}}` inside text is a template. Everything dynamic — a formula, a button's action, a conditional style, a hidden-when rule — is the same language. Relative references (`(sib 1)`) let a row be duplicated by a button. A cell can hold a function and other cells can call it.
-- **Data leaves the document on purpose.** `(insert! "orders" {…})` saves a record into a named collection on the server, `(update! "orders" id {…})` changes one; `(rows "orders")` reads them back from any document. Collections are the memory that outlives a document. A template can bring sample records for collections that are still empty.
+- **Data leaves the document on purpose.** `(insert! "orders" {…})` saves a record into a named collection on the server, `(update! "orders" id {…})` changes one; `(rows "orders")` reads them back from any of its owner's documents. Collections are the memory that outlives a document, and each belongs to an account. A template can bring sample records for collections that are still empty.
+- **The ops log is also what syncs.** Every op gets a global id when it is saved; the cloud keeps one append-only log per account, and its order is the order every machine replays. A machine's own ops not yet confirmed are replayed after the others', so two machines end with the same history, op for op.
 - **Agents and people share one surface.** The outline an agent reads, the notation it writes and the ops it sends are the same structures the editor uses; the Activity panel shows both sides' changes as the same s-expressions.
 
 ## The language, briefly

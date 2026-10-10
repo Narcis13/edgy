@@ -79,6 +79,8 @@ export interface LogEntry {
   ts: number;
   actor: Actor;
   ops: Op[];
+  /** Sync placed it after another machine's change it no longer applies to: it changed nothing. */
+  conflict?: boolean;
 }
 
 export interface Message {

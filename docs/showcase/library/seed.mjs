@@ -3,13 +3,15 @@
 // archived, one shared both ways, and a deck of three for the quarterly review.
 //   node docs/showcase/library/seed.mjs http://127.0.0.1:8795 [--many 300]
 // Prints the ids as shell assignments (A=… B=…) for shoot.sh.
+// On a server that needs sign-in, pass a session: EDGY_COOKIE="$(.claude/goal-loop/serve.sh session 8795)".
 const args = process.argv.slice(2);
 const base = args.find((a) => a.startsWith('http')) ?? 'http://127.0.0.1:8795';
 const many = args.includes('--many') ? Number(args[args.indexOf('--many') + 1]) : 0;
 const actor = { kind: 'human', name: 'Mira' };
 
 async function call(method, path, body) {
-  const res = await fetch(base + path, { method, headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+  const cookie = process.env.EDGY_COOKIE ? { cookie: process.env.EDGY_COOKIE } : {};
+  const res = await fetch(base + path, { method, headers: body ? { 'content-type': 'application/json', ...cookie } : cookie, body: body ? JSON.stringify(body) : undefined });
   if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${await res.text()}`);
   return res.json();
 }

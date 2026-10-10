@@ -1,0 +1,51 @@
+Migration check, 2026-10-10T16:11Z: a database written by commit 056806e (before accounts), copied, opened by this version in accounts mode.
+
+Before (old code, no sign-in; PRAGMA user_version = 3):
+  made: documents kltgvgtm (template showcase), gqgfegx2 (template events, an edit link), upwv4npl (edits by Claude and Ann, a message, a view link, pinned)
+        (and the one document an empty old server makes for itself); deck deck-ns7jo2x "Offsite pack" of kltgvgtm and gqgfegx2; collections offsite-events (2 records) and budget-lines (1)
+  doc ej5nvtgg: 3506dbcebcfb log eaf44231bcf4 messages 97d170e1550e (1 changes, 0 messages) links []
+  doc gqgfegx2: 6a612d47f2c6 log b91c3dcac6b1 messages 97d170e1550e (1 changes, 0 messages) links [QuqOU5ldMMBGys50VQ2CCjHsC9DV2mxV8BCLQK11xpY:edit]
+  doc kltgvgtm: 622f7ae463a6 log cfcdab62a684 messages 97d170e1550e (2 changes, 0 messages) links []
+  doc upwv4npl: c98dc576b0a2 log 26dfe55e4059 messages 124f2fb04a96 (3 changes, 1 messages) links [_tjCaVGWs_JjO9l_THQ8no67MIbX9slRyv3G2o_abec:view]
+  collection budget-lines: b1691e79a6a7 (1 records)
+  collection offsite-events: f1ff2572f759 (2 records)
+  library: 3 entries, pinned [upwv4npl], then [deck-ns7jo2x ej5nvtgg], cards 8c05856c342b
+  deck deck-ns7jo2x: "Offsite pack", 2 documents in order [kltgvgtm gqgfegx2], 15407b2e7fe8
+
+After (this code on a copy of the file, accounts mode; PRAGMA user_version = 5):
+  signed out, GET /api/docs answers 401
+  the first account signs up (Ana) and reads with her cookie:
+  doc ej5nvtgg: 3506dbcebcfb log eaf44231bcf4 messages 97d170e1550e (1 changes, 0 messages) links []
+  doc gqgfegx2: 6a612d47f2c6 log b91c3dcac6b1 messages 97d170e1550e (1 changes, 0 messages) links [QuqOU5ldMMBGys50VQ2CCjHsC9DV2mxV8BCLQK11xpY:edit]
+  doc kltgvgtm: 622f7ae463a6 log cfcdab62a684 messages 97d170e1550e (2 changes, 0 messages) links []
+  doc upwv4npl: c98dc576b0a2 log 26dfe55e4059 messages 124f2fb04a96 (3 changes, 1 messages) links [_tjCaVGWs_JjO9l_THQ8no67MIbX9slRyv3G2o_abec:view]
+  collection budget-lines: b1691e79a6a7 (1 records)
+  collection offsite-events: f1ff2572f759 (2 records)
+  library: 3 entries, pinned [upwv4npl], then [deck-ns7jo2x ej5nvtgg], cards 8c05856c342b
+  deck deck-ns7jo2x: "Offsite pack", 2 documents in order [kltgvgtm gqgfegx2], 15407b2e7fe8
+
+Who owns what (GET /api/docs/<id>/people):
+  ej5nvtgg: owned by Ana (1 people)
+  gqgfegx2: owned by Ana (1 people)
+  kltgvgtm: owned by Ana (1 people)
+  upwv4npl: owned by Ana (1 people)
+
+  ok   schema version before: 3
+  ok   schema version after: 5
+  ok   signed out, the documents are refused: 401
+  ok   every document is owned by the first account
+  ok   the view link made before accounts still opens its document for a guest: 200
+
+Identical: every document, its history, its messages, every collection, the library order and pins, the deck and the links.
+
+A second account (Ben) signs up on the same file:
+  GET /api/docs:      1: "Start here"
+  GET /api/data:      []
+  GET /api/library:   1 entries: Start here
+  GET /api/decks:     []
+  GET /api/docs/kltgvgtm: 404;  /api/docs/upwv4npl/log: 404;  /api/docs/upwv4npl/shares: 404
+  GET /api/data/offsite-events: 200, 0 records
+  ok   the second account has only its own tour
+  ok   the second account has no collections, no deck, and sees none of the first account's documents
+
+Verdict: all checks came out as expected.

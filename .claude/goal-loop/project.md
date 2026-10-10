@@ -30,8 +30,24 @@ $S/gates.sh            # runs $P/gates: typecheck, npm test, production build; o
 
 ```bash
 $P/serve.sh fresh 8791 "$TMPDIR/data"    # build, empty data, production server: app and API on one port
+export CDP_COOKIE="$($P/serve.sh session 8791)"                        # sign up ana@example.test (or sign in): edgy_session=…
+B="$($P/serve.sh session 8791 ben@example.test Ben)"                  # a second person
 $P/serve.sh stop 8791
 ```
+
+- **Accounts.** `serve.sh` runs in accounts mode (`EDGY_AUTH=accounts`): every page but `/signin`, `/signup` and `/s/<token>`
+  needs a session, every `/api` route but health and sign-up/in answers 401 without one. `serve.sh session` prints a cookie;
+  `cdp.mjs` and `sweep.sh` send `$CDP_COOKIE` with every page (`--cookie none` for a signed-out screen). HTTP calls need
+  `-H "cookie: $CDP_COOKIE"` and, for writes, `-H "origin: http://127.0.0.1:8791"` (or none: curl sends no Origin) —
+  a write with the cookie and another site's Origin is refused. The test password is `correct horse`.
+  `EDGY_AUTH=local serve.sh …` gives local mode (no sign-in, the way `npm run dev` starts). An agent uses an API key:
+  `POST /api/me/keys {"name"}` with the cookie returns it once; then `Authorization: Bearer edgy_…`.
+- **Sync** is off on `serve.sh` servers. `docs/showcase/accounts/sync.sh` runs two servers (8795, 8796) against the
+  real Turso database in `.env` through `cloud-gate.mjs` (9900), which holds the token and can cut the cloud off
+  (`POST /__gate/close|open`). Never print the token; read `.env` only with `node --env-file=.env`. Each run uses
+  an account of its own and deletes it (and its rows in the cloud) at the end.
+- Tests: `src/server/accounts.test.ts` walks the route table (a new route needs `need(…)` before its handler, see
+  `server/access.ts`), `sync.test.ts` syncs two stores through `LocalCloud`.
 
 - On Windows (Git Bash) set `CHROME="C:/Program Files/Google/Chrome/Application/chrome.exe"` for `cdp.mjs`/`sweep.sh`; `swift` isn't there, so PDFs aren't rendered to PNG (open the PDF or shoot the Page view instead). `serve.sh stop` kills by pid file (`lsof` is missing, harmless).
 - Timers and fetch cells run on the server only while a browser has the document open in Live (the SSE stream says `?client&mode`). A document that should tick in a screenshot must be opened with `?view=live`. `/api/demo/rate`, `/api/demo/fail` and `/api/demo/slow?ms=` are local fixtures for fetch cells.
@@ -42,7 +58,10 @@ $P/serve.sh stop 8791
   `/s/<token>` (a share link: Live only). On a phone the editor opens in Live by default.
 - `serve.sh` and `npm run build` also build the offline bundle (`vite.offline.config.ts`) that exports are made from;
   `GET /api/docs/<id>/export` answers 503 without it. In development the server builds it on the first export.
-- Fill a server with many documents: `node scripts/seed-library.mjs <url> 300`; the showcase library: `node docs/showcase/library/seed.mjs <url>`
+- Fill a server with many documents: `EDGY_COOKIE=$CDP_COOKIE node scripts/seed-library.mjs <url> 300`; the showcase library: `EDGY_COOKIE=… node docs/showcase/library/seed.mjs <url>`;
+  the accounts showcase: `node docs/showcase/accounts/seed.mjs <url>` (signs its people up itself).
+  Older evidence scripts (`docs/showcase/{library,events,new-elements,data-tables}/shoot.sh`) were written before
+  accounts: run them against a local-mode server (`EDGY_AUTH=local $P/serve.sh fresh …`).
   (prints ids as shell assignments). Share tokens, decks and pins are set over HTTP (see the guide's Library section).
 - The schema version is SQLite's `user_version` (now 3); `Store` migrates older files in place on open. `docs/showcase/library/migration.sh`
   checks a database made by commit 40b398d. On Windows, Git Bash's `kill` may not reach a node started with nohup in a subshell: stop by port.
@@ -99,10 +118,15 @@ swift $S/montage.swift strip.png 0.5 a.png b.png c.png    # side by side, for ev
 
 ```
 src/core      model, language (sx.ts), ops, engine, notation, outline, templates. No dependencies.
-src/server    Hono API, SQLite store, SSE events, compose (sentence → code)
-src/mcp       MCP server; every tool calls the HTTP API
-src/web       React app: editor/, code/ (code studio), kinds/ (cell types), print/, pages/
+src/server    Hono API, SQLite store, SSE events, compose (sentence → code); access.ts (who may do what),
+              auth.ts (passwords, sessions, keys), sync.ts + cloud.ts (Turso)
+src/mcp       MCP server; every tool calls the HTTP API (with EDGY_API_KEY)
+src/web       React app: editor/, code/ (code studio), kinds/ (cell types), print/, pages/, account/ (sign-in,
+              profile, me.ts: who is signed in), share/, sync/ (the badge)
 ```
+
+- A new API route needs `need(…)` before its handler (see `server/access.ts`); the route-table test fails otherwise.
+  A route that reads or writes records goes through `checked.dataOwner`; never `store.rows` with a name from the request alone.
 
 - A new cell kind touches core (types, engine, notation, ops, outline, the guide text), the web renderer in
   `src/web/kinds/`, `KindMenu`, `Inspector`, the minimap glyphs, and the guide that agents read. Grep for an
