@@ -15,6 +15,8 @@ import { indexTree, leaves } from '../core/tree';
 import { type LogEntry, type Message, type Row, ApiError, api } from './lib/api';
 import { listen, send } from './lib/transport';
 import { type Store, createStore } from './lib/store';
+import { currentMe } from './account/me';
+import { type Member, type Present, type Role, isYou } from './editor/people';
 import { asItems } from './kinds/items';
 import { isoOf } from './kinds/month';
 
@@ -54,7 +56,15 @@ export interface SessionOptions {
 
 export interface SessionState {
   /** unshared: opened with a share link that has been turned off. */
-  status: 'loading' | 'ready' | 'missing' | 'failed' | 'unshared';
+  status: 'loading' | 'ready' | 'missing' | 'failed' | 'unshared' | 'revoked';
+  /** revoked: why this person can no longer open it. */
+  revoked: 'access' | 'signedout' | 'deleted' | null;
+  /** What this person may do here. Without accounts (a link, an exported file) they are the owner. */
+  role: Role;
+  /** Who has the document open now, as the server last said (never agents' presence events: see `presence`). */
+  people: Present[];
+  /** The accounts that may open it, for naming people (the editor asks; empty where there are no accounts). */
+  members: Member[];
   /** When the library archived this document, or null. */
   archivedAt: number | null;
   online: boolean;
@@ -138,7 +148,6 @@ function coalesce(ops: Op[]): Op[] {
 
 export class Session {
   readonly client = uid();
-  readonly actor: Actor = { kind: 'human', name: 'You', id: this.client };
   readonly store: Store<SessionState>;
   /** While a formula is being typed, clicking another cell inserts a reference to it. */
   pick: ((ref: string) => void) | null = null;
@@ -164,6 +173,9 @@ export class Session {
   private opened = false;
   /** Not on screen (a slide): no stream to the server until resumed. */
   private paused = false;
+  /** The selection last told to the server, and the timer that tells it. */
+  private toldSelected: string | null = null;
+  private selectionTimer: ReturnType<typeof setTimeout> | null = null;
   private onPageHide = () => this.leaving(true);
   /** Back from the browser's page cache: that is opening it again. */
   private onPageShow = (e: PageTransitionEvent) => {
@@ -175,12 +187,29 @@ export class Session {
       status: 'loading', online: true, doc: null, computed: null, unsaved: 0, selection: [], editing: null, seed: null,
       menu: null, mode: options.mode ?? initialMode(), printing: false, links: true, log: [], messages: [], presence: [], flashes: {}, collections: {},
       toast: null, fetched: {}, trace: [], canUndo: false, canRedo: false, now: Date.now(), archivedAt: null,
+      revoked: null, role: 'owner', people: [], members: [],
     };
     this.store = createStore(this.s);
   }
 
   get state(): SessionState {
     return this.s;
+  }
+
+  /** Who this browser shows as the author of its changes: the signed-in account, or just "You" where there is none. */
+  get actor(): Actor {
+    const me = currentMe().me;
+    return me ? { kind: 'human', name: me.name, id: me.id } : { kind: 'human', name: 'You', id: this.client };
+  }
+
+  /** The person at this keyboard, for telling their entries from others': by account when there is one. */
+  get you(): { meId: string | null; client: string } {
+    return { meId: currentMe().me?.id ?? null, client: this.client };
+  }
+
+  /** Nothing is sent: a view link, or an account that may only read. What is typed stays in the tab. */
+  get readOnly(): boolean {
+    return this.options.guest === 'view' || this.s.role === 'viewer';
   }
 
   // ── lifecycle ──
@@ -191,22 +220,35 @@ export class Session {
     try {
       // Someone with a link sees the document as it is now, not its history or the conversation.
       const guest = !!this.options.guest;
+      // Only where someone is signed in: an exported file or a deck being played has no accounts to ask about.
+      const accounts = !guest && currentMe().me !== null;
+      let owner: string | undefined;
       // The library says whether there is such a document at all, so a gone one asks for nothing else.
       if (!guest) {
-        const { entry } = await api<{ entry: { archivedAt: number | null } | null }>('GET', `/api/library/${this.id}`);
+        const { entry } = await api<{ entry: { archivedAt: number | null; owner?: string } | null }>('GET', `/api/library/${this.id}`);
         if (this.closed || generation !== this.generation) return;
         if (!entry) return this.patch({ status: 'missing' });
+        owner = entry.owner;
         this.s = { ...this.s, archivedAt: entry.archivedAt };
       }
-      const [doc, log, messages, fetched] = await Promise.all([
+      const [doc, log, messages, fetched, who] = await Promise.all([
         api<Doc>('GET', `/api/docs/${this.id}`),
         guest ? [] : api<LogEntry[]>('GET', `/api/docs/${this.id}/log?limit=80`),
         guest ? [] : api<Message[]>('GET', `/api/docs/${this.id}/messages`),
         api<Record<string, FetchState>>('GET', `/api/docs/${this.id}/fetched`).catch(() => ({})),
+        accounts ? api<{ people: Member[]; role: Role }>('GET', `/api/docs/${this.id}/people`).catch(() => null) : null,
       ]);
       if (this.closed || generation !== this.generation) return;
       this.confirmed = doc;
-      this.patch({ status: 'ready', doc, messages, fetched, log: log.map((e) => ({ ...e, mine: false })) });
+      // The role comes from the people list; failing that, a document someone else owns can at least not be assumed to be mine.
+      const me = currentMe().me;
+      const role: Role = who?.role ?? (me && owner && owner !== me.id ? 'editor' : 'owner');
+      this.patch({
+        status: 'ready', doc, messages, fetched, role, members: who?.people ?? [],
+        log: log.map((e) => ({ ...e, mine: isYou(e.actor, this.you) })),
+        // Someone who may only read starts in Live, not in an editor that would do nothing.
+        ...(role === 'viewer' && this.s.mode === 'edit' ? { mode: 'live' as const } : {}),
+      });
       // A slide passed while it was loading stays quiet until it is shown again.
       if (!this.paused) this.connect();
       if (typeof window !== 'undefined') {
@@ -263,6 +305,8 @@ export class Session {
     this.closed = true;
     this.es?.close();
     this.es = null;
+    if (this.selectionTimer) clearTimeout(this.selectionTimer);
+    this.selectionTimer = null;
     if (this.clock) clearInterval(this.clock);
     if (this.watchdog) clearInterval(this.watchdog);
     this.clock = this.watchdog = null;
@@ -303,6 +347,14 @@ export class Session {
       if (!this.s.messages.some((m) => m.id === e.message.id)) this.patch({ messages: [...this.s.messages, e.message] });
     });
     on('presence', (e) => this.seen(e.actor, e.state, e.ts));
+    on('people', (e) => this.patch({ people: e.people }));
+    on('access', (e) => this.setRole(e.role));
+    on('revoked', (e) => {
+      // The server closes the stream after this; don't reconnect, and say why instead of showing a document that is no longer theirs.
+      this.patch({ status: 'revoked', revoked: e.why, people: [] });
+      this.pause();
+    });
+    on('reset', () => void this.reload());
     on('data', (e) => {
       if (e.collection in this.s.collections) void this.loadCollection(e.collection);
     });
@@ -315,6 +367,30 @@ export class Session {
     on('trace', (e) => this.traced(e.trace, 'server'));
   }
 
+  /** The document was replaced (restored, or written over): take it as it is now, with its history. */
+  private async reload(): Promise<void> {
+    try {
+      const [doc, log] = await Promise.all([
+        api<Doc>('GET', `/api/docs/${this.id}`),
+        this.options.guest ? [] : api<LogEntry[]>('GET', `/api/docs/${this.id}/log?limit=80`),
+      ]);
+      if (this.closed) return;
+      this.confirmed = doc;
+      this.pending = this.pending.filter((p) => p.state === 'queued');
+      this.undoStack = [];
+      this.redoStack = [];
+      const live = indexTree(doc.root).byId;
+      this.patch({
+        doc: this.rebase(), unsaved: this.pending.length, canUndo: false, canRedo: false,
+        selection: this.s.selection.filter((id) => live.has(id)), editing: null,
+        log: log.map((e) => ({ ...e, mine: isYou(e.actor, this.you) })),
+      }, true);
+      for (const name of Object.keys(this.s.collections)) void this.loadCollection(name);
+    } catch {
+      this.patch({ online: false });
+    }
+  }
+
   private async resync(): Promise<void> {
     try {
       const since = this.confirmed?.v ?? 0;
@@ -325,7 +401,7 @@ export class Session {
       this.confirmed = doc;
       this.pending = this.pending.filter((p) => !(p.state === 'done' && (p.v ?? 0) <= doc.v));
       const seen = new Set(this.s.log.map((l) => l.v));
-      const missed = log.filter((e) => !seen.has(e.v)).map((e) => ({ ...e, mine: e.actor.id === this.client }));
+      const missed = log.filter((e) => !seen.has(e.v)).map((e) => ({ ...e, mine: isYou(e.actor, this.you) }));
       this.patch({ doc: this.rebase(), unsaved: this.pending.length, log: [...this.s.log, ...missed].slice(-200) });
       for (const name of Object.keys(this.s.collections)) void this.loadCollection(name);
     } catch {
@@ -356,6 +432,18 @@ export class Session {
     this.s = { ...this.s, ...p };
     if (recompute && this.s.doc) this.evaluate();
     this.publish(transition);
+    if ('selection' in p) this.reportSelection();
+  }
+
+  /** Tell the server which cell is selected, once the selection has settled for a moment. */
+  private reportSelection(): void {
+    if (this.selectionTimer || this.options.guest || (this.s.selection[0] ?? null) === this.toldSelected) return;
+    this.selectionTimer = setTimeout(() => {
+      this.selectionTimer = null;
+      // Offline there is no one to tell; the next connection says where the selection is.
+      if (this.closed || !this.es || !this.s.online) return;
+      this.told(this.s.mode);
+    }, 150);
   }
 
   private evaluate(): void {
@@ -376,7 +464,7 @@ export class Session {
     if (this.loading.has(name)) return;
     this.loading.add(name);
     try {
-      const rows = await api<Row[]>('GET', `/api/data/${encodeURIComponent(name)}`);
+      const rows = await api<Row[]>('GET', this.dataPath(name));
       this.patch({ collections: { ...this.s.collections, [name]: rows } });
     } catch {
       this.patch({ collections: { ...this.s.collections, [name]: [] } });
@@ -482,8 +570,8 @@ export class Session {
   }
 
   private async flush(): Promise<void> {
-    // A view link changes nothing on the server: what the person does stays here.
-    if (this.sending || this.closed || this.options.guest === 'view') return;
+    // A view link, or an account that may only read, changes nothing on the server: what the person does stays here.
+    if (this.sending || this.closed || this.readOnly) return;
     const next = this.pending.find((p) => p.state === 'queued');
     if (!next) return;
     next.state = 'sent';
@@ -534,7 +622,7 @@ export class Session {
       return;
     }
     if (mine) this.pending = this.pending.filter((p) => p.batch !== e.batch);
-    const item: LogItem = { v: e.v, ts: e.ts, actor: e.actor, ops: e.ops, mine };
+    const item: LogItem = { v: e.v, ts: e.ts, actor: e.actor, ops: e.ops, mine: mine || isYou(e.actor, this.you) };
     const log = [...this.s.log.slice(-199), item];
     if (mine) {
       // Nothing new to show; keep the optimistic copy unless it has drifted.
@@ -614,6 +702,8 @@ export class Session {
   }
 
   setMode(mode: Mode): void {
+    // Someone who may only read can use the document and see it as pages, not shape it.
+    if (mode === 'edit' && this.s.role === 'viewer') mode = 'live';
     const was = this.s.mode;
     this.patch({ mode, selection: [], editing: null, menu: null });
     if (mode !== was) this.told(mode);
@@ -844,11 +934,10 @@ export class Session {
       const ops = effects.filter((e) => e.type === 'op').map((e) => (e as { op: Op }).op);
       if (ops.length) this.dispatch(ops);
       for (const e of effects) {
-        const path = 'collection' in e ? `/api/data/${encodeURIComponent(e.collection)}` : '';
-        if (e.type === 'insert') await api('POST', path, { record: e.record, source: { doc: this.id, cell: id } });
-        if (e.type === 'delete') await api('DELETE', `${path}/${encodeURIComponent(e.id)}`);
-        if (e.type === 'update') await api('PATCH', `${path}/${encodeURIComponent(e.id)}`, { fields: e.fields });
-        if (e.type === 'clear') await api('DELETE', path);
+        if (e.type === 'insert') await api('POST', this.dataPath(e.collection), { record: e.record, source: { doc: this.id, cell: id } });
+        if (e.type === 'delete') await api('DELETE', this.dataPath(e.collection, e.id));
+        if (e.type === 'update') await api('PATCH', this.dataPath(e.collection, e.id), { fields: e.fields });
+        if (e.type === 'clear') await api('DELETE', this.dataPath(e.collection));
       }
     } catch (e) {
       this.toast(e instanceof Error ? `That button failed: ${e.message}.` : 'That button failed.');
@@ -941,8 +1030,8 @@ export class Session {
   }
 
   private async effect(e: Effect, keepalive = false): Promise<void> {
-    if (this.options.guest === 'view' && e.type !== 'op' && e.type !== 'emit') {
-      this.toast('This link can only view the document, so nothing is saved.');
+    if (this.readOnly && e.type !== 'op' && e.type !== 'emit') {
+      this.toast(this.options.guest === 'view' ? 'This link can only view the document, so nothing is saved.' : 'You can view this document, not change it, so nothing is saved.');
       return;
     }
     if (e.type === 'refresh') {
@@ -950,18 +1039,23 @@ export class Session {
       return;
     }
     if (e.type === 'op' || e.type === 'emit') return;
-    const path = `/api/data/${encodeURIComponent(e.collection)}`;
+    const path = this.dataPath(e.collection);
     if (keepalive) {
       const [method, url, body] = e.type === 'insert' ? ['POST', path, { record: e.record, source: { doc: this.id } }]
-        : e.type === 'update' ? ['PATCH', `${path}/${encodeURIComponent(e.id)}`, { fields: e.fields }]
-        : e.type === 'delete' ? ['DELETE', `${path}/${encodeURIComponent(e.id)}`, undefined] : ['DELETE', path, undefined];
+        : e.type === 'update' ? ['PATCH', this.dataPath(e.collection, e.id), { fields: e.fields }]
+        : e.type === 'delete' ? ['DELETE', this.dataPath(e.collection, e.id), undefined] : ['DELETE', path, undefined];
       void send(url as string, { method: method as string, keepalive: true, headers: { 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) }).catch(() => undefined);
       return;
     }
     if (e.type === 'insert') await api('POST', path, { record: e.record, source: { doc: this.id } });
-    if (e.type === 'delete') await api('DELETE', `${path}/${encodeURIComponent(e.id)}`);
-    if (e.type === 'update') await api('PATCH', `${path}/${encodeURIComponent(e.id)}`, { fields: e.fields });
+    if (e.type === 'delete') await api('DELETE', this.dataPath(e.collection, e.id));
+    if (e.type === 'update') await api('PATCH', this.dataPath(e.collection, e.id), { fields: e.fields });
     if (e.type === 'clear') await api('DELETE', path);
+  }
+
+  /** A collection (or one record) as this document sees it, which is its owner's: not the signed-in person's own. */
+  private dataPath(collection: string, record?: string): string {
+    return `/api/data/${encodeURIComponent(collection)}${record === undefined ? '' : `/${encodeURIComponent(record)}`}?doc=${encodeURIComponent(this.id)}`;
   }
 
   private traced(entries: TraceEntry[], source: TraceItem['source'], test = false): void {
@@ -973,7 +1067,34 @@ export class Session {
   /** The server runs timers and fetches while someone is in Live, so it hears when this browser changes mode. */
   private told(mode: Mode): void {
     if (this.s.status !== 'ready') return;
-    void api('POST', `/api/docs/${this.id}/viewer`, { client: this.client, mode }).catch(() => undefined);
+    const selected = this.s.selection[0] ?? null;
+    this.toldSelected = selected;
+    void api('POST', `/api/docs/${this.id}/viewer`, { client: this.client, mode, selected }).catch(() => undefined);
+  }
+
+  /** What this person may do changed (the owner moved them between editor and viewer). */
+  setRole(role: Role): void {
+    if (role === this.s.role) return;
+    // A viewer has no Edit mode: leave it, and keep the changes that were not saved out of the way.
+    if (role === 'viewer') {
+      this.patch({ role, ...(this.s.mode === 'edit' ? { mode: 'live' as const } : {}), selection: [], editing: null, menu: null });
+      this.told(this.s.mode);
+    } else if (this.s.role === 'viewer' && this.confirmed) {
+      // What was tried while only reading was never sent, and is not sent now: the document is as the server has it.
+      this.pending = [];
+      this.patch({ role, doc: this.confirmed, unsaved: 0 });
+    } else this.patch({ role });
+  }
+
+  /** Who may open this document, to name people and know this person's own role (the editor asks; no accounts, no request). */
+  async learnPeople(): Promise<void> {
+    if (this.options.guest || !currentMe().me) return;
+    try {
+      const r = await api<{ people: Member[]; role: Role }>('GET', `/api/docs/${this.id}/people`);
+      if (this.closed) return;
+      this.patch({ members: r.people });
+      this.setRole(r.role);
+    } catch { /* not told; the stream says when the role changes */ }
   }
 
   /** The document's open handler: once per open, the first time it is used in Live. */
@@ -997,7 +1118,7 @@ export class Session {
     const on = doc.meta.on;
     if (!on || typeof on !== 'object' || (on as Record<string, unknown>).close == null) return;
     const rx = react(doc, this.world(), { events: [{ cell: null, name: 'close' }] });
-    if (rx.ops.length && this.options.guest !== 'view') {
+    if (rx.ops.length && !this.readOnly) {
       const body = JSON.stringify({ ops: rx.ops, actor: this.actor, client: this.client, batch: uid() });
       void send(`/api/docs/${this.id}/ops`, { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body }).catch(() => undefined);
     }
@@ -1023,8 +1144,10 @@ function initialMode(): Mode {
   return window.innerWidth < 720 ? 'live' : 'edit';
 }
 
+/** An agent is told apart by the person it acts for (its id) before its name: two people's "Claude" are two. */
 function upsert(list: Presence[], p: Presence): Presence[] {
-  return [...list.filter((x) => x.actor.name !== p.actor.name), p];
+  const key = (x: Presence) => x.actor.id ?? x.actor.name;
+  return [...list.filter((x) => key(x) !== key(p)), p];
 }
 
 function sentence(s: string): string {

@@ -1,11 +1,21 @@
 # edgy's screens, shot by sweep.sh (see the goal-loop skill):
+#   export CDP_COOKIE="$(.claude/goal-loop/serve.sh session 8791)"   # signed in (accounts mode)
 #   sweep.sh http://127.0.0.1:8791 "$TMPDIR/sweep" <doc-id> [<doc-id> …]
+# Screens marked --cookie none are shot signed out.
 # The app scrolls inside these panes, not the page.
-@pane .desk, .home, .records
+@pane .desk, .home, .records, .profile
+
+signin            /signin               desktop --cookie none
+signup            /signup               desktop --cookie none
+phone-signin      /signin               phone --cookie none
+signed-out-doc    /d/x                  desktop --cookie none
 
 home              /                     desktop --full
+shared-with-me    /?scope=shared        desktop --full
 data              /data                 desktop --full
+profile           /profile              desktop --full
 phone-home        /                     phone
+phone-profile     /profile              phone --scroll
 
 {id}-edit         /d/{id}?view=edit     desktop --full
 {id}-live         /d/{id}?view=live     desktop --full

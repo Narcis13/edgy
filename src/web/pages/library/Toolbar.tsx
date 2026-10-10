@@ -3,7 +3,7 @@
 
 import { memo, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { LayoutGrid, List, Plus, Search, X } from 'lucide-react';
-import { type Filter, type Sort, type View, cx } from './text';
+import { type Filter, type Scope, type Sort, type View, cx } from './text';
 
 export interface SearchHandle {
   clear: () => void;
@@ -42,12 +42,18 @@ function SearchBox({ onQuery, busy, ref }: { onQuery: (q: string) => void; busy:
 const FILTERS: [Filter, string][] = [['all', 'All'], ['pinned', 'Pinned'], ['shared', 'Shared'], ['decks', 'Decks'], ['archived', 'Archived']];
 const SORTS: [Sort, string][] = [['updated', 'Last changed'], ['created', 'Created'], ['title', 'Title']];
 
-export const Toolbar = memo(function Toolbar({ filter, sort, view, busy, creating, onQuery, onFilter, onSort, onView, onNew, searchRef }: {
+const SCOPES: [Scope, string][] = [['mine', 'Mine'], ['shared', 'Shared with me']];
+
+export const Toolbar = memo(function Toolbar({ scope, sharedCount, filter, sort, view, busy, creating, onScope, onQuery, onFilter, onSort, onView, onNew, searchRef }: {
+  scope: Scope;
+  /** How many documents are shared with me, or null while that is not known. */
+  sharedCount: number | null;
   filter: Filter;
   sort: Sort;
   view: View;
   busy: boolean;
   creating: boolean;
+  onScope: (s: Scope) => void;
   onQuery: (q: string) => void;
   onFilter: (f: Filter) => void;
   onSort: (s: Sort) => void;
@@ -61,13 +67,22 @@ export const Toolbar = memo(function Toolbar({ filter, sort, view, busy, creatin
         <h1>Documents</h1>
         <button type="button" className="btn solid lib-new" onClick={onNew} disabled={creating}><Plus size={16} /> New document</button>
       </div>
+      <div className="lib-scopes" role="group" aria-label="Whose documents">
+        {SCOPES.map(([sc, label]) => (
+          <button key={sc} type="button" className={cx('lib-scope', scope === sc && 'is-on')} aria-pressed={scope === sc} onClick={() => onScope(sc)}>
+            {label}{sc === 'shared' && sharedCount != null && sharedCount > 0 && <span className="lib-n">{sharedCount}</span>}
+          </button>
+        ))}
+      </div>
       <div className="lib-tools">
         <SearchBox ref={searchRef} onQuery={onQuery} busy={busy} />
-        <div className="lib-filters" role="group" aria-label="Show">
-          {FILTERS.map(([f, label]) => (
-            <button key={f} type="button" className={cx('lib-chip', filter === f && 'is-on')} aria-pressed={filter === f} onClick={() => onFilter(f)}>{label}</button>
-          ))}
-        </div>
+        {scope === 'mine' && (
+          <div className="lib-filters" role="group" aria-label="Show">
+            {FILTERS.map(([f, label]) => (
+              <button key={f} type="button" className={cx('lib-chip', filter === f && 'is-on')} aria-pressed={filter === f} onClick={() => onFilter(f)}>{label}</button>
+            ))}
+          </div>
+        )}
         <div className="lib-arrange">
           <label className="lib-sort">
             <span className="sr-only">Sort by</span>

@@ -8,6 +8,7 @@ import type { Cell } from '../../core/types';
 import { isGroup } from '../../core/types';
 import { KIND_LABEL, cx, useS, useSession } from './ctx';
 import { KindMenu, kindOption } from './KindMenu';
+import { type Present, othersPresent } from './people';
 
 interface Rect {
   x: number;
@@ -67,6 +68,7 @@ export function Overlay({ host }: { host: RefObject<HTMLDivElement | null> }) {
   const editing = useS((s) => s.editing);
   const live = useS((s) => s.mode !== 'edit');
   const menu = useS((s) => s.menu);
+  const people = useS((s) => s.people);
   const [rects, setRects] = useState<Record<string, Rect>>({});
   const [, setTick] = useState(0);
   const [edge, setEdge] = useState<'l' | 'r' | 't' | 'b' | null>(null);
@@ -77,10 +79,13 @@ export function Overlay({ host }: { host: RefObject<HTMLDivElement | null> }) {
   const feeds = (primary && links && computed?.feeds[primary.id]) || [];
   // A selected panel sits under its tab bar or heading; the toolbar goes above the whole container so it hides neither.
   const holder = primary?.kind === 'panel' ? session.parent(primary.id) : null;
+  // Where other people are: the cells they selected, with who is on each.
+  const remote = new Map<string, Present[]>();
+  for (const p of othersPresent(people, session.you)) if (p.selected) remote.set(p.selected, [...(remote.get(p.selected) ?? []), p]);
 
   useLayoutEffect(() => {
     if (!host.current) return;
-    const ids = new Set<string>([...selection, ...reads, ...feeds, ...Object.keys(flashes), ...(holder ? [holder.id] : [])]);
+    const ids = new Set<string>([...selection, ...reads, ...feeds, ...Object.keys(flashes), ...remote.keys(), ...(holder ? [holder.id] : [])]);
     const next = measure(host.current, ids);
     setRects((prev) => (sameRects(prev, next) ? prev : next));
   });
@@ -181,6 +186,12 @@ export function Overlay({ host }: { host: RefObject<HTMLDivElement | null> }) {
           <KindMenu cell={menu} current={current} onClose={closeMenu} />
         </div>
       )}
+
+      {[...remote].map(([cell, who]) => rects[cell] && who.map((p, i) => (
+        <div key={cell + p.id} className="remote-sel" style={{ left: rects[cell].x, top: rects[cell].y, width: rects[cell].w, height: rects[cell].h, '--who': p.color, '--slot': i } as React.CSSProperties}>
+          <span>{p.name}</span>
+        </div>
+      )))}
 
       {Object.entries(flashes).map(([id, f]) => rects[id] && (
         <div key={id + f.n} className={cx('trace', f.actor.kind)} style={{ left: rects[id].x, top: rects[id].y, width: rects[id].w, height: rects[id].h }}>

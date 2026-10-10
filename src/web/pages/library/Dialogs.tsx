@@ -5,7 +5,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { cx } from './text';
 
-function Modal({ labelledBy, onClose, children, className }: { labelledBy: string; onClose: () => void; children: React.ReactNode; className?: string }) {
+export function Modal({ labelledBy, onClose, children, className }: { labelledBy: string; onClose: () => void; children: React.ReactNode; className?: string }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const d = ref.current!;

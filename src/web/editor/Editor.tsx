@@ -1,7 +1,7 @@
 // The document screen: header, formula bar, activity, the sheet, inspector.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity as ActivityIcon, Download, Ellipsis, Moon, PanelRight, Printer, Redo2, Share2, Spline, Sun, Undo2 } from 'lucide-react';
+import { Activity as ActivityIcon, Download, Ellipsis, Eye, Moon, PanelRight, Printer, Redo2, Share2, Spline, Sun, Undo2 } from 'lucide-react';
 import type { Cell } from '../../core/types';
 import { isGroup } from '../../core/types';
 import { leaves } from '../../core/tree';
@@ -9,12 +9,18 @@ import { shownLeaves } from '../../core/containers';
 import { Session } from '../session';
 import { uploadPicture } from '../lib/api';
 import { useTheme } from '../theme';
+import { Avatar } from '../account/Avatar';
+import { UserMenu } from '../account/UserMenu';
+import { SyncBadge } from '../sync/SyncBadge';
+import { useMe } from '../account/me';
 import { Activity } from './Activity';
 import { CellView } from './CellView';
 import { FormulaBar } from './FormulaBar';
 import { Inspector } from './Inspector';
 import { Overlay } from './Overlay';
 import { SessionContext, cx, useS, useSession } from './ctx';
+import { avatarStack, describePresent, othersPresent } from './people';
+import './presence.css';
 import { Toast, sheetStyle } from './LiveView';
 import { Logo } from '../pages/Logo';
 import { Notice } from '../pages/Notice';
@@ -40,6 +46,8 @@ function Screen({ navigate }: { navigate: (path: string) => void }) {
   const session = useSession();
   const status = useS((s) => s.status);
   const mode = useS((s) => s.mode);
+  const viewer = useS((s) => s.role === 'viewer');
+  const revoked = useS((s) => s.revoked);
   const [showActivity, setShowActivity] = useState(() => window.innerWidth > 1320);
   const [showInspector, setShowInspector] = useState(() => window.innerWidth > 1000);
   const touched = useRef(false);
@@ -56,7 +64,9 @@ function Screen({ navigate }: { navigate: (path: string) => void }) {
   const toggleActivity = (v: boolean) => { touched.current = true; setShowActivity(v); };
   const toggleInspector = (v: boolean) => { touched.current = true; setShowInspector(v); };
   useKeyboard();
+  usePeople();
 
+  const inspector = showInspector && !viewer;
   if (status === 'loading') return <div className="screen-note">Opening…</div>;
   if (status === 'missing' || status === 'unshared') {
     return (
@@ -65,18 +75,96 @@ function Screen({ navigate }: { navigate: (path: string) => void }) {
       </Notice>
     );
   }
+  if (status === 'revoked') return <Revoked why={revoked} navigate={navigate} />;
   if (status === 'failed') return <Notice kind="failed" title="The server did not answer">Is <code>npm run dev</code> running? This page tries again when you reload it.</Notice>;
 
   return (
-    <div className={cx('editor', `mode-${mode}`, showActivity && 'with-activity', showInspector && 'with-inspector')}>
+    <div className={cx('editor', `mode-${mode}`, showActivity && 'with-activity', inspector && 'with-inspector', viewer && 'is-viewer')}>
       <Header navigate={navigate} showActivity={showActivity} setShowActivity={toggleActivity} showInspector={showInspector} setShowInspector={toggleInspector} />
       <FormulaBar />
-      {(showActivity || showInspector) && <div className="side-backdrop" onClick={() => { toggleActivity(false); toggleInspector(false); }} />}
+      {(showActivity || inspector) && <div className="side-backdrop" onClick={() => { toggleActivity(false); toggleInspector(false); }} />}
       {showActivity && <aside className="side left"><Activity /></aside>}
       <Desk />
-      {showInspector && <aside className="side right"><Inspector /></aside>}
+      {inspector && <aside className="side right"><Inspector /></aside>}
       <Toast />
       <StudioHost />
+    </div>
+  );
+}
+
+/** Who has this document open and what the signed-in person may do here: asked when the editor opens, and again when someone new shows up. */
+function usePeople() {
+  const session = useSession();
+  const status = useS((s) => s.status);
+  const me = useMe().me?.id;
+  const present = useS((s) => s.people.map((p) => `${p.id}:${p.name}`).join('|'));
+  const known = useS((s) => s.members.map((m) => `${m.id}:${m.name}`).join('|'));
+  useEffect(() => {
+    if (status !== 'ready' || !me) return;
+    // Nobody listed yet, a person the list lacks, or one it names differently (a rename): ask again.
+    const stale = present.split('|').some((x) => x && !known.split('|').includes(x));
+    if (stale || !known) void session.learnPeople();
+  }, [session, status, me, present, known]);
+}
+
+const WHY = {
+  access: { title: 'No longer shared with you', text: 'You no longer have access to this document.' },
+  signedout: { title: 'Signed out', text: 'You were signed out.' },
+  deleted: { title: 'Account deleted', text: 'This account was deleted.' },
+} as const;
+
+/** The stream said this person can't open the document any more: say so, and where to go. */
+function Revoked({ why, navigate }: { why: keyof typeof WHY | null; navigate: (path: string) => void }) {
+  const m = WHY[why ?? 'access'];
+  const action = <a className="btn solid" href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }}>{why === 'signedout' ? 'Sign in' : 'Back to your documents'}</a>;
+  return <Notice kind="unshared" title={m.title} action={action}>{m.text}</Notice>;
+}
+
+/** A reader's note, like the one a view link gets: what they try stays in their tab. */
+function ViewerNote() {
+  const viewer = useS((s) => s.role === 'viewer');
+  if (!viewer) return null;
+  return <p className="viewer-note" role="status">You can view this document, not change it. What you type here stays in this tab.</p>;
+}
+
+/** The phone has room for two faces; a desk for four. */
+function useNarrow(): boolean {
+  const q = '(max-width: 720px)';
+  const [narrow, setNarrow] = useState(() => window.matchMedia(q).matches);
+  useEffect(() => {
+    const m = window.matchMedia(q);
+    const on = () => setNarrow(m.matches);
+    m.addEventListener('change', on);
+    return () => m.removeEventListener('change', on);
+  }, []);
+  return narrow;
+}
+
+/** The other people here, as faces beside the title; one with a cell selected takes you to it. */
+function PresenceStack({ max }: { max: number }) {
+  const session = useSession();
+  const people = useS((s) => s.people);
+  const mode = useS((s) => s.mode);
+  const others = othersPresent(people, session.you);
+  if (!others.length) return null;
+  const { shown, more } = avatarStack(others, max);
+  const cellName = (id: string) => session.cell(id)?.name ?? id;
+  const go = (id: string | null) => {
+    if (!id) return;
+    if (mode === 'edit') session.select(id);
+    document.querySelector(`[data-cell="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  };
+  return (
+    <div className="presence" role="group" aria-label="Also here">
+      {shown.map((p) => {
+        const title = describePresent(p, cellName);
+        return (
+          <button key={p.id} type="button" className="presence-btn" title={title} aria-label={title} onClick={() => go(p.selected)}>
+            <Avatar name={p.name} color={p.color} size={26} title={title} ring />
+          </button>
+        );
+      })}
+      {more > 0 && <span className="presence-more" title={others.slice(shown.length).map((p) => describePresent(p, cellName)).join('\n')}>+{more}</span>}
     </div>
   );
 }
@@ -103,6 +191,9 @@ function Header(props: { navigate: (p: string) => void; showActivity: boolean; s
   const links = useS((s) => s.links);
   const canUndo = useS((s) => s.canUndo);
   const canRedo = useS((s) => s.canRedo);
+  const viewer = useS((s) => s.role === 'viewer');
+  const owner = useS((s) => s.role === 'owner');
+  const narrow = useNarrow();
   const [theme, setTheme] = useTheme();
   const [t, setT] = useState(title);
   const [sharing, setSharing] = useState(false);
@@ -110,39 +201,48 @@ function Header(props: { navigate: (p: string) => void; showActivity: boolean; s
   return (
     <header className="topbar">
       <a className="brand" href="/" onClick={(e) => { e.preventDefault(); props.navigate('/'); }} title="All documents"><Logo /></a>
-      <input className="title" value={t} aria-label="Document title" onChange={(e) => setT(e.target.value)}
+      <input className="title" value={t} aria-label="Document title" readOnly={viewer} onChange={(e) => setT(e.target.value)}
         onBlur={() => { const v = t.trim() || 'Untitled'; setT(v); if (v !== title) session.dispatch(['meta', 'title', v]); }}
         onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur(); }} />
-      <span className={cx('save-state', !online && 'is-off', unsaved > 0 && 'is-busy')}>{!online ? 'Offline, will retry' : unsaved ? 'Saving…' : 'Saved'}</span>
+      {!viewer && <span className={cx('save-state', !online && 'is-off', unsaved > 0 && 'is-busy')}>{!online ? 'Offline, will retry' : unsaved ? 'Saving…' : 'Saved'}</span>}
+      <SyncBadge compact={narrow} />
       <div className="grow" />
+      <PresenceStack max={narrow ? 2 : 4} />
       <div className="tools">
-        <button className={cx('icon-btn', mode !== 'edit' && 'wide-only')} title="Undo (⌘Z)" aria-label="Undo" disabled={!canUndo} onClick={() => session.undo()}><Undo2 size={16} /></button>
-        <button className={cx('icon-btn', mode !== 'edit' && 'wide-only')} title="Redo (⇧⌘Z)" aria-label="Redo" disabled={!canRedo} onClick={() => session.redo()}><Redo2 size={16} /></button>
-        <i className="sep" />
-        <button className={cx('icon-btn wide-only', links && 'is-on')} title="Show what the selected cell reads and feeds" aria-pressed={links} onClick={() => session.setLinks(!links)}><Spline size={16} /></button>
+        {!viewer && <>
+          <button className={cx('icon-btn', mode !== 'edit' && 'wide-only')} title="Undo (⌘Z)" aria-label="Undo" disabled={!canUndo} onClick={() => session.undo()}><Undo2 size={16} /></button>
+          <button className={cx('icon-btn', mode !== 'edit' && 'wide-only')} title="Redo (⇧⌘Z)" aria-label="Redo" disabled={!canRedo} onClick={() => session.redo()}><Redo2 size={16} /></button>
+          <i className="sep" />
+          <button className={cx('icon-btn wide-only', links && 'is-on')} title="Show what the selected cell reads and feeds" aria-pressed={links} onClick={() => session.setLinks(!links)}><Spline size={16} /></button>
+        </>}
         <button className={cx('icon-btn wide-only', props.showActivity && 'is-on')} title="Activity and messages" aria-pressed={props.showActivity} onClick={() => props.setShowActivity(!props.showActivity)}><ActivityIcon size={16} /></button>
-        <button className={cx('icon-btn wide-only', props.showInspector && 'is-on')} title="Cell details" aria-pressed={props.showInspector} onClick={() => props.setShowInspector(!props.showInspector)}><PanelRight size={16} /></button>
+        {!viewer && <button className={cx('icon-btn wide-only', props.showInspector && 'is-on')} title="Cell details" aria-pressed={props.showInspector} onClick={() => props.setShowInspector(!props.showInspector)}><PanelRight size={16} /></button>}
         <i className="sep" />
+        {viewer && <span className="shared-badge view" title="You can open this document, not change it"><Eye size={13} /> Can view</span>}
         <div className="seg mode" role="group" aria-label="Mode">
-          <button className={cx(mode === 'edit' && 'is-on')} aria-pressed={mode === 'edit'} onClick={() => session.setMode('edit')} title="Shape the document">Edit</button>
+          {!viewer && <button className={cx(mode === 'edit' && 'is-on')} aria-pressed={mode === 'edit'} onClick={() => session.setMode('edit')} title="Shape the document">Edit</button>}
           <button className={cx(mode === 'live' && 'is-on')} aria-pressed={mode === 'live'} onClick={() => session.setMode('live')} title="Use it as people will">Live</button>
           <button className={cx(mode === 'page' && 'is-on')} aria-pressed={mode === 'page'} onClick={() => session.setMode('page')} title="See it as printed pages">Page</button>
         </div>
         <button className="icon-btn wide-only" title="Print (⌘P)" aria-label="Print" onClick={() => session.print()}><Printer size={16} /></button>
-        <a className="icon-btn wide-only" title="Export as one HTML file that works offline" aria-label="Export as HTML" href={`/api/docs/${session.id}/export`} download><Download size={16} /></a>
+        {owner && <a className="icon-btn wide-only" title="Export as one HTML file that works offline" aria-label="Export as HTML" href={`/api/docs/${session.id}/export`} download><Download size={16} /></a>}
         <button className="btn soft small share-btn wide-only" title="Share a link to this document" onClick={() => setSharing(true)}><Share2 size={14} /> Share</button>
         <button className="icon-btn wide-only" title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
+        <span className="wide-only"><UserMenu navigate={props.navigate} /></span>
         <More {...props} share={() => setSharing(true)} />
       </div>
-      {sharing && <ShareDialog id={session.id} title={title} onClose={() => setSharing(false)} />}
+      {sharing && <ShareDialog id={session.id} title={title} onClose={() => setSharing(false)} onChange={() => void session.learnPeople()} />}
     </header>
   );
 }
 
 /** On a phone the header keeps the essentials; everything else lives in this menu. */
-function More(props: { showActivity: boolean; setShowActivity: (v: boolean) => void; showInspector: boolean; setShowInspector: (v: boolean) => void; share: () => void }) {
+function More(props: { navigate: (p: string) => void; showActivity: boolean; setShowActivity: (v: boolean) => void; showInspector: boolean; setShowInspector: (v: boolean) => void; share: () => void }) {
   const session = useSession();
   const links = useS((s) => s.links);
+  const viewer = useS((s) => s.role === 'viewer');
+  const owner = useS((s) => s.role === 'owner');
+  const me = useMe().me;
   const [theme, setTheme] = useTheme();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -161,12 +261,13 @@ function More(props: { showActivity: boolean; setShowActivity: (v: boolean) => v
       {open && (
         <div className="more-menu" role="menu">
           {item('Activity and messages', <ActivityIcon size={16} />, props.showActivity, () => props.setShowActivity(!props.showActivity))}
-          {item('Cell details', <PanelRight size={16} />, props.showInspector, () => props.setShowInspector(!props.showInspector))}
-          {item('Show links between cells', <Spline size={16} />, links, () => session.setLinks(!links))}
-          {item('Share…', <Share2 size={16} />, false, props.share)}
-          {item('Export as HTML', <Download size={16} />, false, () => { window.location.href = `/api/docs/${session.id}/export`; })}
+          {!viewer && item('Cell details', <PanelRight size={16} />, props.showInspector, () => props.setShowInspector(!props.showInspector))}
+          {!viewer && item('Show links between cells', <Spline size={16} />, links, () => session.setLinks(!links))}
+          {item(viewer ? 'People…' : 'Share…', <Share2 size={16} />, false, props.share)}
+          {owner && item('Export as HTML', <Download size={16} />, false, () => { window.location.href = `/api/docs/${session.id}/export`; })}
           {item('Print', <Printer size={16} />, false, () => session.print())}
           {item(theme === 'dark' ? 'Light theme' : 'Dark theme', theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />, false, () => setTheme(theme === 'dark' ? 'light' : 'dark'))}
+          {me && item('Profile', <Avatar name={me.name} color={me.color} size={18} />, false, () => props.navigate('/profile'))}
         </div>
       )}
     </div>
@@ -272,6 +373,7 @@ function Desk() {
   return (
     <main className={cx('desk', mode)} onPointerDown={onPointerDown} onClick={onClick} onDoubleClick={onDoubleClick} onDragOver={onDragOver} onDragLeave={() => setDropping(null)} onDrop={(e) => void onDrop(e)}>
       <Archived />
+      <ViewerNote />
       <div className="desk-inner" ref={host}>
         <div className={cx('sheet', dropping && 'is-dropping')} style={sheetStyle(meta)}>
           <CellView cell={doc.root} dir={null} />

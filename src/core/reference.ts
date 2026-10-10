@@ -179,7 +179,28 @@ cell is an id or a name. Ops in one call are applied atomically.
 
 ## Data
 
-Documents can save records into named collections and read them back: a button with ["insert!", "orders", {"qty": "$qty", "total": "$total"}] saves; ["rows", "orders"] reads (every record gets id and at). Collections are shared by all documents.
+Documents can save records into named collections and read them back: a button with ["insert!", "orders", {"qty": "$qty", "total": "$total"}] saves; ["rows", "orders"] reads (every record gets id and at). Collections belong to an account: a document reads and saves its owner's collections, whoever is looking at it, and only those its owner let it use (the ones it used at the owner's last change).
+
+  GET /api/data                      your collections
+  GET /api/data/<name>               your records; POST {"record": {…}}, PATCH /api/data/<name>/<id> {"fields": {…}}, DELETE
+  GET /api/data/<name>?doc=<id>      the collection as that document sees it (its owner's); writes the same way need edit access
+
+## Accounts and access
+
+Every request names who is asking. An agent sends its person's API key: the header "Authorization: Bearer edgy_…" (the MCP server reads it
+from EDGY_API_KEY). The person makes and revokes keys in Profile → API keys; a key is shown once. With a key an agent sees and
+changes only what its person can, and the history shows it as the agent acting for that person ("Claude for Ana").
+Without a key the server answers 401, except in local mode (a server on 127.0.0.1 with EDGY_AUTH unset), where this machine
+is the local account.
+
+  GET    /api/me                                   who the key acts for
+  GET    /api/docs/<id>/people                     the owner, and who else may open it: {people: [{id, name, email, role}], present}
+  POST   /api/docs/<id>/people  {"email", "role": "viewer"|"editor"}   (the owner) give an existing account access
+  PATCH  /api/docs/<id>/people/<user>  {"role"}    change it;  DELETE …/people/<user>  take it away (or leave)
+  GET    /api/library?scope=shared                 documents others gave this account access to
+
+Roles: owner, editor (changes it, saves records through it), viewer (reads it). Another person's document you have no access
+to answers 404, as if it did not exist; one you can only view answers 403 to ops.
 
 ## Library
 
@@ -188,7 +209,7 @@ The home page lists documents and decks. Over HTTP (the MCP tools edgy_docs, edg
   GET   /api/library?q=words&filter=all|pinned|shared|decks|archived&sort=updated|created|title
         → {pinned: [...], rest: [...], total}. Every word must appear in the title, the description or the
           document's text (any case, accents ignored); a hit says where: match {field, snippet}.
-  GET   /api/docs                       every document's summary (no content): id, title, description, pinned, archivedAt, deck, shared
+  GET   /api/docs                       your documents' summaries (no content): id, title, description, pinned, archivedAt, deck, shared
   PATCH /api/docs/<id>  {"description": "…", "title": "…", "pinned": true|false, "archived": true|false}
         the description is part of the document: the same as ["meta", "description", "…"]
   POST  /api/library/pins  {"ids": [pinned ids in their new order]}

@@ -214,7 +214,8 @@ export interface Entry {
   /** doc: the deck it belongs to. */
   deck?: string | null;
   /** doc: which share links are on. */
-  shared?: { view: boolean; edit: boolean };
+  /** Links that are on, and how many people besides the owner may open it. */
+  shared?: { view: boolean; edit: boolean; people?: number };
   match?: Match;
 }
 
@@ -241,7 +242,7 @@ export function arrange<E extends Entry>(entries: E[], o: { filter?: Filter; sor
     // In the main list a deck's documents are in its card (a pinned one stays pinned); filters show them as they are.
     if (filter === 'all' && !o.searching && e.type === 'doc' && e.deck && e.pinned == null) return false;
     if (filter === 'pinned') return e.pinned != null;
-    if (filter === 'shared') return e.type === 'doc' && !!(e.shared?.view || e.shared?.edit);
+    if (filter === 'shared') return e.type === 'doc' && !!(e.shared?.view || e.shared?.edit || e.shared?.people);
     return true;
   });
   const sort = o.sort ?? 'updated';

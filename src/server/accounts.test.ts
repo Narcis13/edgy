@@ -8,6 +8,7 @@ import { createApp } from './app';
 import { Store } from './store';
 import { PUBLIC, crossSite, isPublic } from './access';
 import { Throttle, hashPassword, initials, verifyPassword } from './auth';
+import { newDoc } from '../core/types';
 
 const dir = () => mkdtempSync(join(tmpdir(), 'edgy-'));
 
@@ -348,11 +349,12 @@ test('profile: a new name shows in presence and history; a new password ends the
 
 test('the first account owns what an installation had before accounts; later accounts start with the tour', async () => {
   const store = new Store(':memory:');
+  // Made before any account (as an upgraded installation has them): a document, and records.
+  store.createDoc(newDoc('old12345', 'From before accounts'));
+  store.insert(null, 'notes', { text: 'from before' });
   const s = server(store);
-  // Made before any account: the tour, and records.
   const before = store.listDocs();
   assert.equal(before.length, 1);
-  store.insert(null, 'notes', { text: 'from before' });
   const a = await s.signup('ana@example.com', 'Ana');
   const mine = (await s.call('GET', '/api/docs', undefined, a.cookie)).json;
   assert.deepEqual(mine.map((d: any) => d.id), before.map((d) => d.id));
@@ -360,6 +362,7 @@ test('the first account owns what an installation had before accounts; later acc
   const b = await s.signup('ben@example.com', 'Ben');
   const bens = (await s.call('GET', '/api/docs', undefined, b.cookie)).json;
   assert.equal(bens.length, 1, 'Ben gets a tour of his own');
+  assert.equal(bens[0].title, 'Start here');
   assert.notEqual(bens[0].id, mine[0].id);
 });
 

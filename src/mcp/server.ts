@@ -7,23 +7,38 @@ import { z } from 'zod';
 
 const BASE = (process.env.EDGY_URL ?? 'http://127.0.0.1:8787').replace(/\/$/, '');
 const AGENT = process.env.EDGY_AGENT_NAME ?? 'Claude';
+/** The person's API key (Profile → API keys in edgy). Sent on every request; never printed. */
+const KEY = process.env.EDGY_API_KEY?.trim() || '';
 const actor = { kind: 'agent', name: AGENT };
 
-async function api(method: string, path: string, body?: unknown): Promise<any> {
-  let res: Response;
+/** Every request carries the key, when there is one. */
+const auth = (): Record<string, string> => (KEY ? { authorization: `Bearer ${KEY}` } : {});
+
+/** What to tell the agent when edgy refuses who it is. */
+function refused(status: number, error: string | undefined): Error {
+  if (status !== 401) return new Error(error ?? `request failed (${status})`);
+  if (!KEY) return new Error("Edgy needs an API key: sign in to edgy, open Profile → API keys, create one, and set EDGY_API_KEY next to EDGY_URL in the MCP server's settings.");
+  return new Error(`Edgy refused the API key in EDGY_API_KEY: ${error ?? 'it is not valid'}.`);
+}
+
+async function call(method: string, path: string, body?: unknown): Promise<Response> {
   try {
-    res = await fetch(BASE + path, {
+    return await fetch(BASE + path, {
       method,
-      headers: body === undefined ? {} : { 'content-type': 'application/json' },
+      headers: { ...auth(), ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
     throw new Error(`Edgy is not running at ${BASE}. Start it with "npm run dev" in the edgy folder, then try again.`);
   }
+}
+
+async function api(method: string, path: string, body?: unknown): Promise<any> {
+  const res = await call(method, path, body);
   const text = await res.text();
   let json: any;
   try { json = JSON.parse(text); } catch { json = { error: text.slice(0, 300) }; }
-  if (!res.ok) throw new Error(json.error ?? `request failed (${res.status})`);
+  if (!res.ok) throw refused(res.status, json.error);
   return json;
 }
 
@@ -35,7 +50,9 @@ async function link(id: string): Promise<string> {
 
 /** Accept a document id or its title. */
 async function docId(ref: string): Promise<string> {
-  const docs = (await api('GET', '/api/docs')) as { id: string; title: string }[];
+  // The person's own documents, then those others gave them access to.
+  const shared = (await api('GET', '/api/library?scope=shared')).rest as { id: string; title: string }[];
+  const docs = [...((await api('GET', '/api/docs')) as { id: string; title: string }[]), ...shared];
   if (docs.some((d) => d.id === ref)) return ref;
   const byTitle = docs.filter((d) => d.title.toLowerCase() === ref.toLowerCase());
   if (byTitle.length === 1) return byTitle[0].id;
@@ -62,11 +79,15 @@ const server = new McpServer({ name: 'edgy', version: '0.1.0' });
 server.registerTool('edgy_guide', {
   description: 'How Edgy documents work: cell notation, the expression language, ops and data. Read this once before editing.',
   inputSchema: {},
-}, safely(async () => text(await (await fetch(BASE + '/api/guide')).text())));
+}, safely(async () => {
+  const res = await call('GET', '/api/guide');
+  if (!res.ok) throw refused(res.status, ((await res.json().catch(() => null)) as any)?.error);
+  return text(await res.text());
+}));
 
 /** One line per card: a document or a deck, with what the library knows of it. */
 async function entryLine(e: any): Promise<string> {
-  const flags = [e.pinned != null && `pinned #${e.pinned}`, e.archivedAt != null && 'archived', e.shared?.view && 'shared (view)', e.shared?.edit && 'shared (edit)', e.deckTitle && `in deck "${e.deckTitle}"`].filter(Boolean);
+  const flags = [e.ownerName && `${e.ownerName}'s, you can ${e.role === 'editor' ? 'edit' : 'view'}`, e.pinned != null && `pinned #${e.pinned}`, e.archivedAt != null && 'archived', e.shared?.view && 'shared (view)', e.shared?.edit && 'shared (edit)', e.deckTitle && `in deck "${e.deckTitle}"`].filter(Boolean);
   const head = e.type === 'deck'
     ? `${e.id}  deck "${e.title}"  ${e.count} documents: ${(e.docs as string[]).join(', ')}`
     : `${e.id}  "${e.title}"  version ${e.v}, changed ${new Date(e.updatedAt).toISOString()}  ${await link(e.id)}`;
@@ -76,15 +97,17 @@ async function entryLine(e: any): Promise<string> {
 }
 
 server.registerTool('edgy_docs', {
-  description: 'List or search the library: documents and decks, pinned first, with a link a person can open. query finds documents by words in their title, description or text (every word must appear). filter: all (default; documents in a deck show inside it), pinned, shared, decks or archived. sort: updated (default), created or title.',
+  description: 'List or search the library: documents and decks, pinned first, with a link a person can open. query finds documents by words in their title, description or text (every word must appear). filter: all (default; documents in a deck show inside it), pinned, shared, decks or archived. sort: updated (default), created or title. scope: mine (default: the documents of the person whose key this is) or shared (documents other people gave them access to, with the role).',
   inputSchema: {
     query: z.string().optional(),
+    scope: z.enum(['mine', 'shared']).optional(),
     filter: z.enum(['all', 'pinned', 'shared', 'decks', 'archived']).optional(),
     sort: z.enum(['updated', 'created', 'title']).optional(),
   },
-}, safely(async ({ query, filter, sort }) => {
-  const params = new URLSearchParams({ q: query ?? '', filter: filter ?? 'all', sort: sort ?? 'updated' });
+}, safely(async ({ query, filter, sort, scope }) => {
+  const params = new URLSearchParams({ q: query ?? '', filter: filter ?? 'all', sort: sort ?? 'updated', scope: scope ?? 'mine' });
   const lib = await api('GET', `/api/library?${params}`);
+  if (!lib.total && scope === 'shared') return text(query ? `Nothing shared with you matches "${query}".` : 'Nothing is shared with you yet.');
   if (!lib.total) return text(query ? `Nothing matches "${query}".` : filter && filter !== 'all' ? `Nothing under ${filter}.` : 'No documents yet. Create one with edgy_create.');
   const parts: string[] = [];
   if (lib.pinned.length) parts.push('Pinned:', ...(await Promise.all(lib.pinned.map(entryLine))), '');
@@ -184,8 +207,8 @@ server.registerTool('edgy_export', {
   if (!doc === !deck) throw new Error('give either doc or deck');
   const path = doc ? `/api/docs/${await docId(doc)}/export` : `/api/decks/${await deckId(deck!)}/export`;
   if (!file) return text(`Download it from ${BASE}${path}`);
-  const res = await fetch(BASE + path);
-  if (!res.ok) throw new Error(((await res.json().catch(() => null)) as any)?.error ?? `export failed (${res.status})`);
+  const res = await call('GET', path);
+  if (!res.ok) throw refused(res.status, ((await res.json().catch(() => null)) as any)?.error ?? `export failed (${res.status})`);
   const bytes = Buffer.from(await res.arrayBuffer());
   const { writeFile } = await import('node:fs/promises');
   await writeFile(file, bytes);

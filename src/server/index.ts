@@ -6,6 +6,7 @@ import { join, relative } from 'node:path';
 import { createApp } from './app';
 import { Store } from './store';
 import { bundleLoader } from './export';
+import { cloudFromEnv } from './cloud';
 
 const port = Number(process.env.EDGY_PORT ?? 8787);
 const hostname = process.env.HOST ?? '127.0.0.1';
@@ -28,7 +29,10 @@ if (auth === 'local' && !loopback) {
 const store = new Store(join(dataDir, 'edgy.db'));
 // Exports use the offline build: next to a production build, or built once on the first export in development.
 const offline = built ? bundleLoader(join(dist, 'offline'), false) : bundleLoader(mkdtempSync(join(tmpdir(), 'edgy-offline-')), true);
-const { app } = createApp(store, join(dataDir, 'assets'), webUrl, { offline, auth });
+// Sync with Turso when TURSO_URL and TURSO_AUTH_TOKEN are set; local only otherwise.
+const cloud = cloudFromEnv();
+const { app, sync } = createApp(store, join(dataDir, 'assets'), webUrl, { offline, auth, cloud, syncInterval: Number(process.env.EDGY_SYNC_INTERVAL ?? 3000) });
+sync?.start();
 
 // After `npm run build`, this one process serves the app too.
 if (built) {
@@ -37,5 +41,5 @@ if (built) {
 }
 
 serve({ fetch: app.fetch, port, hostname }, (info) => {
-  console.log(`edgy api on http://${hostname}:${info.port}  (data in ${dataDir}; ${auth === 'local' ? 'local mode: this machine is signed in' : 'accounts: sign in to use it'})`);
+  console.log(`edgy api on http://${hostname}:${info.port}  (data in ${dataDir}; ${auth === 'local' ? 'local mode: this machine is signed in' : 'accounts: sign in to use it'}; sync ${cloud ? 'on' : 'off'})`);
 });

@@ -1,0 +1,25 @@
+/* People in the Share dialog. */
+.people { display: flex; flex-direction: column; gap: 8px; }
+.people-head { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.people-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.person { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 2px 4px; border-radius: 8px; }
+.person-name { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.person-name b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person-name small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person-role { flex: none; color: var(--muted); font-size: 13px; }
+.people select.text-field { width: auto; flex: none; min-height: 40px; }
+.people .btn.small { min-height: 40px; }
+.people-add { display: flex; flex-wrap: wrap; gap: 6px; }
+.people-add input { flex: 1 1 180px; min-width: 0; min-height: 40px; }
+.people-add-label { flex-basis: 100%; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.people-leave { align-self: flex-start; }
+
+.person-actions { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+.people-add-label { display: inline-flex; align-items: center; gap: 5px; }
+@media (max-width: 480px) {
+  .person { flex-wrap: wrap; }
+  .person-actions { flex-basis: 100%; justify-content: flex-end; }
+  .people-add .btn { flex: 1 1 100%; }
+  .people-add select.text-field { flex: 1 1 auto; }
+}
+.people + .dialog-about { margin-top: 4px; padding-top: 14px; border-top: 1px solid var(--line); }

@@ -7,6 +7,15 @@
 .lib-head { display: flex; align-items: center; gap: 12px; }
 .lib-head h1 { flex: 1; margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
 .lib-new { min-height: 36px; }
+/* Mine / Shared with me */
+.lib-scopes { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.lib-scope {
+  display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent;
+  background: none; color: var(--muted); font-weight: 550;
+}
+.lib-scope:hover { color: var(--ink); }
+.lib-scope.is-on { color: var(--ink); border-bottom-color: var(--accent); }
+.lib-scope .lib-n { font-size: 12px; }
 .lib-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .lib-search {
   flex: 1 1 260px; min-width: 0; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 3px 0 10px;
@@ -102,6 +111,9 @@
 .lc .badge { padding: 3px 6px; font-size: 11px; }
 .lc .badge.pin { background: var(--accent-soft); color: var(--accent); }
 .lc .badge.shared { background: var(--live-soft); color: var(--live); }
+.lc .badge.is-viewer { background: var(--sunken); color: var(--muted); }
+.lc .badge.is-editor { background: var(--live-soft); color: var(--live); }
+.lc-owner { flex-basis: 100%; color: var(--muted); font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lc .badge.deck { background: var(--agent-soft); color: var(--agent); }
 
 /* selecting: the box shows on hover and focus, always once something is selected, always on touch */
@@ -160,6 +172,7 @@
   flex-direction: row; align-items: center; gap: 12px; padding: 8px 10px 8px 4px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
   contain-intrinsic-size: auto 66px; background: transparent;
 }
+.is-list .lc.is-theirs { padding-left: 12px; }
 .is-list .lc:first-child { border-radius: 11px 11px 0 0; }
 .is-list .lc:last-child { border-bottom: 0; border-radius: 0 0 11px 11px; }
 .is-list .lc:only-child { border-radius: 11px; }
@@ -233,6 +246,7 @@
   .lib-search .icon-btn { width: 36px; height: 36px; }
   .lib-filters { flex: 1 1 100%; overflow-x: auto; margin: 0 -16px; padding: 0 16px; }
   .lib-chip { height: 40px; padding: 0 14px; }
+  .lib-scope { height: 44px; flex: 1; justify-content: center; }
   .lib-arrange { flex: 1 1 100%; justify-content: space-between; }
   .lib-sort select { height: 40px; }
   .lib-view button { height: 40px; min-width: 40px; justify-content: center; }
@@ -271,3 +285,7 @@
   .lib-selbar .short { display: inline; }
   .lib-toasts.is-raised { bottom: 84px; }
 }
+
+/* in a row the owner leads the meta line instead of having its own */
+.is-list .lc-owner { flex-basis: auto; }
+.is-list .lc-owner::after { content: ' ·'; color: var(--faint); font-weight: 400; }

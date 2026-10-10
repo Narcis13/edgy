@@ -1,0 +1,48 @@
+# Sync, end to end, 2026-10-10T15:57:05.028Z
+servers http://127.0.0.1:8795 and http://127.0.0.1:8796; cloud: Turso, through the gate at http://127.0.0.1:9900
+account sync-1791647825028@edgy.test (made for this run, deleted at the end)
+PASS  sign up on one (201)
+PASS  one is synced: {"state":"synced","pending":0}
+PASS  the same account signs in on two, from the cloud (200, 331 ms)
+PASS  two finds the same documents: ["Start here"]
+PASS  "Synced order", made on one, is on two
+PASS  an edit on one shows on two: total 30
+PASS  an edit on two shows on one: total 36
+PASS  records travel
+-- the cloud is unreachable now --
+PASS  both say offline: one offline (5 waiting), two offline (5 waiting)
+-- the cloud is back: one syncs first, then two --
+PASS  both synced again, nothing waiting (one synced, two synced)
+PASS  the document is the same on both (version 11)
+PASS  the two op logs are the same: 11 entries each
+PASS  every qty edit made offline is in the log once (4, 5, 6 on one; 9 on two)
+PASS  both price edits made offline on two are in the log once
+PASS  the same property edited on both: the one that reached the cloud last wins (qty 9 from two; price 25)
+PASS  the edit to the cell one removed is kept in the history as a conflict and changes nothing
+PASS  a record edited on both: both fields survive (qty 4, paid true)
+
+the log, as both have it:
+  v1  Sync Check [["replace","c1",["col",{"id":"c1"},["input",{"id":"c2","name":"qty","type":"number","valu
+  v2  Sync Check [["set","c2","value",3]]
+  v3  Sync Check [["set","c3","value",12]]
+  v4  Sync Check [["set","c2","value",4]]
+  v5  Sync Check [["set","c2","value",5]]
+  v6  Sync Check [["set","c2","value",6]]
+  v7  Sync Check [["remove","c5"]]
+  v8  Sync Check [["set","c3","value",20]]
+  v9  Sync Check [["set","c3","value",25]]
+  v10  Sync Check [["set","c2","value",9]]
+  v11  Sync Check [["set","c5","text","Edited on two while one removed it"]]   (conflict: changed nothing)
+
+row counts: cloud edgy_log rows for this account: 21; "Synced order" history on one: 11, on two: 11; orders records: 1 and 1
+idle for 6 s: one made 5 requests to the cloud, reading 5 rows and writing 0
+PASS  an idle pull reads nothing more than its index lookup and writes nothing
+a pull's query plan: SEARCH edgy_log USING INDEX edgy_log_space (space=? AND seq>?)
+PASS  a pull reads from an index, never a scan of the table
+PASS  the account is deleted on one (200)
+PASS  two hears that the account is gone, and signs it out
+left in the cloud for this account: ["account-deleted"]
+PASS  nothing of this run is left in the cloud (the deletion note removed too)
+
+all passed
+the token appears in no server log and not in sync.txt

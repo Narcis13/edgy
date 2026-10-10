@@ -13,6 +13,8 @@
 //           events, so Enter and Space activate buttons): Enter Space Tab Escape Arrow… Home End.
 //           Several groups can be separated by ";;". Then --then (an expression) is printed as THEN.
 // --swipe   "x1,y1,x2,y2[;;…]" after --press: a real one-finger swipe (touch events), e.g. right to left.
+// --cookie  "name=value" (default $CDP_COOKIE) set for the page's origin before it loads: a signed-in session;
+//           "none" for a signed-out screen.
 // --offline the network is off (file:// pages still load). With it or not, REQUESTS prints how many
 //           requests went to the network (not data:, blob: or file:), with up to 5 of their URLs.
 //
@@ -96,6 +98,12 @@ await metrics(h);
 if (offline) await send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
 if (flag('dark')) await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
 if (mobile) await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+const cookie = opt('cookie', process.env.CDP_COOKIE);
+// --cookie none: this screen signed out, whatever CDP_COOKIE says.
+if (cookie && cookie !== 'none' && /^https?:/.test(url)) {
+  const i = cookie.indexOf('=');
+  await send('Network.setCookie', { name: cookie.slice(0, i), value: cookie.slice(i + 1), url: new URL(url).origin, httpOnly: true, sameSite: 'Lax' });
+}
 await send('Page.navigate', { url });
 await sleep(wait);
 if (js) {

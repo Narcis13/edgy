@@ -3,13 +3,13 @@
 
 import { memo, useEffect, useRef, useState } from 'react';
 import {
-  Archive, ArchiveRestore, ArrowDown, ArrowUp, Download, ExternalLink, Layers, Pin, PinOff, Play, Share2, SquarePen, Trash2, Ungroup,
+  Archive, ArchiveRestore, ArrowDown, ArrowUp, Download, ExternalLink, Layers, LogOut, Pin, PinOff, Play, Share2, SquarePen, Trash2, Ungroup,
 } from 'lucide-react';
 import type { Shape } from '../../../core/library';
 import { type LibraryEntry, timeAgo } from '../../lib/api';
 import { Minimap } from '../Minimap';
 import { Menu, type MenuItem } from './Menu';
-import { type Sort, WHERE, cx, highlight, plural } from './text';
+import { type Sort, WHERE, cx, highlight, plural, possessive, roleLabel, sharedBadge, theirDoc } from './text';
 
 /** What a card can ask the library to do. One stable object, so it never breaks the memo. */
 export interface Actions {
@@ -22,6 +22,8 @@ export interface Actions {
   archive: (e: LibraryEntry, on: boolean) => void;
   remove: (e: LibraryEntry) => void;
   ungroup: (e: LibraryEntry) => void;
+  /** Give up my access to a document shared with me. */
+  leave: (e: LibraryEntry) => void;
   play: (id: string) => void;
   dragStart: (id: string) => void;
   dragging: () => string | null;
@@ -99,12 +101,6 @@ function DescriptionEditor({ initial, onDone }: { initial: string; onDone: (text
   );
 }
 
-function sharedLabel(s: { view: boolean; edit: boolean }): string | null {
-  if (s.edit) return 'Shared · can edit';
-  if (s.view) return 'Shared · can view';
-  return null;
-}
-
 export const Card = memo(function Card({ entry: e, sort, query, selected, fresh, pinIndex, pinCount, canReorder, acts }: CardProps) {
   const [editing, setEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -118,7 +114,9 @@ export const Card = memo(function Card({ entry: e, sort, query, selected, fresh,
   const pinned = e.pinned != null && pinIndex >= 0;
   const description = typed ?? e.description;
   const match = query ? e.match : undefined;
-  const shared = e.type === 'doc' ? sharedLabel(e.shared) : null;
+  const shared = e.type === 'doc' ? sharedBadge(e.shared) : null;
+  // In Shared with me: someone else's document, and what I may do with it.
+  const theirs = e.type === 'doc' ? theirDoc(e) : null;
 
   // A plain click opens it here; a middle click or Ctrl+click is the browser's (a new tab).
   const open = (ev: React.MouseEvent) => {
@@ -134,6 +132,12 @@ export const Card = memo(function Card({ entry: e, sort, query, selected, fresh,
   };
 
   const items = (): MenuItem[] => {
+    if (theirs) {
+      return [
+        { label: 'Open', icon: <ExternalLink size={15} />, run: () => acts.navigate(href) },
+        { label: 'Leave', icon: <LogOut size={15} />, run: () => acts.leave(e), danger: true },
+      ];
+    }
     const list: MenuItem[] = [{ label: 'Open', icon: <ExternalLink size={15} />, run: () => acts.navigate(href) }];
     if (deck) list.push({ label: 'Play', icon: <Play size={15} />, run: () => acts.play(e.id) });
     list.push({ label: e.description ? 'Edit description' : 'Add a description', icon: <SquarePen size={15} />, run: () => setEditing(true) });
@@ -162,7 +166,7 @@ export const Card = memo(function Card({ entry: e, sort, query, selected, fresh,
 
   return (
     <article
-      className={cx('lc', deck && 'is-deck', selected && 'is-selected', fresh && 'is-fresh', menuOpen && 'is-menu', editing && 'is-editing', archived && 'is-archived')}
+      className={cx('lc', deck && 'is-deck', theirs && 'is-theirs', selected && 'is-selected', fresh && 'is-fresh', menuOpen && 'is-menu', editing && 'is-editing', archived && 'is-archived')}
       data-id={e.id}
       draggable={drag || undefined}
       onDragStart={drag ? (ev) => {
@@ -185,9 +189,11 @@ export const Card = memo(function Card({ entry: e, sort, query, selected, fresh,
       } : undefined}
     >
       {/* The label is the tap target: bigger than the box. */}
-      <label className="lc-pick">
-        <input type="checkbox" className="lc-check" checked={selected} aria-label={`Select ${e.title}`} onChange={(ev) => acts.select(e.id, ev.target.checked)} />
-      </label>
+      {!theirs && (
+        <label className="lc-pick">
+          <input type="checkbox" className="lc-check" checked={selected} aria-label={`Select ${e.title}`} onChange={(ev) => acts.select(e.id, ev.target.checked)} />
+        </label>
+      )}
       <div className="lc-pic">{e.type === 'deck' ? <Stack covers={e.covers} /> : <Minimap shape={e.shape} />}</div>
       <div className="lc-body">
         <h3 className="lc-title">
@@ -199,7 +205,7 @@ export const Card = memo(function Card({ entry: e, sort, query, selected, fresh,
           <DescriptionEditor initial={e.description} onDone={saveDescription} />
         ) : match?.field === 'description' ? null : description ? (
           <p className="lc-desc">{description}</p>
-        ) : (
+        ) : theirs ? null : (
           <button type="button" className="lc-add" onClick={() => setEditing(true)}>Add a description</button>
         )}
         {/* A hit in the description shows there, marked, in place of the description. */}
@@ -208,9 +214,11 @@ export const Card = memo(function Card({ entry: e, sort, query, selected, fresh,
         )}
         <div className="lc-meta">
           {deck && <span className="lc-kind"><Layers size={12} /> Deck · {plural(e.count, 'document')}</span>}
+          {theirs && <span className="lc-owner">{possessive(theirs.ownerName)}</span>}
           <span className="lc-time">{time}</span>
+          {theirs && <span className={cx('badge', theirs.role === 'editor' ? 'is-editor' : 'is-viewer')}>{roleLabel(theirs.role)}</span>}
           {e.pinned != null && <span className="badge pin"><Pin size={11} /> Pinned</span>}
-          {shared && <span className="badge shared">{shared}</span>}
+          {shared && !theirs && <span className="badge shared">{shared}</span>}
           {archived && <span className="badge">Archived</span>}
           {e.type === 'doc' && e.deckTitle && query && <span className="badge deck">In {e.deckTitle}</span>}
         </div>

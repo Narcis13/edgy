@@ -1,0 +1,20 @@
+/* The sync badge in the top bars. */
+.sync-badge {
+  display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 8px;
+  border: 1px solid transparent; border-radius: 999px; background: none; color: var(--faint);
+  font: 500 12px var(--font-ui); cursor: pointer; white-space: nowrap;
+}
+.sync-badge:hover:not(:disabled) { background: var(--sunken); color: var(--muted); }
+.sync-badge:disabled { cursor: default; }
+.sync-badge:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sync-badge.is-synced { color: var(--live); }
+.sync-badge.is-syncing { color: var(--accent); }
+.sync-badge.is-offline { color: var(--warn); background: var(--warn-soft); }
+.sync-badge .spin { animation: sync-spin 1.1s linear infinite; }
+@keyframes sync-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sync-badge .spin { animation: none; } }
+/* On a phone the badge keeps its icon and its tap target. */
+@media (max-width: 640px) {
+  .sync-badge { min-width: 40px; min-height: 40px; justify-content: center; padding: 0; }
+  .sync-badge span { display: none; }
+}

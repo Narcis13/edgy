@@ -6,12 +6,13 @@
   "description": "Edgy — active agentic documents grown from a single cell",
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "dev:sync": "node --env-file=.env scripts/dev.mjs",
     "server": "tsx --disable-warning=ExperimentalWarning src/server/index.ts",
     "web": "vite",
     "build": "vite build && vite build -c vite.offline.config.ts",
     "start": "NODE_ENV=production tsx --disable-warning=ExperimentalWarning src/server/index.ts",
     "mcp": "tsx src/mcp/server.ts",
-    "test": "tsx --disable-warning=ExperimentalWarning --test src/core/*.test.ts src/server/*.test.ts src/web/print/*.test.ts src/web/kinds/*.test.ts src/web/code/*.test.ts src/web/editor/*.test.ts src/web/editor/inspector/*.test.ts src/web/play/*.test.ts src/web/pages/library/*.test.ts",
+    "test": "tsx --disable-warning=ExperimentalWarning --test src/core/*.test.ts src/server/*.test.ts src/web/print/*.test.ts src/web/kinds/*.test.ts src/web/code/*.test.ts src/web/editor/*.test.ts src/web/editor/inspector/*.test.ts src/web/play/*.test.ts src/web/pages/library/*.test.ts src/web/account/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

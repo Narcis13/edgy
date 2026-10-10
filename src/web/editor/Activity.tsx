@@ -7,7 +7,10 @@ import { print } from '../../core/sx';
 import { sayEffect } from '../../core/events';
 import type { TraceItem } from '../session';
 import { timeAgo } from '../lib/api';
+import { Avatar } from '../account/Avatar';
+import { useMe } from '../account/me';
 import { cx, useS, useSession } from './ctx';
+import { actorName, describePresent, othersPresent, sameActor } from './people';
 
 interface Block {
   key: string;
@@ -59,7 +62,7 @@ function blocks(log: { v: number; ts: number; actor: Actor; ops: Op[] }[], messa
       continue;
     }
     const last = out.at(-1);
-    const same = last?.ops && last.actor.name === last.actor.name && last.actor.kind === it.actor.kind && last.actor.name === it.actor.name && it.ts - last.ts < 8000;
+    const same = last?.ops && sameActor(last.actor, it.actor) && it.ts - last.ts < 8000;
     const text = short(it.op);
     const target = it.op[0] === 'set' ? `${it.op[1]}.${it.op[2]}` : undefined;
     if (same && last) {
@@ -79,6 +82,10 @@ export function Activity() {
   const log = useS((s) => s.log);
   const messages = useS((s) => s.messages);
   const presence = useS((s) => s.presence);
+  const people = useS((s) => s.people);
+  const members = useS((s) => s.members);
+  const viewer = useS((s) => s.role === 'viewer');
+  const me = useMe().me;
   const trace = useS((s) => s.trace);
   const doc = useS((s) => s.doc);
   const now = useS((s) => s.now);
@@ -93,6 +100,9 @@ export function Activity() {
 
   const agents = presence.filter((p) => p.actor.kind === 'agent' && now - p.ts < 10 * 60_000);
   const listening = agents.some((p) => p.state === 'listening');
+  const nameOf = (a: Actor) => actorName(a, session.you, members);
+  const others = othersPresent(people, session.you);
+  const cellName = (id: string) => session.cell(id)?.name ?? id;
 
   const send = () => {
     const t = text.trim();
@@ -106,10 +116,19 @@ export function Activity() {
       <div className="activity-head">
         <h2>Activity</h2>
         <div className="who">
-          <span className="chip human">You</span>
+          <span className="chip human" title={me ? `${me.name} (you)` : 'You'}>
+            {me && <Avatar name={me.name} color={me.color} size={20} />}
+            {me ? <>{me.name} <small>(you)</small></> : 'You'}
+          </span>
+          {others.map((p) => (
+            <span key={p.id} className="chip human" title={describePresent(p, cellName)}>
+              <Avatar name={p.name} color={p.color} size={20} />
+              {p.name}
+            </span>
+          ))}
           {agents.map((p) => (
-            <span key={p.actor.name} className={cx('chip agent', p.state)} title={`${p.actor.name} was ${p.state} ${timeAgo(p.ts, now)}`}>
-              <Sparkles size={11} /> {p.actor.name}
+            <span key={p.actor.id ?? p.actor.name} className={cx('chip agent', p.state)} title={`${nameOf(p.actor).name} was ${p.state} ${timeAgo(p.ts, now)}`}>
+              <Sparkles size={11} /> {nameOf(p.actor).name}
             </span>
           ))}
         </div>
@@ -120,7 +139,7 @@ export function Activity() {
         {feed.map((b) => (
           <div key={b.key} className={cx('block', b.actor.kind, b.message && 'is-message', b.events && 'is-events')}>
             <div className="block-head">
-              <span className={cx('who-name', b.actor.kind)}>{b.actor.kind === 'human' && b.actor.name === 'You' ? 'You' : b.actor.name}</span>
+              <span className={cx('who-name', b.actor.kind)}>{nameOf(b.actor).name}</span>
               <time>{timeAgo(b.ts, now)}</time>
             </div>
             {b.message && (
@@ -159,7 +178,7 @@ export function Activity() {
         <div ref={end} />
       </div>
 
-      <div className="composer">
+      {!viewer && <div className="composer">
         <p className={cx('listen', listening && 'is-on')}>
           {listening ? 'An agent is listening.' : agents.length ? 'An agent was here; your message waits for it.' : 'No agent is connected. Messages wait here until one is.'}
           <button className="link-btn" onClick={() => setHelp(!help)}>{help ? 'Hide' : 'Connect one'}</button>
@@ -185,7 +204,7 @@ export function Activity() {
           />
           <button className="send" onClick={send} disabled={!text.trim()} aria-label="Send"><Send size={15} /></button>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

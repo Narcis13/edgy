@@ -1,0 +1,41 @@
+/* Other people in the document: their faces in the header, their selections on the sheet. */
+
+.presence { display: flex; align-items: center; flex: none; margin: 0 6px 0 2px; }
+.presence-btn {
+  display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: transparent; line-height: 0;
+}
+.presence-btn + .presence-btn { margin-left: -8px; }
+.presence-btn:hover { z-index: 1; }
+.presence-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; z-index: 1; }
+.presence-more { margin-left: 4px; font-size: 12px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Another person's selection: an outline in their colour and their name on its top-left corner (several people on one cell stack). */
+.overlay .remote-sel { pointer-events: none; }
+.remote-sel {
+  position: absolute; border-radius: 3px; outline: 2px solid var(--who); outline-offset: calc(var(--slot, 0) * 3px - 2px);
+}
+.remote-sel span {
+  position: absolute; left: 6px; top: calc(-9px - var(--slot, 0) * 17px); max-width: calc(100% - 12px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 10.5px; line-height: 1.5; padding: 0 7px; border-radius: 999px; background: var(--who); color: #fff; font-weight: 600;
+}
+
+/* A reader's note under the header, as a view link gets. */
+.viewer-note {
+  position: sticky; top: 0; z-index: 5; margin: 0; padding: 6px 16px; font-size: 12.5px; color: var(--muted); background: var(--panel);
+  border-bottom: 1px solid var(--line); text-align: center;
+}
+.editor.is-viewer .shared-badge { flex: none; }
+
+/* Who is here, in Activity: faces with a name, and "you" marked. */
+.who .chip.human { gap: 5px; padding-left: 3px; }
+.who .chip .avatar { flex: none; font-size: 10px !important; }
+.editor.is-viewer .fbar { display: none; }
+
+@media (max-width: 720px) {
+  /* The title keeps what room it can: smaller faces, closer together. */
+  .presence { margin: 0; }
+  .presence-btn { width: 26px; height: 26px; }
+  .presence-btn + .presence-btn { margin-left: -9px; }
+  .presence .avatar { width: 22px !important; height: 22px !important; font-size: 9px !important; }
+  .presence-more { margin-left: 2px; font-size: 11.5px; }
+}

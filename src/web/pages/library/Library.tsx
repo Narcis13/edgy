@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Doc } from '../../../core/types';
 import { movePinned } from '../../../core/library';
 import { type Deck, type Library, type LibraryEntry, type TemplateSummary, api } from '../../lib/api';
+import { currentMe } from '../../account/me';
 import { startPlay } from '../../play/start';
 import { ShareDialog } from '../../share/ShareDialog';
 import { Minimap } from '../Minimap';
@@ -14,7 +15,7 @@ import { type Actions, Card } from './Card';
 import { type Confirm, ConfirmDialog, GroupDialog } from './Dialogs';
 import { SelectionBar } from './SelectionBar';
 import { type SearchHandle, Toolbar } from './Toolbar';
-import { type Filter, type Prefs, type Sort, type View, cx, deckTitle, loadPrefs, plural, savePrefs } from './text';
+import { type Filter, type Prefs, type Scope, type Sort, type View, cx, deckTitle, loadPrefs, plural, savePrefs } from './text';
 import { useLibrary } from './useLibrary';
 
 /** Cards drawn at first, and added each time the end of the list comes near. */
@@ -34,13 +35,21 @@ const quoted = (t: string) => `“${t}”`;
 
 const SECTION: Record<Filter, string> = { all: 'Documents', pinned: 'Pinned', shared: 'Shared', decks: 'Decks', archived: 'Archived' };
 
-function Empty({ filter, query, onClear }: { filter: Filter; query: string; onClear: () => void }) {
+function Empty({ scope, filter, query, onClear }: { scope: Scope; filter: Filter; query: string; onClear: () => void }) {
   if (query) {
     return (
       <div className="lib-empty">
-        <p><b>Nothing matches {quoted(query)}{filter !== 'all' ? ` in ${SECTION[filter]}` : ''}.</b></p>
+        <p><b>Nothing matches {quoted(query)}{scope === 'mine' && filter !== 'all' ? ` in ${SECTION[filter]}` : ''}.</b></p>
         <p>Search looks in titles, descriptions and the words inside documents. Every word has to appear somewhere in the same document.</p>
         <button type="button" className="btn ghost" onClick={onClear}>Clear search</button>
+      </div>
+    );
+  }
+  if (scope === 'shared') {
+    return (
+      <div className="lib-empty">
+        <p><b>Nothing is shared with you yet.</b></p>
+        <p>When someone gives your account access to a document, it shows here.</p>
       </div>
     );
   }
@@ -61,10 +70,16 @@ function Empty({ filter, query, onClear }: { filter: Filter; query: string; onCl
 }
 
 export function Library({ navigate }: { navigate: (p: string) => void }) {
-  const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
+  // A link can open a scope (/?scope=shared); otherwise the one last used.
+  const [prefs, setPrefs] = useState<Prefs>(() => {
+    const p = loadPrefs();
+    const asked = new URLSearchParams(window.location.search).get('scope');
+    return asked === 'shared' || asked === 'mine' ? { ...p, scope: asked } : p;
+  });
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
-  const { data, setData, error, loading, reload } = useLibrary(query, filter, prefs.sort);
+  const scope = prefs.scope;
+  const { data, setData, error, loading, reload, sharedCount } = useLibrary(query, filter, prefs.sort, scope);
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
   const [limit, setLimit] = useState(PAGE);
@@ -81,7 +96,7 @@ export function Library({ navigate }: { navigate: (p: string) => void }) {
 
   useEffect(() => { void api<TemplateSummary[]>('GET', '/api/templates').then(setTemplates).catch(() => undefined); }, []);
   useEffect(() => savePrefs(prefs), [prefs]);
-  useEffect(() => setLimit(PAGE), [query, filter, prefs.sort]);
+  useEffect(() => setLimit(PAGE), [query, filter, prefs.sort, scope]);
 
   // What is on screen is what the last answer was for, so the cards, their highlights and the headings agree.
   const shown = { query: data?.query ?? '', filter: (data?.filter ?? filter) as Filter, sort: (data?.sort ?? prefs.sort) as Sort };
@@ -226,6 +241,15 @@ export function Library({ navigate }: { navigate: (p: string) => void }) {
       action: 'Delete',
       run: () => attempt(() => bulk('delete', [e.id])),
     }),
+    leave: (e) => setConfirm({
+      title: `Leave ${quoted(e.title)}?`,
+      body: 'It leaves your Shared with me list and you can no longer open it. Its owner can give you access again.',
+      action: 'Leave',
+      run: () => attempt(async () => {
+        await api('DELETE', `/api/docs/${e.id}/people/${currentMe().me?.id}`);
+        live.current.notify(`Left ${quoted(e.title)}`);
+      }),
+    }),
     ungroup: (e) => setConfirm({
       title: `Ungroup ${quoted(e.title)}?`,
       body: 'The documents stay, each on its own; only the deck goes.',
@@ -256,6 +280,7 @@ export function Library({ navigate }: { navigate: (p: string) => void }) {
   }, [navigate, notify]);
   const onNew = useCallback(() => void create(), [create]);
   const onSort = useCallback((sort: Sort) => setPrefs((p) => ({ ...p, sort })), []);
+  const onScope = useCallback((scope: Scope) => setPrefs((p) => ({ ...p, scope })), []);
   const onView = useCallback((view: View) => setPrefs((p) => ({ ...p, view })), []);
   const clearSearch = useCallback(() => search.current?.clear(), []);
 
@@ -314,11 +339,14 @@ export function Library({ navigate }: { navigate: (p: string) => void }) {
   return (
     <main ref={pane} className={cx('home lib', selected.size > 0 && 'has-selection', `view-${prefs.view}`)}>
       <Toolbar
+        scope={scope}
+        sharedCount={sharedCount}
         filter={filter}
         sort={prefs.sort}
         view={prefs.view}
         busy={loading}
         creating={creating}
+        onScope={onScope}
         onQuery={setQuery}
         onFilter={setFilter}
         onSort={onSort}
@@ -327,7 +355,7 @@ export function Library({ navigate }: { navigate: (p: string) => void }) {
         searchRef={search}
       />
 
-      {!searching && shown.filter === 'all' && !query && filter === 'all' && templates.length > 0 && (
+      {scope === 'mine' && !searching && shown.filter === 'all' && !query && filter === 'all' && templates.length > 0 && (
         <section className="lib-starts" aria-label="Start from a template">
           {templates.map((t) => (
             <button key={t.id} type="button" className="lib-start" onClick={() => void create(t.id)} disabled={creating} title={t.about}>
@@ -362,9 +390,9 @@ export function Library({ navigate }: { navigate: (p: string) => void }) {
           {(rest.length > 0 || data.total === 0 || (searching && shown.filter !== 'pinned')) && (
             <section className="lib-section" aria-labelledby="lib-rest">
               <h2 id="lib-rest" aria-live="polite">
-                {searching ? `${plural(data.total, 'result')} for ${quoted(shown.query)}` : <>{SECTION[shown.filter]} {rest.length > 0 && <span className="lib-n">{rest.length}</span>}</>}
+                {searching ? `${plural(data.total, 'result')} for ${quoted(shown.query)}` : <>{scope === 'shared' ? 'Shared with me' : SECTION[shown.filter]} {rest.length > 0 && <span className="lib-n">{rest.length}</span>}</>}
               </h2>
-              {data.total === 0 && <Empty filter={shown.filter} query={shown.query} onClear={clearSearch} />}
+              {data.total === 0 && <Empty scope={scope} filter={shown.filter} query={shown.query} onClear={clearSearch} />}
               {visible.length > 0 && <div className={listClass}>{visible.map((e) => card(e, -1))}</div>}
               {more && <div ref={sentinel} className="lib-more">Showing {visible.length} of {rest.length}…</div>}
             </section>

@@ -38,6 +38,8 @@ import { getGuarded } from './runner';
 import type { ExportPayload } from '../core/offline';
 import { shapeOf } from '../core/library';
 import { type Access, type Deck, type DocSummary, type Role, type Share, type Store, type User, StoreError, isDeckId, shortId } from './store';
+import type { Cloud } from './cloud';
+import { Sync } from './sync';
 
 const ASSET_TYPES: Record<string, string> = {
   'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif', 'image/svg+xml': 'svg',
@@ -61,6 +63,10 @@ export interface AppOptions {
   auth?: AuthMode;
   /** The clock sign-in throttling counts on. */
   now?: () => number;
+  /** The cloud to sync with (see sync.ts); none: local only. */
+  cloud?: Cloud | null;
+  /** How often sync pulls, in ms; 0: only when asked (tests). */
+  syncInterval?: number;
 }
 
 /** What node's server hands each request, and what in-process requests carry instead. */
@@ -165,11 +171,46 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     },
   });
 
+  // ── the cloud: what other machines changed arrives here ──
+
+  const sync = opts.cloud
+    ? new Sync(store, opts.cloud, {
+        reset: (doc, v) => {
+          readsCache.delete(doc);
+          hub.publish(doc, { type: 'reset', v });
+          runner.changed(doc);
+        },
+        deleted: (doc) => {
+          gone(doc);
+          recheck(doc);
+        },
+        data: (owner, collection) => dataChanged(owner, collection),
+        account: (id, passwordChanged) => {
+          const user = store.user(id);
+          if (user) renamed(user);
+          // A new password on another machine ends the sessions here too.
+          if (passwordChanged) {
+            store.endSessions(id);
+            recheck();
+          }
+        },
+        accountDeleted: (id) => {
+          for (const doc of store.deleteUser(id)) gone(doc);
+          recheck();
+        },
+      }, { interval: opts.syncInterval, assetsDir })
+    : null;
+  if (sync) store.onChange = () => sync.kick();
+
   // ── who is asking ──
 
-  /** The account local mode signs in by itself, made on first use. */
+  /** The account local mode signs in by itself, made on first use, with the tour unless it has documents already. */
   function localUser(): User {
-    return store.localUser() ?? store.createUser({ email: null, name: 'You', color: colorFor('local'), password: null, local: true });
+    const known = store.localUser();
+    if (known) return known;
+    const user = store.createUser({ email: null, name: 'You', color: colorFor('local'), password: null, local: true });
+    if (!store.listDocs(user.id).length) create(undefined, 'tour', undefined, { kind: 'agent', name: 'Edgy' }, user.id);
+    return user;
   }
 
   /** A request from this machine: its socket says so; a request made in process has none. */
@@ -499,9 +540,6 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     return doc;
   }
 
-  // An empty installation starts with the tour; its first account will own it.
-  if (!store.listDocs().length && !store.users().length) create(undefined, 'tour', undefined, { kind: 'agent', name: 'Edgy' }, null);
-
   /** A session for this account, and its cookie on the answer. */
   function signIn(c: C, user: User) {
     const token = newSecret();
@@ -516,7 +554,8 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     return c.json({ error: 'something went wrong on the server' }, 500);
   });
 
-  app.get('/api/health', need('public'), (c) => c.json({ ok: true, name: 'edgy', web: webUrl ?? new URL(c.req.url).origin, auth: mode }));
+  // Public: whether the server is up, its mode, and whether the asker is signed in (so a signed-out page asks nothing it would be refused).
+  app.get('/api/health', need('public'), (c) => c.json({ ok: true, name: 'edgy', web: webUrl ?? new URL(c.req.url).origin, auth: mode, signedIn: c.get('who').kind === 'user', sync: !!sync }));
   app.get('/api/guide', need('user'), (c) => c.text(GUIDE));
   app.get('/api/templates', need('user'), (c) => c.json(TEMPLATES.map((t) => ({ id: t.id, title: t.title, about: t.about, root: t.root }))));
 
@@ -528,9 +567,11 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const wrong = emailProblem(email) ?? passwordProblem(body.password);
     if (wrong) return c.json({ error: wrong }, 400);
     if (store.userByEmail(email)) return c.json({ error: 'An account with this email already exists. Sign in instead.' }, 409);
+    // With sync, an account made on another machine counts too.
+    if (sync && (await sync.findAccount(email).catch(() => null))) return c.json({ error: 'An account with this email already exists. Sign in instead.' }, 409);
     const name = cleanName(body.name, 60) || email.split('@')[0];
     const user = store.createUser({ email, name, color: colorFor(email), password: await hashPassword(body.password as string) });
-    // Someone new starts with the tour (the first account has it already, with everything else).
+    // Someone new starts with the tour, unless (the first account) they own what was here before.
     if (!store.listDocs(user.id).length) create(undefined, 'tour', undefined, { kind: 'agent', name: 'Edgy' }, user.id);
     signIn(c, user);
     return c.json({ user: profile(user) }, 201);
@@ -546,8 +587,20 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
       c.header('retry-after', String(s));
       return c.json({ error: `Too many tries. Wait ${s} seconds and try again.`, wait: s }, 429);
     }
-    const user = email ? store.userByEmail(email) : null;
-    const ok = await verifyPassword(typeof body.password === 'string' ? body.password : '', user ? store.passwordOf(user.id) : null);
+    const password = typeof body.password === 'string' ? body.password : '';
+    let user = email ? store.userByEmail(email) : null;
+    let ok = await verifyPassword(password, user ? store.passwordOf(user.id) : null);
+    // Not on this machine: with sync, an account made on another one signs in here, and its documents follow.
+    if (!user && sync && email) {
+      const there = await sync.findAccount(email).catch(() => null);
+      if (there?.password && (await verifyPassword(password, there.password))) {
+        user = store.createUser({ id: there.id, email, name: there.name, color: there.color, password: there.password, createdAt: there.createdAt, fromCloud: true });
+        if (there.theme === 'light' || there.theme === 'dark') store.quietly(() => store.updateUser(user!.id, { theme: there.theme as 'light' | 'dark' }));
+        ok = true;
+        // Bring its documents down before showing the library (or carry on, if that takes long).
+        await Promise.race([sync.round(), new Promise((r) => setTimeout(r, 10_000))]);
+      }
+    }
     if (!user || !ok) {
       throttle.fail(...keys);
       return c.json({ error: 'Wrong email or password.' }, 401);
@@ -627,6 +680,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     }
     const docs = store.deleteUser(user.id);
     for (const id of docs) gone(id);
+    sync?.deleteAccount(user.id);
     c.header('set-cookie', sessionCookie(null, secure(c)), { append: true });
     recheck();
     return c.json({ ok: true, deleted: docs.length });
@@ -1184,6 +1238,18 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     return c.json({ removed });
   });
 
+  // ── sync ──
+
+  /** Whether this machine's changes have reached the cloud: off, synced, syncing (changes waiting) or offline. */
+  app.get('/api/sync', need('user'), (c) => c.json(sync ? sync.status(myId(c) ?? undefined) : { state: 'off', pending: 0, lastSyncAt: null, error: null }));
+
+  /** Sync now (the status's "Sync now"), and answer how it went. */
+  app.post('/api/sync', need('user'), async (c) => {
+    if (!sync) return c.json({ state: 'off', pending: 0, lastSyncAt: null, error: null });
+    await sync.round();
+    return c.json(sync.status(myId(c) ?? undefined));
+  });
+
   // ── pictures ──
 
   app.post('/api/assets', need('user'), async (c) => {
@@ -1194,16 +1260,28 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     if (bytes.length > MAX_ASSET) return c.json({ error: 'that picture is larger than 8 MB' }, 413);
     const file = createHash('sha256').update(bytes).digest('hex').slice(0, 20) + '.' + ext;
     mkdirSync(assetsDir, { recursive: true });
-    if (!existsSync(join(assetsDir, file))) writeFileSync(join(assetsDir, file), bytes);
+    if (!existsSync(join(assetsDir, file))) {
+      writeFileSync(join(assetsDir, file), bytes);
+      if (sync) store.assetToSend(file);
+    }
     return c.json({ url: '/assets/' + file }, 201);
   });
 
   // Pictures are named by their content's digest: whoever has the address (a document, a link) can load it.
-  app.get('/assets/:file', (c) => {
+  app.get('/assets/:file', async (c) => {
     const file = c.req.param('file');
     const ext = file.split('.').pop() ?? '';
     const type = Object.entries(ASSET_TYPES).find(([, e]) => e === ext)?.[0];
-    if (!/^[a-f0-9]{20}\.\w+$/.test(file) || !type || !existsSync(join(assetsDir, file))) return c.notFound();
+    if (!/^[a-f0-9]{20}\.\w+$/.test(file) || !type) return c.notFound();
+    // Uploaded on another machine: fetched from the cloud once, then kept here.
+    if (!existsSync(join(assetsDir, file)) && sync) {
+      const got = await sync.fetchAsset(file).catch(() => null);
+      if (got) {
+        mkdirSync(assetsDir, { recursive: true });
+        writeFileSync(join(assetsDir, file), got.bytes);
+      }
+    }
+    if (!existsSync(join(assetsDir, file))) return c.notFound();
     return c.body(new Uint8Array(readFileSync(join(assetsDir, file))), 200, {
       'content-type': type,
       'cache-control': 'public, max-age=31536000, immutable',
@@ -1212,7 +1290,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     });
   });
 
-  return { app, hub, view, runner, mode };
+  return { app, hub, view, runner, mode, sync };
 }
 
 export type { Computed, Need };

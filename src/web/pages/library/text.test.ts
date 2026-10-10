@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { deckTitle, highlight, parsePrefs, plural } from './text';
+import { deckTitle, highlight, parsePrefs, plural, possessive, roleLabel, sharedBadge, theirDoc } from './text';
 
 const marked = (text: string, q: string) => highlight(text, q).filter((p) => p.mark).map((p) => p.text);
 
@@ -32,8 +32,33 @@ test('a new deck is named after its first document', () => {
 });
 
 test('remembered choices fall back to the defaults when broken', () => {
-  assert.deepEqual(parsePrefs(null), { view: 'grid', sort: 'updated' });
-  assert.deepEqual(parsePrefs('{"view":"list","sort":"title"}'), { view: 'list', sort: 'title' });
-  assert.deepEqual(parsePrefs('{"view":"tiles","sort":3}'), { view: 'grid', sort: 'updated' });
-  assert.deepEqual(parsePrefs('not json'), { view: 'grid', sort: 'updated' });
+  const base = { view: 'grid', sort: 'updated', scope: 'mine' };
+  assert.deepEqual(parsePrefs(null), base);
+  assert.deepEqual(parsePrefs('{"view":"list","sort":"title"}'), { ...base, view: 'list', sort: 'title' });
+  assert.deepEqual(parsePrefs('{"scope":"shared"}'), { ...base, scope: 'shared' });
+  assert.deepEqual(parsePrefs('{"view":"tiles","sort":3,"scope":"all"}'), base);
+  assert.deepEqual(parsePrefs('not json'), base);
+});
+
+test('an entry from Shared with me has a role and an owner; one of mine has neither', () => {
+  assert.deepEqual(theirDoc({ role: 'editor', ownerName: 'Ana' }), { role: 'editor', ownerName: 'Ana' });
+  assert.deepEqual(theirDoc({ role: 'viewer' }), { role: 'viewer', ownerName: 'Someone' });
+  assert.equal(theirDoc({}), null);
+  assert.equal(theirDoc({ role: 'owner' }), null);
+  assert.equal(roleLabel('editor'), 'Can edit');
+  assert.equal(roleLabel('viewer'), 'Can view');
+});
+
+test('whose a document is', () => {
+  assert.equal(possessive('Ana'), 'Ana’s');
+  assert.equal(possessive('Chris'), 'Chris’');
+});
+
+test('the shared badge counts people first, then says what a link allows', () => {
+  assert.equal(sharedBadge(undefined), null);
+  assert.equal(sharedBadge({ view: false, edit: false, people: 0 }), null);
+  assert.equal(sharedBadge({ view: false, edit: false, people: 2 }), 'Shared with 2');
+  assert.equal(sharedBadge({ view: true, edit: true, people: 1 }), 'Shared with 1');
+  assert.equal(sharedBadge({ view: true, edit: true }), 'Shared · can edit');
+  assert.equal(sharedBadge({ view: true, edit: false }), 'Shared · can view');
 });

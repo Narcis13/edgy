@@ -6,6 +6,8 @@ export const cx = (...parts: (string | false | null | undefined)[]) => parts.fil
 
 export type View = 'grid' | 'list';
 export type Sort = 'updated' | 'created' | 'title';
+/** Whose documents: mine, or the ones other people gave my account access to. */
+export type Scope = 'mine' | 'shared';
 export type Filter = 'all' | 'pinned' | 'shared' | 'decks' | 'archived';
 
 export interface Part {
@@ -68,20 +70,22 @@ export function plural(n: number, one: string, many = one + 's'): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** How the library is shown, remembered between visits. The filter and the search are not. */
+/** How the library is shown (and whose it is), remembered between visits. The filter and the search are not. */
 export interface Prefs {
   view: View;
   sort: Sort;
+  scope: Scope;
 }
 
 const KEY = 'edgy.library';
 
 export function parsePrefs(raw: string | null): Prefs {
-  const prefs: Prefs = { view: 'grid', sort: 'updated' };
+  const prefs: Prefs = { view: 'grid', sort: 'updated', scope: 'mine' };
   try {
     const o = JSON.parse(raw ?? 'null') as Partial<Prefs> | null;
     if (o?.view === 'grid' || o?.view === 'list') prefs.view = o.view;
     if (o?.sort === 'updated' || o?.sort === 'created' || o?.sort === 'title') prefs.sort = o.sort;
+    if (o?.scope === 'mine' || o?.scope === 'shared') prefs.scope = o.scope;
   } catch {
     /* a broken value is the default */
   }
@@ -102,3 +106,32 @@ export function savePrefs(p: Prefs): void {
 
 /** Where a search hit was found, for the line under its title. */
 export const WHERE = { title: 'In the title', description: 'In the description', text: 'In the text' } as const;
+
+/** What an entry in Shared with me carries besides a document's own fields (the server adds them). */
+export interface TheirDoc {
+  role: 'viewer' | 'editor';
+  ownerName: string;
+}
+
+/** The owner and my role when the entry came from Shared with me; null for my own. */
+export function theirDoc(entry: object): TheirDoc | null {
+  const e = entry as { role?: unknown; ownerName?: unknown };
+  if (e.role !== 'viewer' && e.role !== 'editor') return null;
+  return { role: e.role, ownerName: typeof e.ownerName === 'string' && e.ownerName ? e.ownerName : 'Someone' };
+}
+
+export const roleLabel = (role: TheirDoc['role']) => (role === 'editor' ? 'Can edit' : 'Can view');
+
+/** "Ana's": whose a shared document is. */
+export function possessive(name: string): string {
+  return /s$/i.test(name) ? `${name}’` : `${name}’s`;
+}
+
+/** The badge on my own document that others can open: people with accounts, or a link. */
+export function sharedBadge(s: { view?: boolean; edit?: boolean; people?: number } | undefined): string | null {
+  if (!s) return null;
+  if (s.people) return `Shared with ${s.people}`;
+  if (s.edit) return 'Shared · can edit';
+  if (s.view) return 'Shared · can view';
+  return null;
+}

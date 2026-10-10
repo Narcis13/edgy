@@ -98,6 +98,13 @@ export class ApiError extends Error {
   }
 }
 
+/** Called when the server answers "sign in first": the session is over. */
+const signedOut = new Set<() => void>();
+export function onSignedOut(fn: () => void): () => void {
+  signedOut.add(fn);
+  return () => void signedOut.delete(fn);
+}
+
 export async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await send(path, {
     method,
@@ -107,6 +114,7 @@ export async function api<T>(method: string, path: string, body?: unknown): Prom
   const text = await res.text();
   let json: unknown;
   try { json = JSON.parse(text); } catch { json = null; }
+  if (res.status === 401 && (json as { reason?: string } | null)?.reason === 'signin' && path !== '/api/me') for (const fn of [...signedOut]) fn();
   if (!res.ok) throw new ApiError((json as { error?: string } | null)?.error ?? `The server answered ${res.status}.`, res.status, (json as { reason?: string } | null)?.reason);
   return json as T;
 }
