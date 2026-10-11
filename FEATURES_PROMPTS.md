@@ -1,6 +1,6 @@
 # Feature prompts
 
-Four briefs for `/goal-loop` (the skill is in `goal-loop/`, edgy's facts for it in `.claude/goal-loop/`). Each has the two parts the skill reads,
+Five briefs for `/goal-loop` (the skill is in `goal-loop/`, edgy's facts for it in `.claude/goal-loop/`). Each has the two parts the skill reads,
 **Feature** and **Done means ALL of**, plus constraints and, where it matters, the choices worth settling
 before the run. Anything left open is decided by the loop and written under **Decisions** in PROGRESS.md.
 
@@ -17,10 +17,11 @@ tests and the production build pass and new logic has tests; no console or netwo
 desktop and phone size; a showcase template that uses every new feature, with evidence under
 `docs/showcase/<slug>/`; README and the agent guide (`/api/guide`) describe what was added.
 
-Suggested order: **4 → 2 → 1 → 3**. The new elements are self-contained. Events build on them (a tab
-changing, a shape being clicked). The home page changes storage. Accounts go last because they touch every
-route and the verification scripts, and they turn brief 1's share links into per-person access. Each brief
-is still written to stand on its own.
+Suggested order: **4 → 2 → 1 → 3 → 5**. The new elements are self-contained. Events build on them (a tab
+changing, a shape being clicked). The home page changes storage. Accounts touch every route and the
+verification scripts, and they turn brief 1's share links into per-person access. The documentation goes
+last: it describes everything the others built, and its coverage test then keeps later briefs documented.
+Each brief is still written to stand on its own.
 
 | # | brief | the parts marked ultrathink |
 |---|---|---|
@@ -28,6 +29,7 @@ is still written to stand on its own.
 | 2 | Events and actions | the event model, fetch |
 | 3 | Accounts, collaboration and cloud sync | the access model, collections, sync |
 | 4 | New elements | containers in the cell tree, the diagram |
+| 5 | Documentation site | how the site is built, the two reading paths, live examples, keeping it true |
 
 ---
 
@@ -349,3 +351,185 @@ a minimap glyph, the guide, Blocks and Ask AI.
 - The `hidden` prop stays as it is. A data cell is a different thing: readers never see it, whatever its rules.
 - If brief 2 (events) is already built, a tab changing, a section opening and a shape being clicked are
   events. If it isn't, leave one obvious place where they will be raised.
+
+---
+
+## 5. Documentation site
+
+### Feature
+
+edgy has a README, the agent guide (`GUIDE` in `src/core/reference.ts`, served at `/api/guide`) and short
+hints inside the app. A person opening edgy for the first time has nowhere to learn it, and a developer
+has nowhere to learn how it works. Build a documentation site for both: a beginner who has never seen a
+cell, and a developer who wants to know what happens between a keystroke and the cloud log. It opens from
+the app's header, and the same site builds into a folder of static files that can be deployed on its own.
+
+- **How it is built (ultrathink).** One source, two outputs: the site served by the app at `/docs/`, and
+  a standalone static build that works at any path on any static host. Pages are real HTML that read in
+  full without JavaScript; scripts add search, the phone drawer, the theme switch, copy buttons and live
+  examples. Decide how pages are authored, rendered and linked so both outputs come from one build.
+- **Two reading paths (ultrathink the order and the depth).** A beginner path that starts from nothing
+  and goes one step at a time to events, data and sharing; a reference for looking things up; and an
+  "Under the hood" path for developers. Every page says what it covers in its first sentence and links to
+  what comes before and after.
+- **What it covers.**
+  - *Getting started*: installing and running (`npm run dev`, local and accounts mode, sync), the
+    anatomy of each screen, a first document in ten minutes, Edit, Live and Page, the keyboard.
+  - *Tutorials*, each ending with a finished document the reader can open in the app as a template: a
+    quote with formulas; a checklist that reacts when every box is ticked; a wizard driven by a data cell;
+    an order tracker that saves to a collection; a dashboard of charts and stats; a flowchart diagram
+    showing live values; a deck played as slides; sharing with a colleague; printing and exporting an
+    offline copy; connecting an agent over MCP.
+  - *Cells*: one page per kind, all 24 (`GROUP_KINDS` and `LEAF_KINDS` in `src/core/types.ts`). What it
+    is for, how to add and design it, its props in notation, its value, the events it raises, the actions
+    that change it, how it behaves on a phone and on paper, a live example, and the usual mistakes.
+  - *The editor*: selecting, splitting, merging, moving and duplicating; the `/` menu; the right-hand panel
+    section by section; the formula bar; the code studio, Blocks and Ask AI (all three paths); Activity;
+    links between cells; the minimap; undo; the Page view and page setup.
+  - *The language*: syntax and values, what counts as true, names and references, relative references,
+    `{{templates}}`, formats, every error a person can see and what to do about it, and every function and
+    action with its signature, an example and that example's result.
+  - *Events and actions*: the model, every event and the data it binds, timers, fetch, custom events and
+    actions, the loop guard, how undo groups a gesture, and which browser runs what when two people have
+    the document open.
+  - *Data, styling, library, people*: collections and the Data page; style keys, theme tokens and fonts;
+    search, pins, archive, decks, Play, share links and export; accounts, roles, presence, API keys, sync.
+  - *Agents*: the MCP server and each of its tools; the outline, notation and ops; the HTTP API, every
+    route with the access it needs (`need(…)` in `src/server/app.ts`).
+  - *Under the hood*: the architecture; Cell, Doc and Op as plain JSON; `applyOp`, inverse ops and undo;
+    `normalize`; the engine (evaluation order, dependencies, ticking); the interpreter in `sx.ts`; notation
+    round trips; the browser session (optimistic ops, rebasing on the event stream); the SSE hub; storage,
+    the schema and its migrations; the runner; access, passwords, sessions and keys; the sync design; the
+    export pipeline; pagination; compose (sentence → code). Each page names the source files it describes
+    and links to them on GitHub.
+  - *Contributing*: the repository layout, the gates and tests, and a checklist for adding a kind, a
+    function, an event or a route (every place each one touches).
+  - A glossary, and a troubleshooting page built from the messages a person actually sees.
+- **Pictures where they explain.** Inline SVG diagrams for what is easier seen than read: the cell tree
+  under split and merge, the life of an op from a keystroke to the other browsers, event dispatch, the two
+  sync logs, the access model, the evaluation graph, pagination. Annotated screenshots of the real app for
+  every screen and panel, in light and dark. Short clips where motion is the point: splitting a cell,
+  drawing an arrow, playing a deck.
+- **Live examples (ultrathink).** Where playing teaches better than a picture, an example is a real edgy
+  document running in the page: change an input and the formula under it changes, press a button and its
+  action runs. The offline runtime built for exports (`vite.offline.config.ts`, `src/web/offline/`)
+  already runs a document with no server; consider it. When the app serves the docs, an example has an
+  "Open in edgy" link that makes it a document of the reader's own.
+- **Search.** Every page, function, kind, event, op, route and MCP tool, from an index built with the
+  site and searched in the browser. Opened with `/` or ⌘K and usable by keyboard alone. No outside service.
+- **Finding the way.** A sidebar of sections, an "On this page" list, previous and next, breadcrumbs, a
+  link on every heading, a copy button on every code block, and a 404 page. On a phone the sidebar is a drawer.
+- **Inside the app.** A **Docs** link in the header of the home, data and profile pages and of a document
+  (in the More menu on a phone). Each kind's designer in the right-hand panel links to that kind's page,
+  and the code studio's function hints link to the function's entry.
+- **Keeping it true (ultrathink).** Wrong docs are worse than none, and edgy keeps changing. Lists that
+  exist in code (kinds, functions, events, ops, routes, MCP tools, style keys, formats, theme tokens,
+  keyboard shortcuts, templates) are generated from the code, never copied by hand. Every runnable example
+  is checked by a test. Screenshots come from a script run against a fresh server, so they can be redone
+  after any change. Adding a kind, function, event, op, route or tool without its docs fails a test.
+
+### Look
+
+The site belongs to the app. Same tokens (`src/web/styles.css`), same fonts, the `(•)` logo, the same
+accent, spacing, radius, line weight and density, the same light and dark themes. It should read like a
+well-set reference book, not a landing page.
+
+- No gradients, glows, glass, blurred backdrops, text shadows, decorative animation, hero art or stock
+  images. Flat surfaces and 1px lines (`--line`). Shadows only where the app uses them (menus, popovers).
+- The accent marks what can be acted on or where you are: links, focus, the current page in the sidebar.
+  Colour in a diagram comes from the theme tokens and chart series, and always means something.
+- Code looks the way it does in the code studio: its highlighter and its function group colours.
+- Diagrams are hand-built inline SVG: real text, colours through the theme's CSS variables so they switch
+  with dark mode, one stroke weight, no filters, a title and description for screen readers.
+- Text is set for reading: about 70 characters to a line, clear heading steps, steady vertical rhythm.
+- The writing follows the project's voice: plain, concrete, second person, short sentences, the UI's exact
+  labels, one word for one thing (the glossary's word). No marketing voice and no emoji.
+
+### Done means ALL of
+
+- `npm run docs:build` writes a folder of static files. Served by a plain static file server on another
+  port under a sub-path (for example `/edgy-docs/`), with the app's server stopped, every page opens,
+  links work, search works, live examples run, and no request leaves that folder. The folder's size and
+  page count are in the Log.
+- The app serves the same site at `/docs/`, signed in and signed out, without opening any `/api` route to
+  signed-out visitors (the route-table test still passes). The Docs link is in the header of home, data,
+  profile and a document at desktop size, and in the More menu at phone size (screenshots).
+- Coverage: a test lists every kind, every function the interpreter knows (`builtinNames` in `sx.ts`),
+  every event (`KIND_EVENTS`, `DOC_EVENTS`), every op `applyOp` accepts, every API route, every MCP tool,
+  every style key, format and theme token, every keyboard shortcut (gathered into one list in code if they
+  aren't yet) and every template, and fails when one has no entry in the docs. Its counts are in the Log.
+  Adding an undocumented function makes it fail (shown once, then reverted).
+- Doc-tests: every example marked runnable is evaluated by a test and gives the result the page states;
+  every notation snippet parses; every ops example applies to the document shown with it. Counts in the Log.
+- A link check over the built site finds no broken internal link or anchor. External links are listed in the Log.
+- Each tutorial is done for real: a script (Claude in Chrome for drawing and dragging) follows its steps
+  on a fresh server and ends with a document that matches the tutorial's last picture, side by side in the
+  evidence. Each tutorial's finished document opens from its page as a template.
+- Live examples, in the static build with no server: changing an input updates a formula, a button runs
+  its action, a tab changes, a ticked checkbox runs its handler. Records live in memory and say so. No
+  example's code loads before the example is near the screen.
+- Search finds `sum-by` (a function), `accordion` (a kind), `dblclick` (an event), `undo` (an idea) and a
+  phrase that appears only in a page's body. It works by keyboard alone; a word with no match shows a
+  clear empty state. The index size is in the Log.
+- Every page is shot at 1440×900, 820×1180 and 390×844, light and dark, and every shot is read: no
+  horizontal overflow (code and tables scroll inside themselves), no clipped or overlapping text, touch
+  targets of at least 40px on a phone. The sweep's CONSOLE count is 0.
+- The look: the docs take the app's tokens from the same source (changing `--accent` in
+  `src/web/styles.css` changes both; shown once, then reverted). A test finds no gradient,
+  `backdrop-filter`, `text-shadow` or SVG filter in the built CSS and SVG. The app's home and the docs'
+  home are side by side in light and dark in the evidence.
+- In the app, the docs open in the theme the person chose there; deployed alone they follow the system;
+  both have a toggle that is remembered.
+- Accessibility: an automated check (named under Decisions) reports no serious or critical issue on any
+  page. A skip link, visible focus, headings with no skipped levels, alt text on every screenshot, a title
+  on every diagram; the phone drawer opens and closes by keyboard and Esc. Contrast meets WCAG AA in both themes.
+- Weight: a text page with no live example, fonts aside, is under 100 KB compressed; fonts are
+  self-hosted and subset; nothing loads from a third party. The measured numbers are in the Log.
+- Printing a docs page gives clean paper: no sidebar, search or drawer, code wraps, diagrams print as
+  vector lines. Checked in the PDF.
+- One script makes every screenshot and clip in the docs from a fresh server, in light and dark; running
+  it twice gives the same set (any file that changes is named in the Log).
+- A reviewer agent that did not write a section checks every page in it against the code it describes.
+  Each wrong claim is fixed; the Log has the number found and fixed per section.
+- README and `/api/guide` point to the docs; README says how to build, preview and deploy them; and
+  `.claude/goal-loop/` (`gates`, `screens`, `project.md`) covers the docs, so the coverage test, the
+  doc-tests and the link check run in every later loop.
+
+### Constraints
+
+- No documentation framework (Docusaurus, VitePress, Astro, Starlight, Nextra and the like) unless
+  Decisions gives the reason. They bring their own look, their own front-end stack and their own weight,
+  and this site has to look like the app and reuse its highlighter and runtime. Build on what is here:
+  Vite, React rendered to HTML at build time, the app's own pieces where they fit. Any new dependency (a
+  Markdown parser, an accessibility checker for verification) is named under Decisions.
+- URLs are clean, lower-case and stable (`/docs/cells/table/`). Links are relative, or go through one
+  base setting, so the same build works at `/docs/` in the app and at any path on a static host.
+- The docs' source lives in a folder of its own. `docs/` already holds progress records and showcase
+  evidence; keep them apart.
+- Live examples run in the reader's browser only and never write to a server.
+- Screenshots and clips come from templates and seeded example data on an isolated server, never from
+  `data/edgy.db`. Example names and `@example.test` addresses only. No token, key or secret in any page or image.
+- The app's behaviour doesn't change apart from the Docs links, the links from the panel and the code
+  studio, and the `/docs/` route.
+- `/api/guide` stays the agents' compact reference. The docs may build on it; agents are never sent to the site.
+- The showcase for this brief is the site itself plus the tutorials' templates. Evidence goes in
+  `docs/showcase/docs-site/`.
+- The writing is the bulk of the work. Before splitting it, settle and write down the page format, the
+  building blocks (callout, figure, diagram, live example, generated reference table), a short style guide
+  and the glossary. Then give the sections to writer agents with folders that don't overlap, and have each
+  section checked against the code by a fresh agent (step 5 of the skill).
+- Putting the site online is not part of the run. It ends with a folder ready to deploy, and the README
+  says how.
+
+### Decide before running
+
+- **Where it is served.** At `/docs/` in the app and as a standalone static build (recommended), or standalone only.
+- **How pages are written.** Markdown with a few custom blocks (live example, diagram, callout, generated
+  reference), which reads well in a diff and can be edited without React (recommended), or pages written as TSX.
+- **Live examples.** The real runtime, loaded per example when it comes into view (recommended), or
+  static pictures only: lighter, but nothing to play with.
+- **Clips.** Short muted looping videos (`.webm` with a still poster, paused under reduced motion)
+  (recommended), GIFs, or stills only.
+- **Source links.** To `github.com/Narcis13/edgy` on `main` (recommended), or plain paths with no links.
+- **Versions.** One version describing the current `main`, with no version switcher (recommended until
+  there are releases).
