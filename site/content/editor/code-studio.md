@@ -14,7 +14,7 @@ The code studio is a roomy place to write the code of one cell, opened over the 
 - Press the sparkle button in the formula bar to open it on **Ask AI**.
 - Press **Add a handler** or a handler line under **Events** in Cell details to open it on that cell's [events](/events/).
 
-A cell with no code of its own, such as an empty cell, gets a message instead (*This cell holds no code yet. Press / to make it a formula.*). A cell that holds no code but reacts to events, such as a timer, opens on its events.
+An empty cell gets a message instead (*This cell holds no code yet. Press / to make it a formula.*). A cell that holds no code but reacts to events, such as a timer, opens on its events. A cell with no code of its own that can be hidden, such as a text or a picture, opens on **Hidden when**.
 
 ## Which code you are editing
 
@@ -72,7 +72,7 @@ The side of the studio has three tabs.
 
 **Functions** lists every function by group, with a search box that looks at the name, the description and the group. Press a function's name to put it into the code at the cursor, as a call with its parts to fill in, or as a block in **Blocks**. Each entry has a **Docs** link to its entry in these docs, for example [sum-by](fn:sum-by), which opens in a new tab.
 
-**Cells** lists the cells that have a name, with their kind and their value right now; press one to put its name in the code. A cell without a name isn't listed: name it in [Cell details](/editor/panel/). When you edit a handler or an action, the list begins with the names the event brings, such as `value` or `row`, under **From the event**; the tab is called **Names** there.
+**Cells** lists the cells that have a name, with their kind and their value right now; press one to put its name in the code. A cell without a name isn't listed: name it in [Cell details](/editor/panel/). When you edit a handler or an action, the list begins with the names the event brings, such as `value` or `row`, under **From the event** (for an action, its inputs, under **Inputs of this action**); the tab is called **Names** there.
 
 On a phone the studio has one pane at a time and a bar of tabs along the bottom: **Code**, **Blocks**, **Events** where there are some, **Ask**, **Functions** and **Cells**.
 

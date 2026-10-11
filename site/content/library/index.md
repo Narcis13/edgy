@@ -29,14 +29,14 @@ Type in the search box. The cards change as you type, a moment after the last ke
 
 ::shot library-search "A search for “quote”. Each card shows where the words were found, and marks them."
 
-Search reads three things in every document: its title, its description, and the words in its cells (the text people read, labels, list items, column headings). It does not read cell names, formulas, styles or the records in your collections.
+Search reads three things in every document: its title, its description, and the words in its cells (the text people read, labels, list items, column headings). It does not read cell names, styles or the records in your collections. A formula adds only the text it quotes: one that says `"Large order"` makes those words searchable.
 
 | Rule | What it means |
 | --- | --- |
 | Every word | Each word you type must appear somewhere in the same document, in the title, the description or the text. They need not be together or in the same place. Up to 8 words count. |
 | Case and accents | Ignored. `cafe` finds a document called Café. |
 | Parts of words | A word matches inside longer words: `plan` finds Planning. |
-| Where it matched | The first part to hold the most of your words. A match in the title marks the word in the title. A match in the description shows the description with the word marked, under **In the description:**. A match in the text shows a snippet under **In the text:**. |
+| Where it matched | The first part to hold the most of your words. A match in the title marks the word in the title. A match in the description shows a piece of the description with the word marked, in place of the description, under **In the description:**. A match in the text shows a snippet under **In the text:**. |
 | Order | Matches in a title first, then in a description, then in the text; each group in your chosen sort. |
 | Inside decks | Without a search, a deck's documents are inside its card. A search finds them on their own, with an **In** badge naming the deck. Decks are searched by title and description. |
 
@@ -81,17 +81,17 @@ Archiving puts a document or deck away without losing anything.
 
 ## Several at once
 
-Each card has a checkbox. Tick two or more and a bar appears at the bottom with how many are selected:
+Each card has a checkbox. Tick one or more and a bar appears at the bottom with how many are selected:
 
 | Button | Does |
 | --- | --- |
-| **Pin** / **Unpin** | Pins them all, or unpins them when they are all pinned already. |
+| **Pin** / **Unpin** | Pins them all, or unpins them when they are all pinned already. Not shown under **Archived**. |
 | **Archive** / **Restore** | Archives them; under **Archived**, restores them. |
 | **Delete** | Deletes the documents after asking, and ungroups the decks. |
-| **Group into a deck** | Makes a [deck](/library/decks/) of the documents, in the order they are on screen. Needs two or more documents and no decks. |
+| **Group into a deck** | Makes a [deck](/library/decks/) of the documents, in the order they are on screen. Needs two or more documents and no decks. Not shown under **Archived**. |
 | **Clear** | Ends the selection. Esc does the same. |
 
-Only what you own can be changed this way. A toast tells you how many were done and how many could not be.
+Only what you own can be changed this way (a card under **Shared with me** has no checkbox). After **Pin** or **Unpin**, a toast tells you how many were done and, if any, how many could not be.
 
 ## Descriptions
 

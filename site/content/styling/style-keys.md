@@ -15,7 +15,7 @@ A style key is one setting of how a cell looks, such as its fill, its text size 
 
 The text cell has a `style` with nine keys. `bg` fills it, `fg` colours its text, `pad` and `radius` shape the box, `border`, `bcolor` and `shadow` draw its edge, and `size` and `weight` set the type. A key you leave out takes the default, and a style is only the keys you changed.
 
-In the editor, **Cell details** has three sections that write these keys: **Text**, **Spacing and size** and **Box**. A row or column adds **Gap between cells** and, for a row, **On a phone**. Each setting has a small reset beside it that removes the key again. Cells that take no room (a [data](kind:data) cell, a [timer](kind:timer), a page [break](kind:break)) have no **Box**, and those that show no text ([image](kind:image), [canvas](kind:canvas), [diagram](kind:diagram), data, timer, [fetch](kind:fetch)) have no **Text**.
+In the editor, **Cell details** has three sections that write these keys: **Text**, **Spacing and size** and **Box**. A row or column adds **Gap between cells** and, for a row, **On a phone**. Each setting has a small reset beside it that removes the key again. Cells that take no room (a [data](kind:data) cell, a [timer](kind:timer), a page [break](kind:break)) have no **Box**, and those that show no text ([image](kind:image), [canvas](kind:canvas), [diagram](kind:diagram), data, timer, [fetch](kind:fetch) and the page break) have no **Text**.
 
 In notation, `style` is an object, and the `style` op sets several keys at once:
 
@@ -94,7 +94,7 @@ In **Cell details**: **Spacing and size → Padding**, as steps (None, S, M, L: 
 :::
 
 ::: style gap
-The space between the cells of a row or column, in pixels. It applies to a [row](kind:row) or [col](kind:col) only; on any other cell it does nothing. Default: 0. Dividing lines in **Edit** sit in the gap.
+The space between the cells of a row or column, in pixels. It applies to a [row](kind:row) or [col](kind:col) only; on any other cell it does nothing. Rows and columns inside one that has a gap take the same gap unless they set their own. Default: 0. Dividing lines in **Edit** sit in the gap.
 
 In **Cell details**, on the row or column: **Gap between cells**, from 0 to 80.
 
@@ -149,7 +149,7 @@ In **Cell details**: **Text → Size**, steps from 12 to 48 and a number field; 
 :::
 
 ::: style weight
-How heavy the letters are, a number from 100 to 900 (400 is regular, 700 bold).
+How heavy the letters are, a number: 400 is regular and 700 bold. Any number is accepted and the font shows the nearest weight it has; text such as `"bold"` is ignored.
 
 In **Cell details**: **Text → Weight**: **Light** (300), **Regular**, **Medium** (500), **Semibold** (600), **Bold** (700) and **Black** (850).
 :::
@@ -180,7 +180,7 @@ In **Cell details**: **Box → Corners**: square, 4, 8 or 16 pixels, or a number
 :::
 
 ::: style line
-The height of a line of text, as a multiple of the text size: a number from 0.8 to 4. Default: 1.45. The text style **Title** uses 1.1.
+The height of a line of text, as a multiple of the text size: a number from 0.8 to 4. Default: 1.5. The text style **Title** uses 1.1.
 
 In **Cell details**: **Text → Line height**, a slider from 1 to 2.2.
 :::
@@ -215,7 +215,7 @@ In **Cell details**: **Text → Emphasis and case**, the second and third icons.
 :::
 
 ::: style para
-The space between paragraphs of a text cell, in pixels: from 0 to 80. Default: a little under half a line. A paragraph is a block of text separated by a blank line.
+The space between paragraphs of a text cell, in pixels: from 0 to 80. Default: 0.45 of the text size. A paragraph is a block of text separated by a blank line.
 
 In **Cell details**: **Text → Space between paragraphs**.
 

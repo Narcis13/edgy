@@ -72,7 +72,7 @@ The designer has four settings:
 - **Gap between cells**: **None**, 4, 8 or 16 pixels, or any number in the box.
 - **On a phone**: **Stack**, **Keep in line** or **Always stack**. See [On a phone and on paper](#on-a-phone-and-on-paper).
 
-The width of each cell is the cell's own setting. Select the cell, open **Spacing and size** and choose under **Width**: **Fill** shares the room by weight (**shares**, 1 unless you change it), **Hug** fits the content, **Fixed** is a number of pixels. In **Edit** you can also drag the edge between two cells to move room from one to the other, and double-click it to make them even. Pressing ⌘M ([the key](key:merge)) merges selected neighbouring cells back into one.
+The width of each cell is the cell's own setting. Select the cell, open **Spacing and size** and choose under **Width**: **Fill** shares the room by weight (**shares**, 1 unless you change it), **Hug** fits the content, **Fixed** is a number of pixels. In **Edit** you can also drag the edge between two cells to move room from one to the other, and double-click it to make two cells that fill even. Pressing ⌘M ([the key](key:merge)) merges selected neighbouring cells back into one.
 
 ## In notation
 
@@ -121,7 +121,7 @@ A row can also hide itself while something holds, with a `hidden` condition. Thi
 
 ## On a phone and on paper
 
-When the sheet is narrower than 600 pixels, which a phone is, a row lets its cells wrap onto the next line instead of squeezing them. What it does depends on **On a phone**:
+When the document has 600 pixels of room or less, which a phone gives it, a row lets its cells wrap onto the next line instead of squeezing them. What it does depends on **On a phone**:
 
 - **Stack** (`"auto"`, the default): cells that share the room keep at least 120 pixels, or 260 for a [table](kind:table), [chart](kind:chart), [calendar](kind:calendar), [canvas](kind:canvas) or a group of cells. Those that no longer fit move under the others, so a few short fields stay in one line and a long row of them wraps onto several. Cells that hug keep their size.
 - **Keep in line** (`"never"`): the cells stay side by side and give up some padding, like the lines of a table. The [Quote](template:quote) template uses it for its lines.
@@ -133,6 +133,6 @@ On paper a row keeps its cells side by side whatever the width of the paper. A p
 
 - **A row inside a row has gone.** A row nobody named, styled, hid or gave handlers to is only structure, so edgy folds it into the row around it, and its cells become cells of the outer row. Give the inner row a name or a style, such as padding, and it stays.
 - **A row with one cell has gone too.** For the same reason: a plain row left with a single cell is replaced by that cell. A row with nothing left in it becomes an empty cell.
-- **The − next to Cells is greyed out.** A row keeps at least two cells, and only an empty last cell can be removed from the designer. Delete a cell on the sheet instead: select it and press Backspace, twice if it holds something (the first press clears it, the second removes it).
+- **The − next to Cells is greyed out.** A row keeps at least two cells, and only an empty last cell can be removed from the designer. Delete the cell itself instead: select it and press Backspace, twice if it holds something (the first press clears it, the second removes it).
 - **On a phone the cells of my table line have stacked.** Set **On a phone** to **Keep in line**.
 - **I can't select the row.** Selecting a cell inside it selects that cell. Press Esc to select the row around it, or choose the row in the trail above its name in **Cell details**.

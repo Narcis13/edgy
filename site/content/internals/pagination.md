@@ -15,6 +15,7 @@ The trick that keeps the Page view simple is that the document is laid out *once
 So every page contains the whole document, clipped. `Pages.tsx` renders the same `CellView` in each page, inside a `page-window` of height `end - start` and moved up by `start`:
 
 ```tsx
+// abridged: the first page's page-flow also carries ref={flow}
 <div className="page-window" style={{ height: slice.end - slice.start }}>
   <div className="page-flow" style={{ ...docCss(doc.meta), top: -slice.start }}>
     <CellView cell={doc.root} dir={null} />

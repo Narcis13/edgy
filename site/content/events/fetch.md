@@ -106,9 +106,9 @@ With the server started with `EDGY_SECRET_RATES_KEY=…`, the request carries `a
 
 1. The server has the setting: *the secret RATES_KEY is not set on this server (EDGY_SECRET_RATES_KEY)*.
 2. The document belongs to the account that owns the server, the first account made on it.
-3. The address is the one its owner left on that cell. Someone with edit access who points the cell elsewhere sends no secret: *the secret RATES_KEY goes only where the server's owner sent it from this cell; ask them to open and change the document*.
+3. The cell's address is on the same site (scheme, host and port) its owner left it on; another path on that site is fine. Someone with edit access who points the cell at a different site sends no secret: *the secret RATES_KEY goes only where the server's owner sent it from this cell; ask them to open and change the document*.
 
-Other header values are sent as they are. A header goes only to the address named in the cell, never to wherever a redirect leads.
+Other header values are sent as they are. A header goes only to the site named in the cell, never to a different site that a redirect leads to.
 
 ## The demo answers
 

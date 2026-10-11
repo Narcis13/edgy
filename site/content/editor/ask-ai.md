@@ -10,7 +10,7 @@ Ask AI turns a sentence into code for a cell: you describe what it should do, ed
 
 Open the [code studio](/editor/code-studio/) and choose **Ask AI** at the side, or press the sparkle button, **Ask AI to write it**, in the [formula bar](/editor/formula-bar/).
 
-1. Say what the cell should do, the way you would to a colleague, using the names of your cells: *If total is over 100 then "big" else "small"*. Under the box, example sentences are made from the names in your document. Click one to try it.
+1. Say what the cell should do, the way you would to a colleague, using the names of your cells: *If total is over 100 then "big" else "small"*. Under the box, example sentences are made from the names in your document. Click one to put it in the box.
 2. Press Enter (Shift+Enter starts a new line) or **Write it**.
 3. Read the answer. It shows the code, the value the code gives right now, and a sentence or two on what it does and which cells it reads.
 
@@ -42,7 +42,7 @@ A small badge on the box names who answers: **Claude**, **Your agent** or **Buil
 
 Set `ANTHROPIC_API_KEY` in the server's environment and restart it. Asking then goes to the Anthropic API, from the server: the key never reaches the browser. `EDGY_AI_MODEL` names the model; without it edgy uses `claude-sonnet-5-5`. `EDGY_AI=off` turns Claude off even with a key, and `EDGY_AI_BASE_URL` points the server at another address that speaks the same API.
 
-What is sent: your sentence; the list of functions; the document as an outline, one line per cell with its id, kind, name, source and current value; and the names of the collections the document can read, with their fields (not their records). Think about that before you turn it on for a document that holds private values.
+What is sent: your sentence; the code already in the editor; the list of functions; the document as an outline, one line per cell with its id, kind, name, source and current value; and the names of the collections the document can read, with their fields (not their records). Think about that before you turn it on for a document that holds private values.
 
 If the code that comes back doesn't fit the document, edgy tells Claude why and asks once more. A request that takes more than 30 seconds, or fails, is noted, and the next answerer takes over.
 
@@ -54,7 +54,7 @@ An agent counts as listening on a document from the moment it calls `edgy_listen
 
 ### The built-in composer
 
-The built-in composer needs no key, no agent and no network: it runs in the server and works from phrasings it knows, such as *Sum of price and qty*, *Add one to count*, or *When agree changes, copy it into note*. It matches a sentence to code by rules, not by understanding it, so a sentence in other words may get *I could not turn that into code*, with the suggestions. It is the answerer of last resort, and the only one that needs no key and no agent.
+The built-in composer needs no key, no agent and no network: it runs in the server and works from phrasings it knows, such as *Sum of price and qty* (in a formula), *Add one to count* (in a button's **Action**), or *When agree changes, copy it into note* (in the Events part). It matches a sentence to code by rules, not by understanding it, so a sentence in other words may get *I could not turn that into code*, with the suggestions. It is the answerer of last resort, and the only one that needs no key and no agent.
 
 ## What is checked
 

@@ -7,7 +7,7 @@ The math functions work with numbers: arithmetic, remainders and powers, roundin
 
 ::ref functions Math
 
-Two things hold for all of them. A result is kept to twelve significant digits, so `(+ 0.1 0.2)` is `0.3`, not `0.30000000000000004`. And a value that isn't a number is read like this: nothing and empty text are 0, `true` and `false` are 1 and 0, and text such as `"2"` or `"1,200"` is the number it spells. Text that isn't a number is an error, `expected a number, got "abc"`, except for [sum](fn:sum), [avg](fn:avg), [min](fn:min) and [max](fn:max), which skip it.
+Two things hold for all of them. The result of `+`, `-`, `*`, `/`, `^`, `sum`, `avg` and `pmt` is kept to twelve significant digits, so `(+ 0.1 0.2)` is `0.3`, not `0.30000000000000004`. And a value that isn't a number is read like this: nothing and empty text are 0, `true` and `false` are 1 and 0, and text such as `"2"` or `"1,200"` is the number it spells. Text that isn't a number is an error, `expected a number, got "abc"`, except for [sum](fn:sum), [avg](fn:avg), [min](fn:min) and [max](fn:max), which skip it.
 
 Some examples read two cells of this little document, one filled in and one left empty:
 
@@ -226,7 +226,7 @@ Write the lowest value first. With the two swapped, the answer is always the sec
 
 ## Totals over lists
 
-These four look through everything they are given, lists inside lists included, and use only the numbers they find. Text that is plain digits, such as `"2"` or `"3.5"`, counts. Other text, `true`, `false` and nothing are skipped, not treated as 0. That makes them safe on a column that has gaps.
+These four look through everything they are given, lists inside lists included, and use only the numbers they find. Text that is plain digits, such as `"2"` or `"3.5"`, counts. Other text, `true`, `false`, nothing and records are skipped, not treated as 0. That makes them safe on a column that has gaps, and it means `(sum (rows "orders"))` gives 0: take a field first, as `(sum (column (rows "orders") "total"))` does.
 
 ::: fn sum
 Adds every number found in its arguments. No numbers gives 0.

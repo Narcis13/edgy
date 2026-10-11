@@ -11,7 +11,7 @@ A [record](term:record) is one entry in a [collection](term:collection). A colle
 
 ## Start the document
 
-1. On the home page, press **New document**. Type `Order tracker` in the title and press Enter.
+1. On the home page, press **New document**. Click the title at the top, select all (⌘A, or Ctrl+A), type `Order tracker` and press Enter.
 2. With no cell selected, set **Currency** in the **Page** section of **Cell details** to `EUR` and press Enter.
 3. Click the empty cell and type `# Orders`. Press Esc.
 
@@ -45,7 +45,7 @@ A mug costs 24 euros; the total is the price times the quantity.
 
 ## A button on every row
 
-10. Switch back to **Edit** and click the table to select it. In **Cell details**, in the **Content** section, find **Columns** and untick **Show at**. That column is the time the record was saved; this table does not need it.
+10. Switch back to **Edit** and click the table to select it. In **Cell details**, in the **Content** section, find **Columns** and untick the box beside **at** (its label for screen readers is **Show at**). That column is the time the record was saved; this table does not need it.
 11. Under **Row buttons**, choose **Change a field**. Set **Field to change** to `status` and **New value** to `Shipped`. Press **Add the button**. A button called **Shipped** now sits at the end of every row.
 
 The button's action is `(update! "orders" (get row "id") {status "Shipped"})`. In a row button, `row` is the record of the row that was pressed, and `(get row "id")` is its id; [update!](fn:update!) changes the fields you give and leaves the rest.

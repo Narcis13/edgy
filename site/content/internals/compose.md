@@ -82,7 +82,7 @@ On when the server has an `ANTHROPIC_API_KEY` and `EDGY_AI` isn't `off` (`claude
 - the language: every function with its signature and what it does (`FUNCTIONS` in [reference.ts](src:src/core/reference.ts));
 - the document as the **outline**, one line per cell with its source and current value (see [Notation and outline](/internals/notation/));
 - the collections it may read, with their fields;
-- notes on how tabs, accordions, data cells and diagrams are read and changed, with *this document's* names and titles in them, only for the kinds it has;
+- notes on how tabs, accordions, collapsibles, data cells and diagrams are read and changed, with *this document's* names and titles in them, only for the kinds it has;
 - for the event targets, how events work: which events this cell raises, what each binds, the custom events and actions the document has;
 - the task, the current code, and the rules ("use only the functions above and the names of cells in the document", whether actions are allowed, "prefer the simplest expression").
 
@@ -130,7 +130,9 @@ These are real outputs for the **Quote** document, whose cells are `qty`, `price
   Hides this cell while qty is 0. It checks again whenever qty changes.
 
 "when qty changes, set count to the new value"  (events)
-  qty on change: (set! count value)
+  When qty changes
+  (set! count value)
+  When qty changes, it sets count to the new value.
 ```
 
 It is exact rather than clever. It knows `qty`, not "quantity", so "quantity times price" gets no answer and the panel offers suggestions built from the document's names (`qty times price`, `sum of qty and price`, …). A sentence it can't map to a cell fails instead of guessing.

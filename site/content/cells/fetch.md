@@ -78,7 +78,7 @@ The address is the body:
 
 ### Secrets
 
-A header such as `"Authorization": "secret:PRICES_KEY"` is filled in by the server from its environment variable `EDGY_SECRET_PRICES_KEY`, so the key itself is never in the document. A secret goes only from documents that belong to the server's owner, and only to the address the owner left in that cell: if an editor points the cell somewhere else, nothing is sent. Any other header value is stored in the document as written, so never type a real key there.
+A header such as `"Authorization": "secret:PRICES_KEY"` is filled in by the server from its environment variable `EDGY_SECRET_PRICES_KEY`, so the key itself is never in the document. A secret goes only from documents that belong to the server's owner, and only to the site (the address without its path) the owner left in that cell: if an editor points the cell at another site, nothing is sent. Any other header value is stored in the document as written, so never type a real key there.
 
 ## What the server does
 

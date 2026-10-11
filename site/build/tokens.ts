@@ -35,6 +35,8 @@ export function tokenCss(): string {
     `:root {${light.map((b) => b.body).join('\n')}}`,
     `:root[data-theme='dark'] {${dark.map((b) => b.body).join('\n')}}`,
     `@media (prefers-color-scheme: dark) { :root:not([data-theme]) {${dark.map((b) => b.body).join('\n')}} }`,
+    // Paper is light whatever the screen's theme.
+    `@media print { :root, :root[data-theme='dark'] {${light.map((b) => b.body).join('\n')}} }`,
     codeRules(code),
   ].join('\n');
 }

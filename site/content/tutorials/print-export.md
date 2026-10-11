@@ -11,7 +11,7 @@ A [page](term:page) in edgy is a sheet of paper. The document is laid out once a
 
 ## The report
 
-1. On the home page, press **New document**. Type `Corner Cafe: quarterly report` in the title and press Enter.
+1. On the home page, press **New document**. Click the title at the top, select all (⌘A, or Ctrl+A), type `Corner Cafe: quarterly report` and press Enter.
 2. Click the empty cell and type `# Corner Cafe: quarterly report`. Press Esc.
 3. Press [⌥↓](key:split) (Alt+↓ elsewhere). Type `What sold this quarter, and what we plan next.` and press Esc.
 4. Press ⌥↓, then `/`, type `Table` and press Enter. The cell shows three sample rows. Under **Look** in **Cell details**, set **Title** to `Sold this quarter` and press Enter.

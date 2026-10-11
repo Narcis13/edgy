@@ -75,7 +75,7 @@ An entry's heading is one level below the heading above it. Function entries go 
 
 ### Generated lists
 
-`::ref <list>` puts a table made from the code: `functions` (or `functions Math`), `kinds`, `kind <kind>` (the facts box at the top of a kind's page), `events`, `events-of <kind>`, `ops`, `routes`, `tools`, `style-keys`, `formats`, `tokens`, `fonts`, `shortcuts` (or `shortcuts editor`), `templates`, and `pages a/,b/` (a list of pages with their first sentences). Never copy one of these lists by hand.
+`::ref <list>` puts a table made from the code: `functions` (or `functions Math`), `kinds`, `kind <kind>` (the facts box at the top of a kind's page), `events`, `events-of <kind>`, `ops`, `routes`, `tools`, `style-keys`, `formats`, `tokens`, `fonts`, `shortcuts` (or `shortcuts editor`), `templates`, `pages a/,b/` (a list of pages with their first sentences) and `a-z` (everything, in alphabetical order). Never copy one of these lists by hand.
 
 ### Expressions and their results
 

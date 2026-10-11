@@ -12,7 +12,7 @@ The `/` menu is where you choose what a cell holds: press `/` on a selected cell
 - Or press the button in the toolbar above the cell that names what it holds now; its tooltip says *Change what this cell holds*.
 - On a group (a row or a column), `/` opens the menu for the first cell inside it.
 
-An empty cell also shows the same choices in **Cell details**, grouped under headings such as **Words and numbers**, **Things people fill in** and **Charts**, with the question *What should this cell hold?*. Typing a letter into an empty cell starts text instead, and starting with `=` makes the cell a [formula](kind:formula) when you finish.
+An empty cell also shows most of the same choices in **Cell details** (all but **Timer** and **Fetch**), grouped under headings such as **Words and numbers**, **Things people fill in** and **Charts**, with the question *What should this cell hold?*. Typing a letter into an empty cell starts text instead, and starting with `=` makes the cell a [formula](kind:formula) when you finish.
 
 ## Choosing
 

@@ -12,7 +12,7 @@ Text in the language is written in double quotes. A function that wants text tur
 ## Joining and showing
 
 ::: fn str
-Joins its arguments into one piece of text. Numbers are written plainly, with no commas between thousands. `true` and `false` are written `yes` and `no`, nothing is written as nothing, a list as its items with a comma between, and a record as JSON.
+Joins its arguments into one piece of text. Numbers are written plainly, with no commas between thousands. `true` and `false` are written `yes` and `no`, nothing is written as nothing, a list as its items with a comma between, and a record as JSON. Inside a list, numbers are shown the default way, with commas between thousands and at most two decimals: `(str (list 1234.5678))` is `"1,234.57"`.
 
 ```sx
 (str "Hi " "Ada" "!")
@@ -121,7 +121,7 @@ Removes spaces, tabs and line breaks from both ends of text. Spaces in the middl
 :::
 
 ::: fn replace
-Replaces every occurrence of one piece of text with another: `(replace text old new)`. It matches exactly and literally, so `.` is a full stop, not "any letter". Leave out the new text and the old text is removed. An empty old text changes nothing.
+Replaces every occurrence of one piece of text with another: `(replace text old new)`. It matches exactly and literally, so `.` is a full stop, not "any letter". Leave out the new text and the old text is removed. An empty old text puts the new text between the letters, so it changes nothing in text of one letter or none.
 
 ```sx
 (replace "a.b.c" "." "-")
@@ -136,7 +136,7 @@ Replaces every occurrence of one piece of text with another: `(replace text old 
 ⇒ "x"
 ```
 
-The last two show the exactness: the capital `Ada` is left alone, and there is nothing to find in `""`. To ignore capitals, lower-case both: `(replace (lower s) "ada" "X")`.
+The last two show the exactness: the capital `Ada` is left alone, and there is no gap between letters in a text of one letter, so `""` finds nothing. In longer text it does: `(replace "abc" "" "-")` is `"a-b-c"`. To ignore capitals, lower-case both: `(replace (lower s) "ada" "X")`.
 :::
 
 ## Cutting and testing

@@ -137,5 +137,5 @@ On paper every section prints unfolded, in order, each under its title, whether 
 - **Nothing is open.** An accordion written in notation without a `value` has every section closed. Add `"value": ["Shipping"]`. One made from the `/` menu opens its first section.
 - **I opened two sections and one closed.** The accordion opens one at a time. Choose **Any number** under **Open at a time**, or write `"multiple": true`.
 - **A section never opens from the button.** The title in `(set! faq "Returns")` has to be a title the accordion has, and the accordion needs a name. A title with a typo closes all the sections and gives no error. The missing name gives *That button failed:* `no cell called "faq"`.
-- **I can't remove the last section.** The accordion keeps at least one: the designer says *The last section can't go; delete the whole accordion instead.* Select the accordion and press Backspace.
+- **I can't remove the last section.** The accordion keeps at least one: the greyed-out bin's tooltip says *The last section can't go; delete the whole accordion instead.* Select the accordion and press Backspace.
 - **The section won't take its new title.** Titles must differ from each other, ignoring case. The designer says *There is already a section called “Returns”.*

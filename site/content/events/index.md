@@ -65,7 +65,7 @@ Press it. The text reads *do, then click*. A button needs a `do` to be pressed a
 
 ## Where handlers run
 
-Events happen only while someone uses the document in **Live**. In **Edit** a click selects a cell and nothing is raised, and on paper nothing runs at all. In Live:
+Handlers run only while someone uses the document in **Live**. In **Edit** a click selects a cell and raises no event, and on paper nothing runs at all. (A button you press in Edit still runs its own `do`, so you can try it, but not its `click` handler.) In Live:
 
 - Clicks and changes a person makes run in that person's browser. Their changes are saved like any other change, so everyone with the document open sees them.
 - [Timers](/events/timers/), [fetches](/events/fetch/) and the changes agents make run once, on the server, while anyone has the document open in Live.

@@ -103,4 +103,4 @@ On a touch screen the pen tools stay visible and larger, and a finger on the sur
 - **Everyone draws on the same surface.** The strokes are part of the document, so everyone who can use it in Live sees and adds to one drawing. A canvas is not a private signature box for each visitor.
 - **The signature went when I started over.** **Clear the drawing** and `(set! sig (list))` remove all strokes, and a signature line goes back to *Sign here*. Add **Ask first** to a button that does it.
 - **`(empty? sig)` is true after signing.** The formula reads another cell, or the name doesn't match. Check the name in **Name**.
-- **The pen is not the colour I chose.** The inks on the surface are only for the person drawing and are not saved. The pen starts in **Pen colour** when the document opens.
+- **The pen is not the colour I chose.** The ink picked on the surface is only for the person drawing; it is not kept as a setting. The pen starts in **Pen colour** each time the document opens, and the strokes already drawn keep the colour they were drawn in.

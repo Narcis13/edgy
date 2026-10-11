@@ -48,7 +48,7 @@ qty
 ⇒ 4
 ```
 
-It works on the cells that hold a value people or actions can change: an [input](kind:input), a [data](kind:data) cell (which holds any value, a list or a record included), the open title of [tabs](kind:tabs), the list of open titles of an [accordion](kind:accordion), whether a [collapsible](kind:collapsible) is open, and a [calendar](kind:calendar)'s day.
+It works on the cells that hold a value people or actions can change: an [input](kind:input), a [data](kind:data) cell (which holds any value, a list or a record included), the open title of [tabs](kind:tabs), the list of open titles of an [accordion](kind:accordion), whether a [collapsible](kind:collapsible) is open, a [calendar](kind:calendar)'s day, and the items typed into a [list](kind:list) or a [table](kind:table) that has no expression.
 
 - **A formula keeps its own value.** A formula's value always comes from its expression, so `(set! total 99)` changes nothing you can see:
 
@@ -282,7 +282,7 @@ Only the one collection is emptied; others and the document are untouched. Like 
 ```
 
 ::: fn emit!
-Sends a [custom event](term:custom-event) with an optional payload: `(emit! "greeted" {who client})`. Every cell, and the document, with a handler for that event name in its `on` runs it. The handler finds the payload as `payload` and the name of the cell whose action sent it as `from`.
+Sends a [custom event](term:custom-event) with an optional payload: `(emit! "greeted" {who client})`. Every cell, and the document, with a handler for that event name in its `on` runs it. The handler finds the payload as `payload` and the name of the cell whose action sent it as `from` (its id when it has no name, and nothing when the document's own handler sent it).
 
 In the live example the text cell holds the handler `on.greeted`, which sets the `greeting` cell from `payload`. **Greet** only sends the event and does not know who listens:
 

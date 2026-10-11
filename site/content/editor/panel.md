@@ -14,7 +14,7 @@ Open and close it with the panel button in the header (**Cell details** in the *
 1. A trail of **crumbs** shows where the cell sits: the groups around it, then the cell. Click a crumb to select that group.
 2. The heading names the kind (**Row of 3**, **Tabs, 2 tabs**, **Formula**) and shows the cell's id.
 3. A sentence says what the kind is for, followed by a link, for example **Formula in the docs**, that opens that kind's page in a new tab.
-4. **Name** is the name other cells use to read this one. A name starts with a letter and holds letters, digits, `-` and `_`. Renaming a cell updates every formula, action and template that reads it. See [Names and references](/language/names/).
+4. **Name** is the name other cells use to read this one. A name starts with a letter or `_` and holds letters, digits, `-` and `_`; no other cell may have it. Renaming a cell updates every formula, action and template that reads it. See [Names and references](/language/names/).
 
 Below that come folding sections. Each remembers whether you left it open, on this browser, for every cell.
 
@@ -91,7 +91,7 @@ A cell that raises no events and has no handlers has no **Events** section.
 
 ## Several cells at once
 
-Select more than one cell and the heading reads *3 cells*. **Content** becomes a list of the cells you picked (press one to look at it alone). **Text**, **Spacing and size** and **Box** are there: text, padding and box changes go to every selected cell. There is no **Name**, **Show only when** or **Events**.
+Select more than one cell and the heading reads *3 cells*. The first section becomes **Selected cells**, a list of the cells you picked (press one to look at it alone). **Text**, **Spacing and size** and **Box** are there: text, padding and box changes go to every selected cell. There is no **Name**, **Show only when** or **Events**.
 
 ## The document
 

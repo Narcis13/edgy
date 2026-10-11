@@ -71,7 +71,7 @@ The designer has three settings:
 - **Cells**: how many. **+** adds an empty cell at the end. **−** removes the last cell, and only while it is empty; a column keeps at least two cells.
 - **Gap between cells**: **None**, 4, 8 or 16 pixels, or any number in the box.
 
-The height of each cell is the cell's own setting. Select the cell, open **Spacing and size** and choose under **Height**: **Fill** shares the column's height by weight (**shares**, 1 unless you change it), **Hug** is as tall as the content, **Fixed** is a number of pixels. In **Edit** you can also drag the edge between two cells, and double-click it to make them even.
+The height of each cell is the cell's own setting. Select the cell, open **Spacing and size** and choose under **Height**: **Fill** shares the column's height by weight (**shares**, 1 unless you change it), **Hug** is as tall as the content, **Fixed** is a number of pixels. In **Edit** you can also drag the edge between two cells, and double-click it to make two cells that fill even.
 
 A document is at least 560 pixels tall unless you change **Least height**, which is in the document's own settings (select no cell, then **Page**). In a short document the cells of the top column that are set to **Fill** grow to fill that height. Set a cell to **Hug** to keep it to its content, as the [Quote](template:quote) template does for its header and its lines.
 
@@ -123,5 +123,5 @@ On paper the cells print one under another, and a printed page ends between cell
 - **A cell is taller than its content.** Its height is set to **Fill**, and the column has room to give: a document is at least 560 pixels tall by default. Set **Height** to **Hug**.
 - **A column inside a column has gone.** A column nobody named, styled, hid or gave handlers to is only structure, so edgy folds it into the column around it. Give the inner column a name or a style, such as padding, and it stays. A plain column left with a single cell is replaced by that cell.
 - **"…has no cell -1".** `(child lines -1)` finds nothing because `lines` has no cells left. A column that loses its last cell becomes an empty cell, and `lines` is then that empty cell. Keep the **Remove the last** button hidden while one line is left, as the example does.
-- **The − next to Cells is greyed out.** A column keeps at least two cells, and only an empty last cell can be removed from the designer. Delete a cell on the sheet instead: select it and press Backspace, twice if it holds something (the first press clears it, the second removes it).
+- **The − next to Cells is greyed out.** A column keeps at least two cells, and only an empty last cell can be removed from the designer. Delete the cell itself instead: select it and press Backspace, twice if it holds something (the first press clears it, the second removes it).
 - **I can't select the column.** Selecting a cell inside it selects that cell. Press Esc to select the column around it, or choose the column in the trail above its name in **Cell details**.

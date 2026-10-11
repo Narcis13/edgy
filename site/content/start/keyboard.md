@@ -67,7 +67,7 @@ Opens the Page view and then the browser's print dialog, from any view and even 
 :::
 
 ::: key studio
-Opens the [code studio](/editor/code-studio/) on the selected cell's code: a formula's expression, a button's action, a table's rows. A cell with no code of its own that reacts to events, a timer for instance, opens on its events. On a cell with neither, for example an empty one, edgy says there is no code yet. The shortcut does nothing while the studio is open or while you are typing in a field.
+Opens the [code studio](/editor/code-studio/) on the selected cell's code: a formula's expression, a button's action, a table's rows. A cell with no code of its own that reacts to events, a timer for instance, opens on its events. An empty cell gets a note that it holds no code yet. Most other cells, text or a picture for instance, open on their **Hidden when** condition. The shortcut does nothing while the studio is open or while you are typing in a field.
 :::
 
 ## While typing in a cell
@@ -115,7 +115,7 @@ Indents the selected lines by two spaces, or with Shift takes the indent off. Wi
 :::
 
 ::: key pairs
-Typing `(`, `{` or `"` types its partner too and puts the cursor between them. Typing the partner steps over it instead of doubling it. Backspace between an empty pair removes both. With text selected, typing a bracket wraps the selection in a pair.
+Typing `(`, `{` or `"` types its partner too and puts the cursor between them, when what follows is a space, a closing bracket or nothing (a `"` right after a letter or digit stays alone). Typing the partner steps over it instead of doubling it. Backspace between an empty pair removes both. With text selected, typing a bracket wraps the selection in a pair.
 :::
 
 ::: key expand
@@ -238,6 +238,10 @@ While you rename a tab or a section (**Rename** in its **⋯** menu), Enter keep
 
 ::: key table-search
 In a [table](kind:table)'s search box, Esc empties the search and shows every row again. With nothing in the box, Esc is left for the editor.
+:::
+
+::: key table-resize
+Tab to the line at the edge of a column heading, then press ← or → to change the column's width without dragging.
 :::
 
 ::: key table-edit

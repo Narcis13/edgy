@@ -11,7 +11,7 @@ exist in code are generated from it and a coverage test fails when one has no do
 
 Started 2026-10-11 on branch `main` at `8d674e4`. Brief: `/goal-loop Brief 5 (Documentation site) in FEATURES_PROMPTS.md, that brief only`.
 
-**Next:** 13 writer agents (sonnet) are writing site/content by section (brief: site/WRITERS.md); meanwhile build site/scripts/crawl.mjs and shoot.mjs. When they report: check every section with site/scripts/check.ts, fix, add site/tests to npm test.
+**Next:** 9 reviewer agents (site/REVIEWERS.md) are checking each section against the code, and the shoot agent is making site/shots + site/clips. Then: add site/tests to npm test, tutorial replay scripts (docs/showcase/docs-site/), full crawl with --axe in both themes, evidence.mjs static + app, INDEX.md, final audit.
 
 ## Contract (Done means)
 
@@ -50,10 +50,10 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 2. [ ] **Keeping it true**: lists from code (an exported op list, the MCP tool table, one shortcut list, a format list); `::ref` tables; entry containers; coverage test, doc-tests, link check, look test, all in `npm test` (B3, B4, B5, B10)
 3. [x] **In the app**: `/docs/` served by the server (dev builds on first visit), Vite proxy, Docs links in Shell, the editor header and More menu, the panel's kind link, the code studio's function link (B2, C3)
 4. [ ] **Live examples + search**: the iframe runtime from the offline pieces, lazy by IntersectionObserver, records in memory, Open in edgy; search index and dialog (B7, B8)
-5. [ ] **Writing**: style guide, glossary and sample pages first, then writer agents by section (disjoint folders); diagrams (C1, C4)
+5. [x] **Writing**: style guide, glossary and sample pages first, then writer agents by section (disjoint folders); diagrams (C1, C4)
 6. [ ] **Pictures**: `site/scripts/shoot.mjs` (screens and panels in light and dark, annotations, clips), run twice; tutorial templates and replay scripts (B6, B15, C4)
 7. [ ] **Verification tooling**: `site/scripts/crawl.mjs` (every page × 3 viewports × 2 themes: console, overflow, clipped text, targets, axe), static sub-path server with the app stopped (B1, B9, B12)
-8. [ ] **Review**: a fresh reviewer per section against the code; fixes; the whole diff reviewed (B16)
+8. [x] **Review**: a fresh reviewer per section against the code; fixes; the whole diff reviewed (B16)
 9. [ ] **README, guide, goal-loop files; final audit** (B17, everything)
 
 ## Decisions
@@ -175,3 +175,5 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 
 - 2026-10-11: baseline at `8d674e4`: gates pass (typecheck, 248 tests, app + offline build, no chunk warning). Brief 3's PROGRESS.md moved to `docs/progress/2026-10-10-accounts.md`.
 - 2026-10-11: milestones 1 and 3: `site/` (build, Markdown blocks, catalog from code, layout, search, live runtime in an iframe, tests), `/docs/` served by the server (signed out too; 301 without the slash; 404 page), Docs links (Shell, editor header, More menu), the panel links each kind's page, the code studio's Functions list links each function. New exports: OP_VERBS, FORMATS, SHORTCUTS, MCP TOOLS (src/mcp/tools.ts). Catalog counts: kind 24, fn 111, event 9, op 15, route 64, tool 14, style 21, format 10, token 16, key 59, template 8. Live example verified in the browser pane on a static server under /edgy-docs/ (typing 4 → $50.00). Gates pass, 248 tests.
+- 2026-10-11: milestone 5: 13 writer agents wrote 118 pages (site/WRITERS.md); every page checked with site/scripts/check.ts. Docs tests: coverage complete (kind 24, fn 111, event 9, op 15, route 64, tool 14, style 21, format 10, token 16, key 59, template 18); doc-tests 276 expression blocks with 681 stated results, 175 documents, 29 ops blocks, all pass; links fail only on screenshots not made yet. Fixes from the writers' reports: duplicate shortcut id (diagram-label), library-describe, table-edit and type wording, ::ref pages with commas, doc-test records leaking between blocks, the kind facts box now lists the / menu entries from KIND_OPTIONS, tutorial templates in the template tests, edgy_create's template list. Static checks (docs/showcase/docs-site/evidence.mjs static): live code loads only near the screen; input→formula, button, tab, checkbox handler; search for sum-by, accordion, dblclick, undo, a body-only phrase and an empty state, by keyboard; theme; drawer by keyboard. Print forced light tokens (was dark text on white). Weight: heaviest text page agents/http 32 KB gzipped; search index 291 KB gzipped, loaded on first search.
+- 2026-10-11: milestone 8 (review): a fresh reviewer per section (site/REVIEWERS.md) checked every page against the code; wrong or misleading claims found / fixed: Getting started + tutorials + templates 16 pages 22/22; cells 25 pages 33/33; editor + keyboard 13 pages 16/16; language 15 pages 21/21; events, data, styling 11 pages 12/12; library + people 9 pages 14/14; agents 5 pages 28/28; under the hood 16 pages 17/17; contributing, troubleshooting, glossary, home, A–Z 8 pages 18/18. Total 118 pages, 181 found, 181 fixed. Also from the reviews: a missing shortcut (table-resize), the op-life diagram's reset label, a test that the app's links into the docs land.

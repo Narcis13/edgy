@@ -10,7 +10,7 @@ You will use the [text](kind:text), [input](kind:input) and [formula](kind:formu
 ## Start the document
 
 1. On the home page, press **New document**. The document opens in **Edit** with one empty cell, and **Cell details** shows the **Document** panel on the right.
-2. In the title at the top, type `Quote` and press Enter.
+2. Click the title at the top, select all (⌘A, or Ctrl+A), type `Quote` and press Enter.
 3. With no cell selected, find **Currency** in the **Page** section of **Cell details**. Type `EUR` and press Enter. Every formula you set to **Currency** now writes euros.
 
 ## The client

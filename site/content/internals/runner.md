@@ -102,7 +102,7 @@ A handler that errors stops there and is shown in the trace; the other handlers 
 
 ## An agent's change
 
-An agent changes a document through [POST /api/docs/:id/ops](<route:POST /api/docs/:id/ops>), not through a browser. Nothing has run the handlers for it, so after saving, the route calls `runner.agentChanged(docId, before, ops)`. If someone is in Live, `apply` runs the handlers that change sets off, with `from` set to the document before it (the agent's ops are already saved). A change that came with a `client` is a browser's, which ran its own handlers, so the server does not run them again.
+An agent changes a document through [POST /api/docs/:id/ops](<route:POST /api/docs/:id/ops>), not through a browser. Nothing has run the handlers for it, so after saving, the route calls `runner.agentChanged(docId, before, ops)`, but only when the actor is an agent and the request has no `client`. If someone is in Live, `apply` runs the handlers that change sets off, with `from` set to the document before it (the agent's ops are already saved). A change that came with a `client` is a browser's, which ran its own handlers, so the server does not run them again.
 
 Without anyone in Live, nothing happens: handlers are about people using the document.
 

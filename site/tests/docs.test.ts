@@ -9,7 +9,8 @@ import { test } from 'node:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadSite, renderSite } from '../build/site';
-import { catalog } from '../build/catalog';
+import { catalog, functions } from '../build/catalog';
+import { DOCS, fnDocs, kindDocs } from '../../src/web/docsLinks';
 import { entryId } from '../build/ids';
 import { navPages } from '../nav';
 import { applyOpsBlock, exampleDoc, runSx } from '../build/examples';
@@ -31,6 +32,17 @@ test('every page is in the contents once, and every page in the contents exists'
   assert.equal(new Set(listed).size, listed.length, 'a page is listed twice in site/nav.ts');
   for (const p of listed) assert.ok(site.byPage.has(p), `site/nav.ts lists ${p}, but site/content has no page for it`);
   for (const p of site.pages) if (p.page !== '') assert.ok(listed.includes(p.page), `${p.file} is not in site/nav.ts`);
+});
+
+test('the app’s links into the docs land: each kind’s panel link and each function’s link in the code studio', () => {
+  for (const kind of catalog().kind) {
+    const url = kindDocs(kind);
+    assert.ok(url.startsWith(DOCS) && site.byPage.has(url.slice(DOCS.length)), `${kind}: ${url} is not a page`);
+  }
+  for (const f of functions()) {
+    const [path, anchor] = fnDocs(f.name, f.group).slice(DOCS.length).split('#');
+    assert.equal(site.anchors.get(anchor), path, `${f.name}: the code studio links to ${path}#${anchor}, but the entry is on ${site.anchors.get(anchor) ?? 'no page'}`);
+  }
 });
 
 test('every page has a title and says what it covers in its first sentence', () => {

@@ -81,7 +81,7 @@ When the connection closes (`stream.onAbort`), the stream leaves the room, the r
 | `deleted` | The document is gone. | `gone()`. |
 | `unshared` | A share link was turned off. Carries its token. | [DELETE /api/shares/:token](<route:DELETE /api/shares/:token>), and sync. |
 
-Three of them are not through the hub. `access` and `revoked` are sent straight to one listener by `recheck()`, because they are about one stream, not the document. `ping` is written by the route.
+Three of them are not through the hub. `hello` is written by the route as the stream opens. `access` and `revoked` are sent straight to one listener by `recheck()`, because they are about one stream, not the document (the route also writes `revoked` itself when a session runs out). `ping` is written by the route too.
 
 An `ops` event is the same record the log keeps (see [Storage](/internals/storage/)), plus the fields that let a session recognise its own change.
 

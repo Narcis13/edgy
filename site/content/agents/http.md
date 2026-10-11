@@ -17,7 +17,7 @@ Every request is first resolved to who is asking, and every route says who it ne
 4. **Local mode:** no credential at all, but the request comes from this machine. The asker is the local account. A request that a proxy forwarded, or whose `Host` isn't a loopback name, doesn't count. See [Local mode and accounts mode](/start/install/#local-mode-and-accounts-mode).
 5. **Nobody.** Every route but [GET /api/health](route:GET /api/health), [POST /api/auth/signup](route:POST /api/auth/signup) and [POST /api/auth/signin](route:POST /api/auth/signin) answers `401` and `{"error": "sign in first", "reason": "signin"}`.
 
-An agent acts for its person: with their key it sees and changes what they can, and no more. The routes for the profile, the password, the keys and signing out are the person's alone; with a key they answer `403` and `an API key can not do that; sign in in the browser`. A key that is wrong gets `401` and `this API key is not valid; make one in your profile (Profile → API keys)`, or `this API key was revoked; make a new one in your profile`. See [API keys](/people/api-keys/).
+An agent acts for its person: with their key it sees and changes what they can, and no more. The routes that change the profile or the password, delete the account, make, list or revoke keys, or sign out are the person's alone (reading [GET /api/me](route:GET /api/me) is open to a key); with a key they answer `403` and `an API key can not do that; sign in in the browser`. A key that is wrong gets `401` and `this API key is not valid; make one in your profile (Profile → API keys)`, or `this API key was revoked; make a new one in your profile`. See [API keys](/people/api-keys/).
 
 ::diagram access-model
 
@@ -31,7 +31,7 @@ On a document, a person is its owner, an editor or a viewer (see [Sharing with p
 | `403` `you can view this document, not change it` | You are a viewer and the route changes the document. |
 | `403` `only its owner can do that` | The route needs the owner. |
 | `403` `this link can view the document, not change it` | A guest with a view link on a route that changes. |
-| `403` `this link does not reach that` | A guest on any route but their link's own document and the records it reaches. |
+| `403` `this link does not reach that` | A guest on a route that links do not open, or on another document than their link's. A link opens its own document (reading it, its event stream, the answers of its fetch cells, and with an edit link its ops and fetching now) and the records it reaches. |
 | `404` `this link does not open anything` | The share token doesn't exist. |
 | `410` `this document is no longer shared` | The link was turned off. |
 
@@ -85,7 +85,7 @@ Content-Type: application/json
  "actor": {"kind": "agent", "name": "Claude"}}
 ```
 
-`title` and `root` (the document's notation, see [Outline and notation](/agents/notation/)) are both optional, and so is `template`, the id of a starting document; `root` wins over a template's cells. Without any, the document is a single empty cell. The answer is `201` and the whole document, `{id, v, nextId, meta, root}`. When the document has content, that content is the first change in its history. An unknown template or a notation that doesn't build answers `422`.
+`title` and `root` (the document's notation, see [Outline and notation](/agents/notation/)) are both optional, and so is `template`, the id of a starting document (one from [GET /api/templates](route:GET /api/templates), `tour`, or a tutorial such as `tutorial-quote`); `root` wins over a template's cells. Without any, the document is a single empty cell. The answer is `201` and the whole document, `{id, v, nextId, meta, root}`. When the document has content, that content is the first change in its history. An unknown template or a notation that doesn't build answers `422`.
 :::
 
 ::: route GET /api/docs/:id
@@ -116,7 +116,7 @@ The title and the description are saved as [meta](op:meta) ops, so they are in t
 :::
 
 ::: route DELETE /api/docs/:id
-Deletes a document for good, with its history, its messages and its share links. Whoever has it open is told. The answer is `{"ok": true}`. Archive it instead if you may want it back: see [POST /api/library/bulk](route:POST /api/library/bulk).
+Deletes a document for good, with its history, its messages and its share links. Whoever has it open is told. The records it saved stay in their collections. The answer is `{"ok": true}`. Archive it instead if you may want it back: see [POST /api/library/bulk](route:POST /api/library/bulk).
 :::
 
 ## Ops, evaluation and events
@@ -130,7 +130,7 @@ The answer for an agent is the applied ops, the touched cells, and the document 
 ::: route GET /api/docs/:id/log
 Lists the document's history, oldest first: one entry for each change, `{v, ts, actor, ops}`, with `conflict: true` on a change that [sync](/people/sync/) put after another machine's change that it no longer applies to.
 
-`?since=` is the version after which to list (0 by default), and `?limit=` is how many of the newest entries to return (200 by default, 500 at most). The `actor` is `{kind, name, id?, for?}`: an agent acting for a person has `for` set to that person's name. Fetch cell addresses are left out of what viewers and guests read.
+`?since=` is the version after which to list (0 by default), and `?limit=` is how many of the newest entries to return (200 by default, 500 at most). The `actor` is `{kind, name, id?, for?}`: an agent acting for a person has `for` set to that person's name. Fetch cell addresses are left out of what viewers read. A link can not read the log.
 :::
 
 ::: route POST /api/docs/:id/eval
@@ -210,7 +210,7 @@ Holds the request open until the person writes, or a request for code arrives, a
 
 `?after=` is the id of the last message seen, `?timeout=` the seconds to wait (1 to 120, 25 by default), and `?agent=` the name to show while waiting. If a message from a person, or a request, is already waiting, the answer is immediate. The answer is `{"messages": [...], "requests": [...]}`, both empty when the time ran out. Only messages from people are returned. While it waits, the document shows the agent as listening.
 
-A request is `{id, prompt, cell?, cellName?, target, current?}`; answer it with [POST /api/docs/:id/compose/:rid](route:POST /api/docs/:id/compose/:rid).
+A request is `{id, prompt, cell?, cellName?, target, current?, ts}`; answer it with [POST /api/docs/:id/compose/:rid](route:POST /api/docs/:id/compose/:rid).
 :::
 
 ::: route GET /api/ai
@@ -220,7 +220,7 @@ Says which helpers can answer **Ask AI** right now, so the page can choose.
 {"providers": {"claude": false, "agent": true, "local": true}, "model": null}
 ```
 
-`claude` is true when the server has an `ANTHROPIC_API_KEY` (and `model` says which model); `agent` is true when an agent is listening on the document in `?doc=`; `local` is the built-in composer, which is always there.
+`claude` is true when the server has an `ANTHROPIC_API_KEY` and `EDGY_AI` isn't `off` (and `model` says which model); `agent` is true when an agent is listening on the document in `?doc=` (on any document when `doc` is left out), which it counts as for 30 seconds after its last wait ended; `local` is the built-in composer, which is always there.
 :::
 
 ::: route POST /api/docs/:id/compose
@@ -262,7 +262,7 @@ Sets the order of the pinned. The body is `{"ids": ["t6mggyig", "kfgqcxen"]}`: t
 ::: route POST /api/library/bulk
 Does one thing to several of the asker's documents or decks: `{"action": "archive", "ids": ["kfgqcxen", "t6mggyig"]}`. The actions are `pin`, `unpin`, `archive`, `restore` and `delete`. Archiving takes a document out of the list without losing anything; `delete` is for good (for a deck it ungroups it).
 
-The answer lists what happened: `{"action": "archive", "done": [...], "skipped": [...]}`. An id that isn't yours, or doesn't exist, is skipped. A bad action or body answers `400`.
+The answer lists what happened: `{"action": "archive", "done": [...], "skipped": [...]}`. An id that isn't yours, or doesn't exist, is skipped, and so is an archived one you ask to `pin`. A bad action or body answers `400`.
 :::
 
 ::: route GET /api/library/:id
@@ -356,7 +356,7 @@ Takes a person's access away. The owner may do it for anyone; anyone else may do
 
 ## Data
 
-Records live in named collections that belong to an account. Without `?doc=` a route works on the asker's own collections. With `?doc=<id>` it works through a document: the collections of that document's owner, those the document reaches. Viewers read, editors write, and a share link reaches its own document's collections the same way. See [Collections](/data/collections/).
+Records live in named collections that belong to an account. Without `?doc=` a route works on the asker's own collections. With `?doc=<id>` it works through a document: the collections of that document's owner: all of them for the owner, only those the document reaches for anyone else. Viewers read, editors write, and a share link reaches its own document's collections the same way. See [Collections](/data/collections/).
 
 ::: route GET /api/data
 Lists the collections as `[{name, count, updatedAt}]`. With `?doc=` it lists those the document may name: all of the owner's collections for the owner, those it reaches for anyone else. A document you can't open answers `404`.
@@ -428,7 +428,7 @@ The accounts routes are for the person in the browser. In local mode there is no
 ::: route POST /api/auth/signup
 Makes an account and signs it in. The body is `{"email": "ana@example.test", "password": "…", "name": "Ana Pop"}`; `name` defaults to the part of the email before the `@`. The answer is `201`, the profile in `{"user": {...}}` and a session cookie.
 
-An email that isn't one answers `400` and `That is not an email address.`; a password under 8 characters (or over 200), `A password needs at least 8 characters.`; an email already used, `409` and `An account with this email already exists. Sign in instead.` A new account starts with a tour document.
+An email that isn't one answers `400` and `That is not an email address.`; a password under 8 characters, `A password needs at least 8 characters.`, and one over 200, `That password is longer than 200 characters.`; an email already used, `409` and `An account with this email already exists. Sign in instead.` A new account starts with a tour document.
 :::
 
 ::: route POST /api/auth/signin

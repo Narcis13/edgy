@@ -10,7 +10,7 @@ Presence needs more than one account. Alone in a document, or in [local mode](/p
 
 ## Faces in the header
 
-Beside the title, each other person who has the document open appears as an avatar: their initials on their [colour](/people/accounts/#the-profile). There is one face per person, however many tabs they have open.
+On the right of the header, each other person who has the document open appears as an avatar: their initials on their [colour](/people/accounts/#the-profile). There is one face per person, however many tabs they have open.
 
 - On a desk, up to four faces show; on a phone, two. More are counted as **+3**, and pointing at the count names them.
 - Point at a face for what the person is doing: **Ben — editing (total)** or **Ben — reading**. *Editing* means they are in **Edit** in at least one tab; *reading* means **Live** or **Page**. The name in brackets is the cell they have selected, by its name or, if it has none, its id.
@@ -20,7 +20,7 @@ You never see your own face, nor your other tabs. Agents are not faces, and neit
 
 ## Selected cells
 
-When someone else is in **Edit** and selects a cell, that cell gets an outline in their colour, with their name on its top-left corner. When several people have the same cell selected, the outlines stack, each a little outside the last.
+When someone else is in **Edit** and selects a cell, and you are in **Edit** too, that cell gets an outline in their colour, with their name on its top-left corner. In **Live** and **Page** you see no outlines, only the faces. When several people have the same cell selected, the outlines stack, each a little outside the last.
 
 The outline moves a moment after they move. The cell is only marked; you can select it, change it and undo as usual. Presence is a map of attention, not a lock: two people can change the same cell, and the later change wins, as it does anywhere in edgy. When the people are on different machines, [sync](/people/sync/) says how conflicts resolve.
 
@@ -28,7 +28,7 @@ When a person switches to **Live** or **Page** their selection is cleared, so th
 
 ## Names in Activity
 
-At the top of [Activity](/editor/activity/), a row shows who is here: **You**, then each other person with their avatar and name, and any agent that was active in the last ten minutes. Pointing at a person gives the same sentence as the header face.
+At the top of [Activity](/editor/activity/), a row shows who is here: you (your name, then *(you)*), then each other person with their avatar and name, and any agent that was active in the last ten minutes. Pointing at a person gives the same sentence as the header face.
 
 Under it, every change carries a name:
 
@@ -44,7 +44,7 @@ The owner, editors and viewers of a document all appear to each other, because t
 
 ## How it works
 
-Each open tab keeps a live connection to the server, and tells it when you switch between **Edit**, **Live** and **Page**, and when your selection settles (after about 150 milliseconds, so dragging across cells doesn't flood it). The server keeps who is connected, one entry per person, and sends everyone the list whenever it changes. Closing the tab, losing the connection or losing access removes you. A viewer is always counted as reading.
+Each open tab keeps a live connection to the server, and tells it when you switch between **Edit**, **Live** and **Page**, and when your selection settles (after about 150 milliseconds, so dragging across cells doesn't flood it). The server keeps who is connected, one entry per person, and sends everyone the list whenever it changes. Closing the tab, losing the connection or losing access removes you. A viewer has no **Edit** view, so a viewer shows as reading.
 
 | Route | For |
 | --- | --- |

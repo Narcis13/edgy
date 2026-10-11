@@ -25,7 +25,7 @@ Change a number and the sentence follows. The text cell holds `You are buying **
 
 - The expression is any [expression](/language/): a name, a call, a record lookup. `{{qty}}`, `{{(* qty price)}}` and `{{(upper client)}}` all work. Spaces inside the braces don't matter.
 - After a bar, a format says how the value is written: `{{total | currency}}`, `{{rate | 0.0%}}`. Formats are on [their own page](/language/formats/).
-- The value is written the way the cell would show it with no format, unless you give one: numbers with a thousands separator and at most two decimals, `yes` and `no` for true and false, a list as its items joined by commas, nothing as nothing.
+- The value is written the way the cell would show it with no format, unless you give one: numbers with a thousands separator and at most two decimals (four when the number is below 1), `yes` and `no` for true and false, a list as its items joined by commas, nothing as nothing.
 
 A template is worked out in the cell it is written in, so [sib](fn:sib), [idx](fn:idx) and every name work there as they do in a formula. It can't change anything: an action such as `set!` in a template is an error.
 

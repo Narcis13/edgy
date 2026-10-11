@@ -68,7 +68,7 @@ A formula has the props every cell has (`name`, `size`, `hidden`, `style`, `on`)
 
 A formula's value is what its expression gives: a number, text, a yes or no, a list, a record, or nothing. Other cells read it by name.
 
-How a value is shown depends on its kind. A true or false result shows as `yes` or `no`. A list shows its items with commas: `1, 2, 3`. A number with no format shows up to two decimals. A result of nothing shows the word *nothing* in grey. A formula that holds a function, such as `(fn (x) (* x 2))`, shows `ƒ`; other cells call it by the formula's name.
+How a value is shown depends on its kind. A true or false result shows as `yes` or `no`. A list shows its items with commas: `1, 2, 3`. A number with no format shows up to two decimals, or four when it is under 1. A result of nothing shows the word *nothing* in grey. A formula that holds a function, such as `(fn (x) (* x 2))`, shows `ƒ`; other cells call it by the formula's name.
 
 A formula that can't be worked out has no value. It shows its problem in red, and a cell that reads it shows the same problem with the formula's name in front:
 
@@ -103,5 +103,5 @@ A formula is a line of text, so on a phone it takes its place in the column cell
 - **"set! only works in an action, such as a button".** An action was written where a value is expected. Move it to a button's **What it does** or to a handler.
 - **`no cell called "price"`.** The expression names a cell that doesn't exist, isn't named yet, or was renamed by hand. Names follow renames made in edgy; a name typed by hand has to match exactly.
 - **`circular reference: b → c → b`.** Two formulas read each other. Break the loop: one of them has to read something that doesn't read it back.
-- **`expected a number, got "x"`.** Arithmetic was given text. An empty cell counts as 0, but text is not a number. Use `(num x)` for text that holds a number.
+- **`expected a number, got "x"`.** Arithmetic was given text that is not a number. An empty cell counts as 0, and text that holds a number (`"12"`, `"1,200"`) counts as that number, but `"x"` or `"12 kg"` is an error. Check which cell holds the text.
 - ***Empty formula*.** The cell has no expression yet. Write one in **Formula**.

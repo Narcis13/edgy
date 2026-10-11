@@ -33,7 +33,7 @@ From left to right:
 - **Share** opens the dialog that makes links and invites people. See [Sharing with people](/people/sharing/).
 - **Docs** opens these docs in a new tab, a button switches between the light and dark themes, and the account menu leads to your profile.
 
-On a narrow window the header keeps the title, the views and **More** (the three dots). **More** holds the rest: **Activity and messages**, **Cell details**, **Show links between cells**, **Share…**, **Export as HTML**, **Print**, the theme, **Docs** and **Profile**. A window narrower than 720 pixels opens documents in **Live**, because a phone is mostly used to use a document; press **Edit** to shape it.
+On a narrow window (720 pixels or less) the header keeps the title, the sync badge, the views and **More** (the three dots), and in Edit also **Undo** and **Redo**. **More** holds the rest: **Activity and messages**, **Cell details**, **Show links between cells**, **Share…**, **Export as HTML**, **Print**, the theme, **Docs** and **Profile**. A window narrower than 720 pixels opens documents in **Live**, because a phone is mostly used to use a document; press **Edit** to shape it.
 
 > [!NOTE]
 > Someone who may only read a document sees **Can view** in place of **Edit**, and gets no Undo, no Cell details and no way to change anything. What they type in Live stays in their own tab. See [Sharing with people](/people/sharing/).

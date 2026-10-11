@@ -44,7 +44,7 @@ Live is the document in use. There is no selection, no toolbar and no outlines: 
 In Live:
 
 - **Handlers run.** A cell's `change` or `click` handler, the document's [open](event:open) and [close](event:close) handlers and everything they set off happen. A button's action runs first, then its `click` handler, and together they are one step for undo.
-- **Timers tick and fetches load.** The server runs them for as long as anyone has the document open in Live, and the changes they make arrive in every browser that has it open.
+- **Timers tick and fetches load.** The server runs them for as long as someone who can edit the document has it open in Live (a view-only person's tab does not count), and the changes they make arrive in every browser that has it open.
 - **Hidden cells go.** A cell whose **Show only when** condition says to hide it is not drawn, and the cells around it close up. [Data](kind:data) cells and timers are never drawn.
 - What you type is kept. Typing in an input changes the document, so it is saved and appears in **Activity**, and anyone else who has the document open sees it. A reader with only a view link is different: what they type stays in their own tab.
 
@@ -99,7 +99,7 @@ See [The Page view](/editor/page-view/) for the details, and [Export](/library/e
 
 - **On a computer**, a document opens in **Edit**.
 - **On a phone**, in a window narrower than 720 pixels, it opens in **Live**. You can still press **Edit**, but the editor is built for a larger screen.
-- **A link can ask for one**: an address ending in `?view=live`, `?view=edit` or `?view=page` opens that view. The editor writes `?view=page` into the address while you are in Page, so a reload or a copied link opens the pages. Switching to Edit or Live takes it out again.
+- **A link can ask for one**: an address ending in `?view=live`, `?view=edit` or `?view=page` opens that view. When you press **Page**, the editor writes `?view=page` into the address, so a reload or a copied link opens the pages; switching to Edit or Live takes it out again. (⌘P and **Print** switch to Page without writing it.)
 - **Someone who may only view** starts in Live, and has Live and Page only.
 - **A share link** opens the document in Live and nothing else. See [Share links](/library/share-links/).
 
@@ -114,7 +114,7 @@ A common rhythm is to build a few cells in Edit, switch to Live to see them work
 ## Usual mistakes
 
 - **A button does something, but not everything.** You are in Edit or Page, where a button's action runs but its handlers and the changes they cause do not. Switch to Live.
-- **A timer never ticks.** Timers run only while someone has the document open in Live. Switch to Live and leave it there.
+- **A timer never ticks.** Timers run only while someone who can edit the document has it open in Live. Switch to Live and leave it there.
 - **A cell is missing in Live, or in Page.** It has a **Show only when** condition that says to hide it at the moment, or it is a [data](kind:data) cell or a timer. Switch to Edit, where it is drawn faded or as a chip, select it and look at **Cell details**.
 - **A fetch cell is missing in Page.** Page does not draw fetch cells. Live does.
 - **I can't find Edit.** You can only view this document. Ask its owner to make you an editor; see [Sharing with people](/people/sharing/).

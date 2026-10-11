@@ -70,7 +70,7 @@ You can also write `$qty`, the stored spelling, and it means the same. An expres
 
 ## Renames are followed
 
-Rename a cell and the expressions that read it change with it. Nothing breaks, and nothing needs fixing by hand. This covers formulas, button actions, handlers, conditions, styles, the document's own handlers and custom actions, and the `{{ }}` in text, labels, placeholders, image addresses, alt text, titles and diagram labels.
+Rename a cell and the expressions that read it change with it. Nothing breaks, and nothing needs fixing by hand. This covers formulas, button actions, handlers, conditions, styles, the document's own handlers and custom actions, and the `{{ }}` in text, labels, placeholders, image addresses, alt text, titles and diagram labels. The one place not followed is a fetch cell's `url`: if it reads the cell with `{{ }}`, edit it by hand.
 
 ```ops id=renamed in=money
 [["set", "qty", "name", "quantity"]]

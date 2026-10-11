@@ -124,6 +124,7 @@ Makes a list of numbers. `(range end)` counts from 0; `(range start end)` from `
 - A step that points away from the end gives an empty list: `(range 5 1)` is `(list)`.
 - A step of `0` is an error, `range step cannot be 0`.
 - A range longer than 20,000 numbers is an error, `range is too long`.
+- With a decimal step, rounding can let the last number reach the end: `(range 0 1 0.1)` ends with `1`.
 
 Use it to number things: `(map (* it 10) (range 1 6))`. See also [map](fn:map).
 :::
@@ -290,7 +291,7 @@ The first item for which an expression is true, or nothing when none is.
 ⇒ {name "Bo" city "Oslo"}
 ```
 
-Arguments: `(find expression list)`. The item itself comes back, so an item that is `0` or `""` is found like any other; to tell "found" from "not found" for such items, use [some](fn:some). See also [filter](fn:filter), [first](fn:first).
+Arguments: `(find expression list)`. The item itself comes back, so an item that is `0` or `""` is found like any other. Only a `nil` item looks the same as "not found"; to ask whether anything passes, use [some](fn:some). See also [filter](fn:filter), [first](fn:first).
 :::
 
 ::: fn some
@@ -436,7 +437,7 @@ The list you give is not changed. See also [sort](fn:sort).
 ## Combining and testing
 
 ::: fn concat
-Joins lists end to end. Arguments that are not lists are added as single items, and nothing is skipped.
+Joins lists end to end. Arguments that are not lists are added as single items; `nil` adds no item.
 
 ```sx
 (concat (list 1 2) (list 3))
@@ -490,7 +491,7 @@ Turns the items into one text, with a separator between them. The separator is `
 ⇒ "ab"
 ```
 
-Items are written the way edgy shows values: a missing item is empty text and `true` is `yes`. To change each item first, [map](fn:map) it: `(join (map (upper it) names) ", ")`. See also [str](fn:str), [split](fn:split).
+Items are written the way [str](fn:str) writes them: numbers plainly, with no commas between thousands, a missing item as empty text and `true` as `yes`. To change each item first, [map](fn:map) it: `(join (map (upper it) names) ", ")`. See also [str](fn:str), [split](fn:split).
 :::
 
 ::: fn includes?

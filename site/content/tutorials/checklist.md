@@ -9,7 +9,7 @@ You will use the [list](kind:list) and [text](kind:text) cells, a [change](event
 
 ## Start the document
 
-1. On the home page, press **New document**. In the title at the top, type `Workshop checklist` and press Enter.
+1. On the home page, press **New document**. Click the title at the top, select all (⌘A, or Ctrl+A), type `Workshop checklist` and press Enter.
 2. Click the empty cell and type `# Workshop checklist`. Press Esc.
 3. Press [⌥↓](key:split) (Alt+↓ elsewhere) to add a cell below. Press `/`, type `Checklist` and press Enter. The cell shows three sample items and a bar saying *1 of 3 done*.
 
@@ -26,7 +26,7 @@ Inside a list, Enter keeps an item and starts the next, Esc drops what you are t
 
 8. Click the title of the list (*Before the workshop starts*) to select the list, then press ⌥↓. Type `All done: the room is ready.` and press Esc.
 9. In **Cell details**, set **Name** to `ready`. Open **Show only when** and choose **Never**. The message stays on the sheet in Edit, dimmed; in Live it is gone.
-10. Click the message on the sheet, so the keys go back to the sheet, and press ⌥↓. Type the sentence below and press Esc.
+10. Click the message on the sheet. It is already selected, so the click opens it for typing: press Esc, which gives the keys back to the sheet without changing the text. Press ⌥↓, type the sentence below and press Esc.
 
 ```text
 Checklists finished so far: {{(len (rows "checklists"))}}.

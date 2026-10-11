@@ -31,7 +31,7 @@ That is the whole syntax. It is why a formula can sit in a cell's JSON as an ord
 
 `parse` builds a tree of nodes and wants exactly one form. A second form is `expected one expression; wrap several in (do …)`. Atoms read as `true`, `false`, `nil` or `null`, a number if they match the number pattern, and a symbol otherwise.
 
-`toJson` then makes the stored form. Most of it is mechanical, but four rules turn typed names into what the interpreter needs:
+`toJson` then makes the stored form. Most of it is mechanical, but these six rules turn what you type into what the interpreter needs:
 
 | You type | You get | Why |
 | --- | --- | --- |
@@ -194,7 +194,7 @@ export interface Host {
 
 The first group reads: a named cell's value, a sibling by position, the current cell's position, the records of a collection, the clock. The `Evaluator` in `engine.ts` implements all of them, and records which cells were read as it does (that is how the engine learns the dependencies). The second group only exists while an action runs: `place` finds the cell a `set!` names, and `effect` is where the action's changes are put. With neither, `set!` throws `set! only works in an action, such as a button`. This one check is what keeps formulas from changing anything.
 
-A different host is a different world. The docs use the engine's host with a fixed clock, and the browser, the server and the runner each hand the engine a different [World](/internals/engine/). A test can give the interpreter a host of three methods and run it alone.
+A different host is a different world. The docs use the engine's host with a fixed clock, and the browser, the server and the runner each hand the engine a different [World](/internals/engine/). A test can give the interpreter a host of six small methods (`ref`, `sib`, `idx`, `child`, `rows`, `now`) and run it alone.
 
 ## Effects
 

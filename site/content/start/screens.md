@@ -28,7 +28,7 @@ From the top:
 - The **search box** looks in titles, descriptions and the words inside documents. Every word you type has to appear in the same document; the card says where it matched.
 - The filters **All**, **Pinned**, **Shared**, **Decks** and **Archived** narrow **Mine**. **Sort** orders by **Last changed**, **Created** or **Title**, and the two buttons beside it show cards as a **Grid** or a **List**. The page remembers your view and sort.
 
-Each card shows a small map of the document (its layout, drawn from its cells), its title, its description (or **Add a description**), when it last changed and badges such as **Pinned** or *Shared · can view*. Pinned documents sit in their own **Pinned** section above the rest.
+Each card shows a small map of the document (its layout, drawn from its cells), its title, its description (or **Add a description**), when it last changed (*Changed 2 hours ago*; *Created …* when you sort by **Created**) and badges such as **Pinned** or *Shared · can view*. Pinned documents sit in their own **Pinned** section above the rest.
 
 - Click the title or the map to open the document. A middle click or Ctrl+click opens it in a new tab.
 - The tick box at the card's corner selects it. With cards selected, a bar appears with **Pin**, **Archive**, **Delete**, **Group into a deck** (two or more documents) and **Clear**; Esc clears the selection too.
@@ -91,11 +91,11 @@ With nothing selected the panel is **Document**: its title, description, width, 
 
 ### Activity
 
-The left-hand panel lists everything that happens to the document: each change as a short expression such as `(split c1 col)`, who made it (you, someone else, or an agent) and when; handlers that ran and what they changed; and messages. At the bottom you can write to an agent that is connected to the document. See [Activity](/editor/activity/).
+The left-hand panel lists everything that happens to the document: each change as a short expression such as `(split c1 col)`, who made it (you, someone else, or an agent) and when; handlers that ran and what they changed; and messages. At the bottom you can write to an agent; a line above the box says whether one is listening, and a message waits there until one is. See [Activity](/editor/activity/).
 
 ### On a phone
 
-On a narrow screen (720 pixels or less) the document opens in **Live**, the two side panels become drawers that slide over the document, and the header keeps only what fits: the logo mark, the title, the view switch and **More**, with the sync badge, the faces of others and, in Edit, **Undo** and **Redo**.
+On a narrow screen (720 pixels or less) the two side panels become drawers that slide over the document, and the header keeps only what fits: the logo mark, the title, the view switch and **More**, with the sync badge, the faces of others and, in Edit, **Undo** and **Redo**. A document opens in **Live** when the window is narrower than 720 pixels.
 
 ::shot editor-phone "A document in Live on a phone: the cells in one column, and a short header with More."
 

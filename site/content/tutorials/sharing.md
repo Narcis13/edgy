@@ -24,7 +24,7 @@ On Windows PowerShell write `$env:EDGY_AUTH = "accounts"; npm run dev`. See [Acc
 
 In your window:
 
-3. Press **New document**. Type `Planning notes` in the title and press Enter.
+3. Press **New document**. Click the title at the top, select all (⌘A, or Ctrl+A), type `Planning notes` and press Enter.
 4. Click the empty cell and type `# Planning notes`. Press Esc. Press [⌥↓](key:split) (Alt+↓ elsewhere), then `/`, type `Checklist` and press Enter. Set **Title** to `Actions`.
 5. Press ⌥↓, then `/` **Long text**. Set **Name** to `notes`, **Label** to `Notes` and **Placeholder** to `Write what was decided`.
 6. Press ⌥↓. Type `Notes so far: {{notes}}` and press Esc.

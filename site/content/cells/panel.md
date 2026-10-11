@@ -101,7 +101,7 @@ A panel has no look of its own on a phone: its cells stack in the width of the t
 ## Usual mistakes
 
 - **I can't find "Panel" in the / menu.** It isn't there. Choose **Tabs** or **Accordion**, which come with two panels, and use **Add a tab** or **Add a section**.
-- **A panel can't be removed.** The last one of a container stays: the designer's button is greyed out with *The last tab can't go; delete the whole tabs instead.*
+- **A panel can't be removed.** The last one of a container stays: the designer's bin is greyed out, and its tooltip says *The last tab can't go; delete the whole tabs instead.*
 - **Splitting a panel added another tab, not a cell.** That is what splitting does to a panel. To add a cell, select a cell inside the panel and split that.
 - **"…can't be merged; move them into one first".** Cells in different panels can't be merged. Move the cells into the same panel.
 - **Two tabs show the same title, and a button opens only the first.** The panels were written by hand in notation with the same title. The second is keyed with a number (**Details 2**), though it still shows **Details**. Rename one.

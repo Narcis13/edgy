@@ -128,7 +128,7 @@ Two machines, **A** and **B**, both at version 10, both offline. A sets **qty** 
 | A comes online and pushes | `a1` | `a1` (confirmed) | `b1` (pending) |
 | B pulls | `a1` | `a1` | `a1`, then `b1` (rebuilt: the cloud's first, ours on top) |
 | B pushes | `a1`, `b1` | `a1` | `a1`, `b1` (confirmed) |
-| A pulls | `a1`, `b1` | `a1`, `b1` (confirmed where they are) | `a1`, `b1` |
+| A pulls | `a1`, `b1` | `a1`, `b1` (`b1` is another machine's op, so A rebuilds in cloud order, with nothing of its own to put on top) | `a1`, `b1` |
 
 Both end with qty 3, price 50 and the same two entries at versions 11 and 12. Because ops are applied by cell id, two edits to different cells both survive. Edits to the *same property* resolve by order: the op that reaches the cloud last is applied last, everywhere, and wins.
 
@@ -163,7 +163,7 @@ export interface Cloud {
 }
 ```
 
-**`HttpCloud`** is Turso over plain HTTP, using `fetch`: one JSON `POST` to `/v2/pipeline` (Hrana over HTTP) holding every statement of the batch and a `close`. There is no client library, because the protocol is that one request. A network failure, a timeout or a 5xx is `CloudDown`: try again later. A refusal of the credentials, a statement that fails or a request that is too large is an ordinary error, and the status is `error` (**Sync stopped**) instead of `offline`. It counts the rows each statement read and wrote, which is what Turso bills; `GET /api/sync` shows them.
+**`HttpCloud`** is Turso over plain HTTP, using `fetch`: one JSON `POST` to `/v2/pipeline` (Hrana over HTTP) holding every statement of the batch and a `close`. There is no client library, because the protocol is that one request. A network failure, a timeout or any HTTP error status other than 401, 403 and 413 is `CloudDown`: try again later. A refusal of the credentials, a statement that fails or a request that is too large is an ordinary error, and the status is `error` (**Sync stopped**) instead of `offline`. It counts the rows each statement read and wrote, which is what Turso bills; `GET /api/sync` shows them.
 
 **`LocalCloud`** runs the same SQL in a `node:sqlite` database, in memory or in a file. It exists for tests, and it can play an unreachable cloud: set `down` and every call throws `CloudDown`; set `failIf` and a request that matches breaks off before it runs. A test makes two `Store`s and one `LocalCloud` and calls `round()` on each in turn, which is two machines. `sync.test.ts` uses it for edits that travel both ways, edits made while the cloud is down, conflicting edits, records, deletions, and a first upload that breaks off midway.
 

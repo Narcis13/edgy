@@ -28,7 +28,7 @@ npm run dev:sync
 
 Do the same on each machine, with the same database, and sign in on it with the same email and password. The account comes down from the cloud with its documents (see [Signing in on a new machine](#signing-in-on-a-new-machine)).
 
-Two more variables are optional: `EDGY_SYNC_INTERVAL`, how often a machine asks the cloud for news, in milliseconds (3000 by default).
+One more variable is optional: `EDGY_SYNC_INTERVAL`, how often a machine asks the cloud for news, in milliseconds (3000 by default).
 
 ## The badge
 

@@ -62,7 +62,7 @@ edgy runs in one of two modes, chosen when the server starts.
 | Nothing (the server listens on `127.0.0.1`) | Local |
 | `EDGY_AUTH=accounts` | Accounts, even on this machine |
 | `HOST=0.0.0.0` (or any address other machines can reach) | Accounts |
-| `HOST=0.0.0.0` with `EDGY_AUTH=local` | The server refuses to start: `EDGY_AUTH=local needs a loopback HOST` |
+| `HOST=0.0.0.0` with `EDGY_AUTH=local` | The server refuses to start: `EDGY_AUTH=local needs a loopback HOST; 0.0.0.0 can be reached from other machines` |
 
 Only `127.0.0.1`, `localhost` and `::1` count as loopback. Even in local mode, a request is trusted as "this machine" only when it comes from this computer, carries no proxy headers (`Forwarded`, `X-Forwarded-For`, `X-Real-IP`) and names a loopback host. Behind a proxy that adds those headers, everyone signs in.
 

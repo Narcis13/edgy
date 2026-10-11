@@ -55,7 +55,7 @@ To sign out, open your avatar menu in the top bar and choose **Sign out**. It en
 
 ## The profile
 
-**Profile** in the avatar menu (or in the **More** menu on a phone) opens `/profile`. Each section saves on its own and says **Saved.**
+**Profile** in the avatar menu (or in the **More** menu on a phone) opens `/profile`. Each section saves on its own and says so: **Saved.**, or **Password changed.** for the password.
 
 ::shot profile "The profile: you, password, theme, API keys, and the way out."
 

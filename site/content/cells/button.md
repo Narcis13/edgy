@@ -32,14 +32,14 @@ count
 ## Adding and designing one
 
 1. Select a cell in Edit and press `/`, then choose **Button** (or type its name in the menu's search).
-2. Type its label straight into the cell, or in **Label** under **Cell details**.
+2. Double-click it (or press Enter) and type its label in the cell, or use **Label** under **Cell details**.
 3. Write what it does in **What it does**. The field is a code editor: it colours the code, suggests functions and the document's cells, and underlines mistakes. ⌘E opens the [code studio](/editor/code-studio/), where **Blocks** and **Ask AI** can write it for you.
 
 ::shot designer-button "The button's designer: its label, what it does, its look, its icon and the question it asks first."
 
 The designer's other settings:
 
-- **Look**: **Solid** (the default, in the accent colour), **Soft** (a tinted background) or **Quiet** (text only, for second choices).
+- **Look**: **Solid** (the default, in the accent colour), **Soft** (a tinted background) or **Quiet** (an outline and muted text, for second choices).
 - **Icon**: an icon before the label, or alone when there is no label.
 - **Ask first**: a question shown in place of the button when it is pressed, with **Yes** and **No**. The action runs only on **Yes**. Use it for anything that is hard to take back.
 
@@ -51,7 +51,7 @@ The label is the body; `do` is the action:
 ["col",
   ["input", {"name": "client", "type": "text", "value": "Ada Lovelace"}],
   ["formula", {"name": "total", "format": "currency"}, 1840],
-  ["button", {"variant": "soft", "icon": "save", "confirm": "Save this quote?",
+  ["button", {"variant": "soft", "icon": "check", "confirm": "Save this quote?",
               "do": ["insert!", "quotes", {"client": "$client", "total": "$total"}]}, "Save this quote"]]
 ```
 
@@ -59,7 +59,7 @@ The label is the body; `do` is the action:
 | --- | --- |
 | `do` | The action, as an expression. Several actions in one: `(do (set! a 1) (set! b 2))`. |
 | `variant` | `"solid"` (default), `"soft"` or `"ghost"` (shown as **Quiet**). |
-| `icon` | An icon name, such as `"plus"` or `"save"`. |
+| `icon` | An icon name, such as `"plus"` or `"check"`. Only the names in the icon grid of **Cell details** exist; any other shows no icon. |
 | `confirm` | The question asked before it runs. |
 | `label` | The words on it, when not given as the body. |
 
@@ -83,12 +83,12 @@ None change a button itself. A button can hide while it has nothing to do: give 
 
 ## On a phone and on paper
 
-On a phone a button keeps its full width in the one column cells stack into, and it is tall enough to tap. On paper a button prints as its label in a box, because it can't be pressed: nothing runs when a document is printed.
+A button is as wide as its cell, so on a phone it follows the rules in [row](kind:row) like any other cell. On paper a button prints as it looks on screen, a box with its label; nothing runs when a document is printed.
 
 ## Usual mistakes
 
 - **Nothing happens.** A button with nothing in **What it does** is shown faded and its tooltip says *This button does nothing yet*. In Edit, pressing a button runs its action but not its `click` handler or anything its changes set off: handlers run only in **Live**.
-- **"That button failed: set! only works in an action, such as a button".** An action was written where a value is expected, in a formula or a condition. Move it to the button's **What it does**.
+- **"set! only works in an action, such as a button".** An action was written where a value is expected, in a formula or a condition, and that cell shows this message in red. Move it to the button's **What it does**.
 - **"That button failed: no cell called "…"".** The action names a cell that doesn't exist, or was renamed. Names in actions follow renames made in edgy; a name typed by hand has to match exactly.
 - **The number doesn't change.** `set!` sets a cell's value, and a formula's value always comes from its expression, so setting a formula changes nothing you can see. Keep a number that buttons change in a [data](kind:data) cell or an [input](kind:input), and let formulas read it.
 - **It saves the same record twice.** Each press runs the action once. If people double-press, add **Ask first**, or hide the button once the record is saved with a `hidden` condition that reads a [data](kind:data) cell the action sets.

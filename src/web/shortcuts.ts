@@ -86,6 +86,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'tabs-rename', keys: ['Enter', 'Esc'], where: 'tabs', does: 'Keep or drop a new title while renaming a tab or a section.' },
 
   { id: 'table-search', keys: ['Esc'], where: 'table', does: 'Clear the table’s search.' },
+  { id: 'table-resize', keys: ['ArrowLeft', 'ArrowRight'], where: 'table', does: 'On a column’s resize handle: make the column 16 pixels narrower or wider.' },
   { id: 'table-edit', keys: ['Enter', 'Tab', 'Esc'], where: 'table', does: 'While editing a table cell: Enter keeps it and goes down to the same column of the next row, Tab (Shift+Tab) keeps it and goes across, Esc drops the change.' },
 
   { id: 'play-next', keys: ['ArrowRight', 'PageDown'], where: 'play', does: 'Next slide (Page Down first scrolls a long slide).' },

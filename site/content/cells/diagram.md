@@ -48,7 +48,7 @@ The toolbar has **Select and move** (V), **Rectangle** (R), **Ellipse** (O), **D
 
 - Drag with a shape tool to draw it; click once to get one of the usual size. Hold Shift while dragging for a square or a circle. When the shape is drawn, the select tool is back and the new shape is picked.
 - Drag with the arrow tool from one shape to another and the arrow stays attached to both: move a box and the arrow follows. A shape lights up when an arrow end is over it; an end let go over empty ground stays free.
-- Pick a shape and press Enter to write its label ([shortcut](key:diagram-text)). Enter again, Esc or Tab finishes; Shift+Enter starts a new line.
+- Pick a shape and press Enter to write its label ([shortcut](key:diagram-label)). Enter again, Esc or Tab finishes; Shift+Enter starts a new line.
 - Drag a picked shape to move it, its handles to resize it, or use the arrow keys (Shift for ten steps at a time). ⌘A picks everything and Backspace deletes what is picked ([shortcuts](key:diagram-nudge)).
 - Each finished gesture is one step for undo.
 

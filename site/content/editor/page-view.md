@@ -50,7 +50,7 @@ The document is laid out once, at the width of a page inside its margins, and th
 The cuts are chosen so that a page never ends in the middle of a cell if that can be helped:
 
 1. A **page break** cell always ends a page. Put it between the cells of the top column. Nothing shows of it in Live; in the editor it is a dashed line labelled **Page break**. See [break](kind:break).
-2. Otherwise a page ends at the edge between two cells, as late as will fit. A cut in the lower part of the page (past three fifths of it) is preferred to an early one, and a cut between whole groups to one through a group.
+2. Otherwise a page ends at an edge between two cells. Edges in the lower part of the page (past three fifths of it) are preferred to earlier ones. Among those, the edge that cuts through the fewest groups wins, and if several tie, the latest one.
 3. A cell taller than a whole page, such as a long table, has to be sliced; it is cut where the page ends.
 4. A tab's or section's title is kept with the first cell under it, so a page never ends right after a heading.
 5. A last page that would hold only empty space is left out.

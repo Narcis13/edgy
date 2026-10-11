@@ -31,7 +31,7 @@ For a short list of single items to tick off, use a [list](kind:list). For one n
    {"client": "Lumen Print", "status": "Open", "total": 640}]}}
 ```
 
-Click *total* in the header to sort by it; click again to reverse, and once more to go back to the order the rows came in. Type in the search box to keep only the rows that contain your words. Fold a group by its heading. Tick two invoices and **Picked** adds them up. **Mark paid** asks first, then changes the invoice's record, and the row moves to the *Paid* group.
+Click *total* in the header to sort by it; click again to reverse, and once more to go back to the order the rows came in. Type in the search box to keep only the rows where a column contains what you typed. Fold a group by its heading. Tick two invoices and **Picked** adds them up. **Mark paid** asks first, then changes the invoice's record, and the row moves to the *Paid* group.
 
 The rows come from the collection `invoices`, which the example brings with it; the table shows the fields you list in `columns`. Every table's value is its list of rows, so formulas can count and add them:
 

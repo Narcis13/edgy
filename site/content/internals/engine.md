@@ -164,7 +164,7 @@ The server does not tick formulas. A timer *cell* is a different thing: the runn
 
 ## Errors stay in their cell
 
-An error is a value of a cell's state, not an exception for the caller. `state()` runs the value, the style, the `hidden` condition and each prop in a `guard`, which catches what they throw and keeps the first message in `st.error`. A cell with an error has `value: null`. Every other cell is still evaluated.
+An error is a value of a cell's state, not an exception for the caller. `state()` runs the value, the style, the `hidden` condition and each prop in a `guard`, which catches what they throw and keeps the first message in `st.error`. A cell whose value fails has `value: null`. Every other cell is still evaluated.
 
 When a cell reads one that failed, the failure travels with it. `read()` rethrows the message, prefixed with the failed cell's name unless the message already carries one:
 

@@ -30,6 +30,10 @@ The panel on the right of the editor, where you name the selected cell, design i
 
 A named set of records that belongs to an account and outlives any one document: a button saves to it with [insert!](fn:insert!), any of its owner's documents reads it with [rows](fn:rows). See [Collections](/data/collections/).
 
+### Colour token {#term-token}
+
+A colour named by what it means rather than how it looks (`accent`, `muted`, `bad`), so it follows the light and dark themes. See [Theme](/styling/theme/).
+
 ### Container {#term-container}
 
 A cell that holds other cells in panels and shows some of them at a time: [tabs](kind:tabs), an [accordion](kind:accordion) or a [collapsible](kind:collapsible).
@@ -153,10 +157,6 @@ A starting document: **Quote**, **Savings plan**, and the documents the tutorial
 ### Text template {#term-text-template}
 
 An expression inside text, between double braces: `Total: {{total | currency}}`. See [Text templates](/language/templates/).
-
-### Colour token {#term-token}
-
-A colour named by what it means rather than how it looks (`accent`, `muted`, `bad`), so it follows the light and dark themes. See [Theme](/styling/theme/).
 
 ### Value {#term-value}
 

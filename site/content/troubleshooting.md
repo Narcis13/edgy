@@ -14,12 +14,12 @@ These appear in the terminal where you started edgy, or in the browser when the 
 | --- | --- | --- |
 | `edgy api on http://127.0.0.1:8787  (data in …; local mode: this machine is signed in; sync off)` | Not a problem: the server is ready. It says its address, where the data is, the mode (`local mode: this machine is signed in`, or `accounts: sign in to use it`) and whether sync is on. | Open the app. |
 | `EDGY_AUTH=local needs a loopback HOST; … can be reached from other machines` | You asked for local mode, where nobody signs in, but `HOST` makes the server reachable from other machines. The server stops. | Remove `EDGY_AUTH=local` so everyone signs in, or set `HOST` back to `127.0.0.1`. |
-| `Error: listen EADDRINUSE …` | Another program already uses the port. This is Node's message, not edgy's. | Stop that program, or choose another port with `EDGY_PORT` (the API) or `WEB_PORT` (the web app). |
+| `Error: listen EADDRINUSE …` | Another program already uses the port. This is Node's message, not edgy's. | Stop that program, or choose another port with `EDGY_PORT` (the API; set `EDGY_URL` to its address too, so the web app finds it) or `WEB_PORT` (the web app). |
 | `[api] stopped` or `[web] stopped` | `npm run dev` runs the API and the web app side by side and stops both when either stops. The web app is started with `--strictPort`, so it stops when its port is taken instead of moving to another. | Read the lines above it for the reason, free the port, and start again. |
 | **The server did not answer**, then "Is `npm run dev` running? This page tries again when you reload it." | The page loaded but the API did not answer. | Look at the terminal. Start the server if it stopped, then reload. |
 | **The server did not answer**, then "Try again in a moment." | The same, on a page opened with a [share link](term:share-link). | Wait, then reload. If it stays, tell the person who shared it. |
 | `The docs are not built. Run npm run docs:build (npm run build does it too).` | You opened `/docs/` on a production server whose build has no docs. | Run `npm run docs:build`, then restart. |
-| `The docs could not be built: …` | In development the server builds the docs once, on the first visit to `/docs/`, and that failed. | Read the reason, fix it, and restart the server: it builds them only once per start. |
+| `The docs could not be built: …` | In development the server builds the docs on the first visit to `/docs/`, and that failed. | Read the reason and fix it, then reload: a failed build is tried again on the next visit. Once a build has worked, the docs are not built again until you restart the server. |
 
 If the server will not start at all and the error mentions `node:sqlite`, your Node is older than 22.13. edgy keeps its documents in SQLite through that module.
 
@@ -70,7 +70,7 @@ The header shows where your changes stand, for anyone who can edit.
 | --- | --- | --- |
 | **Saved** | Every change has reached the server. | Nothing. |
 | **Saving…** | Changes are on their way. | Nothing; it ends in a moment. |
-| **Offline, will retry** | The server did not answer. Your changes wait in this tab and are sent again every second and a half, in order, until the server answers. | Start the server if it stopped. Keep the tab open: changes still waiting are held only in the open tab, so closing it loses them. |
+| **Offline, will retry** | The server did not answer, or failed with an error of its own. Your changes wait in this tab and are sent again every second and a half, in order, until the server answers. | Start the server if it stopped. Keep the tab open: changes still waiting are held only in the open tab, so closing it loses them. |
 | "You can view this document, not change it. What you type here stays in this tab." | You are a viewer. You can use inputs and buttons, and nothing is saved. | Ask the owner for edit access. See [Sharing](/people/sharing/). |
 
 ## The editor: messages that pop up
@@ -80,8 +80,8 @@ A short message appears at the bottom of the screen and goes away by itself.
 | You see | What it means | What to do |
 | --- | --- | --- |
 | `That change was not saved. …` followed by a reason | The server refused a change. The change is dropped and the document is rebuilt from the server's version plus your other waiting changes. Typical reasons: `You can view this document, not change it.` (you are a viewer), `A page on another site can not change edgy.` (see below), or another person's change got there first and yours no longer fits, such as `No cell called "…".` | Read the reason. If another person changed the same cell, look at the document and do it again. |
-| `Those cells are not next to each other.` or `Those cells don't form a rectangle.` | **Merge** only joins cells that sit together and make one block. Nothing changed. | Select cells that touch and form a rectangle. |
-| `Merge needs at least two cells.` | Only one cell was selected. | Select more. |
+| `Those cells are not next to each other.` or `Those cells don't form a rectangle.` | **Merge** only joins cells that sit together and form one rectangle. Nothing changed. The **Merge** button is dimmed for such a selection; the message appears when you press ⌘M. | Select cells that touch and form a rectangle. |
+| `Merge needs at least two cells.` | Only one cell was selected when you pressed ⌘M. | Select more. |
 | `Cells in different tabs can't be merged; move them into one first.` (or `…in different sections…`) | A merge cannot cross from one tab or section into another. | Move the cells into the same one, then merge. |
 | `Another cell is already named "…".` | Names are unique in a document. | Choose another name. |
 | `"…" is not a usable name: start with a letter, then letters, digits, - or _.` | The name has a space, a symbol, or starts with a digit. | Rename it. See [Names and references](/language/names/). |
@@ -156,7 +156,7 @@ The messages of the language are explained in depth in [Errors](/language/errors
 | You see | What it means | What to do |
 | --- | --- | --- |
 | A faded button; its tooltip says `This button does nothing yet` | **What it does** is empty. | Write the action. See [Button](/cells/button/). |
-| Nothing happens when you press a button in **Edit** | In **Edit**, pressing a button selects it. | Switch to **Live**. |
+| A button changes a cell in **Edit**, but nothing else follows | In **Edit**, pressing a button runs its action and nothing more: its `click` handler, and the handlers its changes would set off, run only in **Live**. | Switch to **Live**. |
 | `That button failed: …` | The action stopped with an error, and none of its changes were made. The reason follows, for instance `no cell called "total".` | Fix the action. Most reasons are the ones in **Cells showing errors**; the rest are in this table. |
 | `change: …` or `click: …`, then a sentence | A handler failed. The word before the colon is the event. | Open the cell's **Events** section and fix the handler. See [Events and actions](/events/). |
 | `change: Stopped: events went 8 deep (…); a handler is probably setting off itself.` | A handler changed something that raised an event that ran the handler again, eight levels deep. The chain was stopped and what had run was kept. | Look at the cells named in the chain. A handler on `change` that sets its own cell always loops. See [Loops and undo](/events/loops-and-undo/). |
@@ -180,7 +180,7 @@ A [fetch](kind:fetch) cell shows `Loading …`, then either when it was updated 
 | --- | --- | --- |
 | `the fetch has no address` | The cell has no URL. | Give it one. |
 | `"…" is not an address` or `only http and https addresses can be fetched` | The address is malformed or uses another scheme. | Write a full `https://…` address. |
-| `a path on this server can be /api/data/<collection> or /api/demo/…` | A path that starts with `/` may only read a collection of this server. | Use a full address, or `/api/data/<collection>`. |
+| `a path on this server can be /api/data/<collection> or /api/demo/…` | A path that starts with `/` may only read a collection of this server (or one of its `/api/demo/` answers). | Use a full address, or `/api/data/<collection>`. |
 | `the address … could not be found` | The name does not resolve. | Check the spelling and that the server has a network. |
 | `… is a private or local address, which fetch cells may not reach` | The fetch runs on the server, which refuses addresses inside its own network. | Use a public address. |
 | `the address could not be reached (…)` | The connection failed; the code in brackets says how. | Check the address is up. |
@@ -227,11 +227,13 @@ See [Sharing with people](/people/sharing/) and [Share links](/library/share-lin
 
 ## The library
 
+A failed library action shows the server's reason when it gave one. When the server is not there you see the browser's own `Failed to fetch`, or `The server answered …` and a number. The sentences below are what the page falls back to when it has no reason to show, so you may meet them rarely.
+
 | You see | What it means | What to do |
 | --- | --- | --- |
-| `The library could not be loaded.` | The server did not answer. | See **The server did not answer** above. |
+| `The library could not be loaded.` | The list could not be fetched, and there was no reason to show. | See **The server did not answer** above. |
 | `Could not create the document.` | A new document could not be made. | Try again; look at the terminal. |
-| `The description was not saved.` or `That did not save.` | The server refused the change and gave no reason. | Try again. |
+| `The description was not saved.` or `That did not save.` | The change was not saved and there was no reason to show. | Try again. |
 | `The deck could not be made.` | Grouping failed. | Try again. |
 | `an archived document can not be pinned; restore it first` | Pins are for documents in the list. | **Restore** it, then pin. |
 | `only its owner can pin or archive it` | A document someone shared with you is theirs to pin or archive. | Ask the owner. |
@@ -247,7 +249,7 @@ Export is a download link, so a failure shows as the answer in the browser inste
 | `{"error":"the offline build is missing; run npm run build"}` as the page | The server has no offline bundle (`dist/offline`). | Run `npm run build`, then restart. In development the server makes the bundle on the first export, which takes a while; if making it fails you get `something went wrong on the server` and the reason is in the terminal. |
 | `only its owner can do that` | You are not the owner. | Ask the owner. |
 | A picture is missing in the file | The server could not read it when exporting; pictures it cannot read are left out. A picture linked from another address is checked like a fetch cell is, so an address the server cannot reach, or a private one, is left out. | Upload the picture into the cell instead of linking it. |
-| **Offline copy**, with "Nothing you change here is saved anywhere; closing the page forgets it." | This is how an exported file behaves: it works with no server and keeps nothing. | Not a fault. Open the original to keep changes. |
+| **Offline copy**, with the tooltip "Nothing you change here is saved anywhere; closing the page forgets it." | This is how an exported file behaves: it works with no server and keeps nothing. | Not a fault. Open the original to keep changes. |
 | `not in this offline copy` | Something in the file asked for a document or a collection that the export did not include. | Export again from the document that holds it. |
 
 ## The sync badge

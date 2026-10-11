@@ -39,7 +39,7 @@ The middleware then makes three decisions before any route runs:
 - A person acting by cookie or local mode (not by key) must pass the cross-site check below.
 - Otherwise the principal is stored for the route (`c.set('who', who)`).
 
-The server also stamps who made a change, from the credential and never from the body (`actorOf`). A key makes `{ kind: 'agent', name, id: <person's id>, for: <person's name> }`; a session makes a human with the account's name and id; a guest is a human named as they say, marked `guest`. The body of a request may name an agent, and that is all it may say about itself.
+The server also stamps who made a change, from the credential and never from the body (`actorOf`). A key makes `{ kind: 'agent', name, id: <person's id>, for: <person's name> }`; a session makes a human with the account's name and id; a guest is a human named as they say, marked `guest`. The body of a request may name an agent, and that is all it may say about itself. (One exception: in local mode, where an agent needs no key, a body that says `kind: "agent"` is believed.)
 
 ## What a route needs
 
@@ -82,7 +82,7 @@ const RANK = { viewer: 1, editor: 2, owner: 3 } as const;
 
 and a refusal depends on what the person is allowed to know. Someone with no role on a document gets `404 no such document`, exactly as if it didn't exist, so a stranger can't tell. Someone with a role that is too low gets `403` with what they can do (`you can view this document, not change it`; `only its owner can do that`).
 
-A guest is held tighter. A guest may do only what a route allows with `link:`, only on the document their link opens, and for `edit` only if the link is an edit link. Anything else, including every route without a `link`, is `403 this link does not reach that`.
+A guest is held tighter. A guest may do only what a route allows with `link:`, only on the document their link opens, and for `edit` only if the link is an edit link. Anything else, including every route without a `link`, is `403 this link does not reach that`; a view link on a route that needs an edit link gets `403 this link can view the document, not change it`.
 
 ### Data
 
@@ -102,7 +102,7 @@ The guard is a function with a `need` property (`type Guard = MiddlewareHandler<
 - calls every non-public route signed out and requires `401 sign in first`;
 - as a second signed-in person with no access, calls every document, deck and data route and requires `404`.
 
-A new route with no `need`, or the wrong one, fails the build. There is no default that allows.
+A new route with no `need` fails `npm test`, and so does one that lets a stranger into a document, deck or collection. There is no default that allows.
 
 ## Passwords
 

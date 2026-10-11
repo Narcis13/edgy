@@ -11,21 +11,21 @@ Open it with the **Activity and messages** button in the header (in the **More**
 
 ## Who is here
 
-At the top, small chips show who has the document open: **You**, the other people (point at one to see whether they are editing or reading and which cell they have selected), and any [agent](term:agent) that has been in the document in the last ten minutes. An agent's chip says what it was doing: listening for a message, reading, editing or idle. See [Presence](/people/presence/).
+At the top, small chips show who has the document open: you (your name followed by *(you)*, or **You** where there are no accounts), the other people (point at one to see whether they are editing or reading and which cell they have selected), and any [agent](term:agent) that has been in the document in the last ten minutes. Point at an agent's chip to see what it was doing, and when: listening for a message, reading, editing or idle. See [Presence](/people/presence/).
 
 ## Changes
 
 Below that is the feed, oldest first, ending with the newest. Each change is shown as the [op](term:op) it is, written as an s-expression:
 
 ```text
-(set qty value 5)
-(set total expr (* qty price))
+(set c2 value 5)
+(set c6 expr (* qty price))
 (split c4 row)
 (merge c4 c7)
 (replace c3 ("text …"))
 ```
 
-A cell is shown by its name when it has one, otherwise by its id. A long op is cut short with `…`, and a whole new cell is shown as its kind only, so `("text …")` stands for a text cell. Reading the feed teaches you what an op looks like, and an agent works in the same terms: see [Ops](/agents/ops/).
+A cell is shown by its id, such as `c4`, because that is what the document records, even when an agent sent the cell's name. Names still appear inside expressions, as in `(* qty price)`. A long op is cut short with `…`, and a whole new cell is shown as its kind only, so `("text …")` stands for a text cell. Reading the feed teaches you what an op looks like, and an agent works in the same terms: see [Ops](/agents/ops/).
 
 Changes are grouped so the feed stays readable. A run of changes by the same author within a few seconds shares one block with one name and one time. When someone sets the same property again and again, for example by typing, the block shows only the last value and a count, like `×12`.
 

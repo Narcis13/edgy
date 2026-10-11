@@ -14,9 +14,9 @@ An op is a JSON list: the verb first, then its arguments. The verbs are listed [
 ["set", "qty", "value", 5]
 ```
 
-**Cells by id or name.** Wherever an op takes a cell, you give its id (`c3`) or its name (`qty`). Ids are given by edgy and never change; a name is whatever the person or the agent chose, and it follows a rename: [name](op:name) rewrites every formula, action and text template that read the old one. The ops you get back always use ids.
+**Cells by id or name.** Wherever an op takes a cell, you give its id (`c3`) or its name (`qty`). Edgy gives every cell an id (unless the notation you send writes one) and the cell keeps it; a name is whatever the person or the agent chose, and it follows a rename: [name](op:name) rewrites every formula, action and text template that read the old one. The ops you get back always use ids.
 
-**Several ops at once.** The ops in one request are applied together or not at all. The server wraps them in a [do](op:do) op: each op sees what the ones before it made, and if one of them fails the document stays exactly as it was and you get that op's message. The history records them as one change that lists each op.
+**Several ops at once.** The ops in one request are applied together or not at all. With two or more ops the server wraps them in a [do](op:do) op (one op is applied as it is): each op sees what the ones before it made, and if one of them fails the document stays exactly as it was and you get that op's message. The history records them as one change that lists each op.
 
 **Fresh ids.** An op that makes cells, like [split](op:split) or [dup](op:dup), picks their ids. Give the id yourself when a later op in the same list needs to name the new cell: `["split", "body", "row", {"id": "side"}]`.
 
@@ -77,7 +77,7 @@ Each entry below has an example: a document in [notation](/agents/notation/), th
 ::: op split
 `["split", cell, "row" | "col", {before?, ratio?, cell?, id?, group?}]`
 
-Divides a cell in two. `"row"` puts the new cell beside it, `"col"` puts it below. The new cell is empty unless you give its notation in `cell`; `ratio` (0.05 to 0.95, default 0.5) is the share the old cell keeps, and `before: true` puts the new cell first.
+Divides a cell in two. `"row"` puts the new cell beside it, `"col"` puts it below. The new cell is empty unless you give its notation in `cell`; `before: true` puts the new cell first. `ratio` (0.05 to 0.95, default 0.5) is the share the first of the two takes: the old cell, or the new one when you use `before`.
 
 When the cell already sits in a group that runs the same way, the new cell joins that group and the two share the old cell's room. Otherwise edgy makes a new group around them, with the id in `group` or a fresh one.
 
@@ -123,7 +123,7 @@ The merged cell keeps the first cell that holds something. When every cell you m
 
 `a` now holds "One", a blank line and "Two", and takes two thirds of the row. The op comes back as it was written, and its inverse is a `replace` of the row.
 
-Errors: `merge needs at least two cells`, `those cells are not next to each other`, `those cells don't form a rectangle`, and for cells in different panels `cells in different tabs can't be merged; move them into one first`.
+Errors: `merge needs at least two cells`, `those cells are not next to each other`, `those cells don't form a rectangle`, and for cells in different panels `cells in different tabs can't be merged; move them into one first` (`sections` for an accordion).
 :::
 
 ::: op remove
@@ -327,7 +327,7 @@ Errors: `style needs an object: ["style", cell, {"bg": "accent-soft"}]`, `unknow
 ::: op draw
 `["draw", diagram, element, …]`
 
-Adds elements to a [diagram](kind:diagram) cell, or changes the ones whose `id` already exists. A field set to `null` is removed. An element has a `type` (`rect`, `ellipse`, `diamond`, `text`, `arrow` or `line`), an optional `id` and `text`, and a place and size (`x`, `y`, `w`, `h`). An arrow has `from` and `to`: the ids of the elements it joins. A box with no `x` and `y` is laid out below the box an arrow comes from.
+Adds elements to a [diagram](kind:diagram) cell, or changes the ones whose `id` already exists. A field set to `null` is removed. An element has a `type` (`rect`, `ellipse`, `diamond`, `text`, `arrow` or `line`), an optional `id` and `text`, and a place and size (`x`, `y`, `w`, `h`). An arrow has `from` and `to`: the ids of the elements it joins. A box with no `x` and `y` is placed for you: below the box an arrow comes from, above the one it goes to, or in layers under the rest.
 
 ```notation id=op-draw
 ["col",
@@ -408,7 +408,7 @@ Errors: `meta needs a key: ["meta", "title", "Budget"]`, `only on and actions ha
 ::: op do
 `["do", op, op, …]`
 
-Applies the ops in order, all or nothing. Each op sees what the ones before it made. If one fails, the whole `do` fails with that op's message and the document is untouched. The server makes a `do` of the ops you send in one request, so you seldom write one yourself; write it when a list of ops has to count as one op inside a larger one.
+Applies the ops in order, all or nothing. Each op sees what the ones before it made. If one fails, the whole `do` fails with that op's message and the document is untouched. The server makes a `do` of the ops you send in one request (when there are two or more), so you seldom write one yourself; write it when a list of ops has to count as one op inside a larger one.
 
 ```notation id=op-do
 ["col",

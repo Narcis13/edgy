@@ -60,8 +60,8 @@ export function OpLife() {
       <Label x={260} y={368}>If the server refuses the op, A drops it and says so.</Label>
       <Label x={260} y={384}>B applies the event to its confirmed copy, then replays</Label>
       <Label x={260} y={400}>its own pending ops on top of it: a rebase.</Label>
-      <Label x={260} y={420}>Ops pulled from the cloud arrive as a reset event:</Label>
-      <Label x={260} y={436}>every browser loads the document again.</Label>
+      <Label x={260} y={420}>When a pull from the cloud rewrites the history, a reset</Label>
+      <Label x={260} y={436}>event makes every browser load the document again.</Label>
     </Diagram>
   );
 }

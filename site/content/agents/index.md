@@ -25,7 +25,7 @@ Everything an agent does shows in **Activity and messages**, the panel on the le
 
 ::shot activity "Activity: each change with who made it and when, people and agents alike."
 
-When a person asks **Ask AI** for code and an agent is listening, the request goes to the agent first. See [Ask AI](/editor/ask-ai/).
+When a person asks **Ask AI** for code and an agent is listening, the request goes to the agent, unless the server has an Anthropic key: then Claude is asked first and the agent only if Claude can't answer. See [Ask AI](/editor/ask-ai/) and [POST /api/docs/:id/compose](route:POST /api/docs/:id/compose).
 
 ## A first conversation
 

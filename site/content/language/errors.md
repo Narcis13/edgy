@@ -47,10 +47,10 @@ These come from the reader, before anything is worked out. Nothing about the doc
 | --- | --- |
 | `missing )` | A `(` was never closed. The underline is at the bracket that has no partner. Add the `)`. |
 | `missing }` | A `{` was never closed. Add the `}`. |
-| `unexpected )` | A `)` with no `(` before it. Remove it, or add the `(` it belongs to. |
-| `unexpected }` | A `}` with no `{` before it. |
+| `unexpected )` | A `)` where an expression should start, such as at the very beginning. Remove it, or add the `(` it belongs to. An extra `)` after a complete expression, as in `(+ 1 2))`, gives `expected one expression` instead. |
+| `unexpected }` | A `}` with no `{` before it, at the start or inside brackets, as in `(a })`. After a complete expression it gives `expected one expression` too. |
 | `a "string" is missing its closing quote` | A piece of text started with `"` and never ended. Add the closing `"`. |
-| `expected one expression; wrap several in (do …)` | There is more than one expression, such as `(set! a 1) (set! b 2)`. Join actions with [do](fn:do): `(do (set! a 1) (set! b 2))`. A formula gives one value, so it can't hold two. |
+| `expected one expression; wrap several in (do …)` | There is more than one expression, such as `(set! a 1) (set! b 2)`, or something left over after the first one ends, such as an extra `)`. Join actions with [do](fn:do): `(do (set! a 1) (set! b 2))`. A formula gives one value, so it can't hold two. |
 | `{ } needs pairs: {key value key value}` | A record has a key without a value, or the other way round. Write them in pairs. |
 | `{ } keys must be words` | The key of a record is something other than a word or text, such as a number or a call. |
 | `let needs pairs: (let (x 1 y 2) …)` | The names and values of [let](fn:let) must pair up: `(let (x 1 y 2) body)`. |
@@ -82,7 +82,7 @@ A common mistake is writing `it` or `i` outside the place that defines them. In 
 
 | Message | What it means and what to do |
 | --- | --- |
-| `expected a number, got "abc"` | Arithmetic met text that isn't a number. The message says what it got: `"abc"` (text, cut at 24 letters), `a list`, `a record`, `a function`, `true`, `false`. Find the cell that holds it; an empty cell is fine (it counts as 0), but `"abc"` is not. If the cell may hold anything, check it first, or total with [sum](fn:sum), which skips what isn't a number. |
+| `expected a number, got "abc"` | Arithmetic met text that isn't a number. The message says what it got: `"abc"` (text, cut at 24 letters), `a list`, `a record` or `a function`. Find the cell that holds it; an empty cell is fine (it counts as 0), but `"abc"` is not. If the cell may hold anything, check it first, or total with [sum](fn:sum), which skips what isn't a number. |
 | `expected a date, got "soon"` | A date function got something it can't read as a date. Dates are `"2026-10-11"`, with an optional time, or a time in milliseconds. An empty cell gives `expected a date, got nothing` or `expected a date, got ""`: use `(default d (today))` for a stand-in. |
 | `division by zero` | [/](fn:/) or [%](fn:%) with a divisor of 0. Check the divisor first: `(if (= n 0) 0 (/ total n))`. |
 | `pmt needs at least one period` | [pmt](fn:pmt) was given 0 periods. |
@@ -127,7 +127,7 @@ These come from [sib, idx and child](/language/names/#relative-references-sib-id
 
 | Message | What it means and what to do |
 | --- | --- |
-| `sib needs a cell that sits in a row or column` | The cell is the root, or alone, so it has no neighbours. Split it first. |
+| `sib needs a cell that sits in a row or column` | The cell is the root, so it has no neighbours. Split it first. |
 | `there is no sibling 5` | The row or column has no cell at that place. Places start at 0; negative numbers count from the end. |
 | `"lines" has no cell 7` | [child](fn:child) asked for a place past the end of the row or column. |
 | `"x" is not a table, so nothing in it can be picked` | [selected](fn:selected) names a cell that isn't a [table](kind:table). |
@@ -233,7 +233,7 @@ Some changes are refused because of how the document is built. The message appea
 | `those cells are not next to each other` | Only neighbours merge. |
 | `those cells don't form a rectangle` | The selected cells must fill a rectangle once merged. |
 | `cells in different tabs can't be merged; move them into one first` | Cells in two tabs can't be merged. In an accordion the message says `sections` in place of `tabs`. |
-| `tabs keep at least one panel; remove the tabs instead` | The last tab or section can't be removed alone. |
+| `tabs keep at least one panel; remove the tabs instead` | The last tab or section can't be removed alone. For an accordion the message says `accordion keep at least one panel; remove the accordion instead`. |
 | `a cell can't swap with one inside it` | A cell and its own contents can't trade places. |
 | `a cell can't move next to something inside it` | The same for moving. |
 | `nothing can sit beside the root; split it instead` | The first cell has no neighbours until you split it. |

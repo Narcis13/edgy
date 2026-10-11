@@ -35,7 +35,7 @@ The examples on these pages are run every time the docs are built, so the result
 ## Conventions
 
 - **A call is `(name arguments…)`.** The function is the first item. See [The language](/language/).
-- **Arguments are worked out first**, innermost call first, except where an entry says otherwise. [if](fn:if), [and](fn:and), [or](fn:or) and [cond](fn:cond) only work out the arguments they need.
+- **Arguments are worked out first**, innermost call first, except where an entry says otherwise. [if](fn:if), [and](fn:and), [or](fn:or), [cond](fn:cond) and [when](fn:when) only work out the arguments they need, and [map](fn:map) and the other functions that take an expression over `it` work theirs out once per item.
 - **Empty cells count as 0** in arithmetic, and as nothing elsewhere. [What counts as true](/language/truth/) has the rules.
 - **Text that looks like a number is a number** where a number is needed: `(+ 1 "2")` is 3. Text that doesn't is an error, with a few functions that skip it instead; each entry says which.
 - **Results are values.** Anything you see after `⇒` is a value of the language: a number, text, `true`, `false`, `nil`, `(list …)`, a record `{k v}`.

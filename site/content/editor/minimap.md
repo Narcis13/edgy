@@ -8,7 +8,7 @@ The minimap is the small picture of a document's layout that stands in for the d
 
 - On every document's card in the [library](term:library), above its title.
 - On a deck's card, as a stack of up to three sheets: the first three documents of the deck, the first on top.
-- In the strip **Start from a template** at the top of the library, one for each [template](term:template).
+- In the row of templates at the top of the library (**Start from a template** to a screen reader), one for each [template](term:template). The row is there while you are not searching or filtering.
 - On a deck's page, beside each document in the deck's order. See [Decks](/library/decks/).
 - In the list of slides of a deck that has been exported as an HTML file. See [Exporting](/library/export/).
 

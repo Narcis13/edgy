@@ -36,6 +36,7 @@ src/server/*.test.ts          src/web/editor/inspector/*.test.ts
 src/web/print/*.test.ts       src/web/play/*.test.ts
 src/web/kinds/*.test.ts       src/web/pages/library/*.test.ts
 src/web/code/*.test.ts        src/web/account/*.test.ts
+site/tests/*.test.ts
 ```
 
 > [!WARNING]
@@ -64,6 +65,7 @@ Test names are plain sentences saying what is true, such as *every op can be und
 | `src/core/` | The language, the ops and their inverses, notation, the engine, events, the library's search and arrangement. |
 | `src/server/` | The API end to end through the app's own `request` (no port opened): accounts, access, sync against a local stand-in for the cloud, the runner with a fake clock, export, Ask AI with `fetch` replaced. |
 | `src/web/` | The pure parts of the app: pagination, the editor's helpers, the code editor's lexer and edits, the table, the calendar and the stat. The components themselves are looked at in a browser, see below. |
+| `site/tests/` | These docs: see [The docs' tests](#the-docs-tests). |
 
 ## Build
 
@@ -83,13 +85,13 @@ This runs three builds, one after the other:
 
 The docs have their own tests in [docs.test.ts](src:site/tests/docs.test.ts). They check, in order:
 
-- **Build.** Every page builds without a problem, is listed once in `site/nav.ts`, and opens with a sentence saying what it covers.
-- **Coverage.** Everything the code lists has its entry: every kind, function, event, op, API route, MCP tool, style key, format, colour token, shortcut and template. The test names each one that is missing, and each entry that names something the code no longer has.
+- **Build.** Every page builds without a problem (a link to an entry that does not exist, or an entry that names something the code no longer has, is a problem), is listed once in `site/nav.ts`, and opens with a sentence saying what it covers.
+- **Coverage.** Everything the code lists has its entry: every kind, function, event, op, API route, MCP tool, style key, format, colour token, shortcut and template. The test names each one that is missing.
 - **Doc-tests.** Every `sx` result on a page is what edgy gives, every `live` and `notation` block builds, every `ops` block applies.
 - **Links.** Every link and anchor between pages exists.
 - **Look.** No gradient, backdrop blur, text shadow or SVG filter in the docs' styles and diagrams, and the docs use the app's colour tokens.
 
-They are not among the globs above, so run them by name:
+They are the last glob above, so `npm test` runs them with the rest. To run only them:
 
 ```text
 npx tsx --disable-warning=ExperimentalWarning --test site/tests/docs.test.ts
@@ -131,7 +133,7 @@ $P/serve.sh stop 8791
 Run them from Git Bash on Windows. The pieces:
 
 - **`gates`** lists the three gates as commands for `gates.sh`. The build gate writes into the log folder, so it never touches `dist/` or a server that is running. It prints the test counts, and marks a Vite chunk warning as a finding.
-- **`serve.sh`** builds the app, the offline bundle and the docs, and starts a production server on its own port with its own data. It runs in accounts mode, so you sign in; `serve.sh session` signs up a test account and prints the cookie. Sync is off. Use port 8791, or 8792 and up for a second server. Never use `data/edgy.db`, and never stop a dev server someone has open on 5173 or 8787. It is a production build with no hot reload: run `fresh` again after every code change.
+- **`serve.sh`** builds the app, the offline bundle and the docs, and starts a production server on its own port with its own data. It runs in accounts mode, so you sign in; `serve.sh session` signs up a test account and prints the cookie. Sync is off unless `TURSO_URL` and `TURSO_AUTH_TOKEN` are in the environment you start it from. Use port 8791, or 8792 and up for a second server. Never use `data/edgy.db`, and never stop a dev server someone has open on 5173 or 8787. It is a production build with no hot reload: run `fresh` again after every code change.
 - **`screens`** lists what `sweep.sh` shoots: the sign-in pages signed out, the library, **Data** and profile, and for each document you name **Edit**, **Live** and **Page** at 1440 by 900, **Live** and **Page** on a 390 by 844 phone, and the printed PDF. It reports the problems it finds on each screen and exits non-zero if there are any. Add a line there when your change adds a screen.
 - **`cdp.mjs`** shoots one screen or one interaction, with a script run in the page. It exits with 3 when the page logged a console error or warning, threw, or made a request that failed or answered 400 or more. A change is not done until that is zero. On Windows set `CHROME` to the path of `chrome.exe` first.
 

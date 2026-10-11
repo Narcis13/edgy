@@ -169,7 +169,7 @@ The session calls it from five places. All but the code studio's test run only i
 | --- | --- |
 | `dispatch` | A change a person made; handlers for the value changes it caused. |
 | `run(cellId)` | A button, or a table row's action: the cell's own `do` runs as the gesture and, for a button, its `click` handler after it. A failure shows `That button failed: …`. |
-| `fire(event)` | A click or double-click (`pointer()`), and the document's `open` and `close`. |
+| `fire(event)` | A click or double-click (`pointer()`), and the document's `open`. |
 | `test(cell, event)` | The code studio's button for trying a handler, in any mode. Its changes are real and one undo step. |
 | `leaving()` | The document's `close` handler, when the person goes. Its ops are sent with `keepalive` so they survive the page closing. |
 

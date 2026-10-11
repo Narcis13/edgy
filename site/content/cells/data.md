@@ -38,7 +38,7 @@ step
 ## Adding and designing one
 
 1. Select a cell and press `/`, then choose **Data (hidden)**.
-2. Name it in **Name** at the top of **Cell details**. Without a name nothing can read it, and the designer offers one (**Name it** …).
+2. The menu names it for you (`data`, or `data2` if that is taken); change it in **Name** at the top of **Cell details**. A data cell written in notation without a name can't be read, and the designer offers one (**Name it** …).
 3. In the **Content** section, pick **Kind of value** and type the value.
 
 ::shot designer-data "The data cell's designer: its kind of value, the value, and how formulas and buttons use it."

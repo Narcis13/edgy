@@ -128,7 +128,7 @@ For example, a wizard's **Next** button can open the next step. Nothing else cha
 
 ## On a phone and on paper
 
-On a phone the tabs take the full width. When the titles don't fit, the tab bar scrolls sideways, not the page, and the open tab is kept in view. Each tab is at least 42 pixels tall to tap. The arrow keys, Home and End move between tabs ([the key](key:tabs-move)).
+On a phone the tabs take the full width. When the titles don't fit, the tab bar scrolls sideways, not the document, and the open tab is kept in view. Each tab is at least 42 pixels tall to tap. The arrow keys, Home and End move between tabs ([the key](key:tabs-move)).
 
 On paper there is no tab bar: every panel prints, in order, each under its title. A printed page doesn't end between a title and the first cell under it. See [The Page view](/editor/page-view/).
 
@@ -137,6 +137,6 @@ On paper there is no tab bar: every panel prints, in order, each under its title
 - **That button failed: `no cell called "view"`.** A button or a formula reads the tabs by name, and the tabs have none, or another name. Select them and type a name in **Name**, or press **Name it** in the designer.
 - **The wrong tab opens, or the first one does.** The title in `(set! view "Details")` has to be a title the tabs have; a title with a typo opens the first tab and gives no error. Check the titles in **Cell details**.
 - **The tab won't take its new title.** Titles must differ from each other, ignoring case. The designer says *There is already a tab called “Details”.*, or *A tab needs a title.* if you leave it empty. On the tab itself, a toast says *Another tab is already called “Details”.*
-- **I can't remove the last tab.** The tabs keep at least one: the designer says *The last tab can't go; delete the whole tabs instead.* Select the tabs and press Backspace.
+- **I can't remove the last tab.** The tabs keep at least one: the greyed-out bin's tooltip says *The last tab can't go; delete the whole tabs instead.* Select the tabs and press Backspace.
 - **"cells in different tabs can't be merged; move them into one first".** Merging works inside one tab. Move the cells into the same tab first.
 - **A formula compares the tabs with a number.** The value is a title: write `(= view "Details")`, not `(= view 2)`.

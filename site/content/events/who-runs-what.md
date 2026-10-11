@@ -17,7 +17,7 @@ The rule is that every handler runs once. The person who did something runs the 
 | A timer's `tick` | The server | Once for the document |
 | A fetch cell's `load` and `fail` | The server | Once for each fetch |
 | A change an agent made, and what it sets off | The server | Once, if anyone has the document open in **Live** |
-| Anything in **Edit** or **Page**, or on paper | Nowhere | Never |
+| A handler, in **Edit** or **Page**, or on paper | Nowhere | Never |
 
 ## Two people, one document
 
@@ -34,9 +34,9 @@ Ada and Grace both have the [Market stall](template:events) open in **Live**. Th
 
 ## What nobody sees
 
-- **In Edit nothing runs.** Pressing a button selects it, a click on a cell selects it, and a checkbox you tick while designing runs no handler. Switch to **Live** to try what you built. If Ada is in **Edit** and Grace is in **Live**, Grace's actions run their handlers in Grace's browser, and Ada, in Edit, sees the changes arrive.
+- **In Edit no handler runs.** A click on a cell selects it, and a checkbox you tick while designing runs no handler. A button still does its own work: pressing it in Edit or Page runs its `do` (and saves the records it asks for), but not its `click` handler, nor the handlers its changes would set off. Switch to **Live** to try what you built. If Ada is in **Edit** and Grace is in **Live**, Grace's actions run their handlers in Grace's browser, and Ada, in Edit, sees the changes arrive.
 - **The server runs timers and fetches while anyone is in Live.** When Grace leaves **Live**, or closes the tab, and Ada is only in **Edit**, the timers stop and fetches stop refreshing. [Timers](/events/timers/) and [Fetch cells](/events/fetch/) say how.
-- **A viewer runs handlers for themselves only.** Someone who may only view the document, or who opened a view link, can use it in **Live**: their clicks run handlers in their browser. What a handler changes stays in their tab, and records it would save are not saved: *You can view this document, not change it, so nothing is saved.* Their Live does not keep timers and fetches running for others either.
+- **A viewer runs handlers for themselves only.** Someone who may only view the document, or who opened a view link, can use it in **Live**: their clicks run handlers in their browser. What a handler changes stays in their tab, and records it would save are not saved: *You can view this document, not change it, so nothing is saved.* (A view link says *This link can only view the document, so nothing is saved.*) Their Live does not keep timers and fetches running for others either.
 - **Paper runs nothing.** Printing, or the **Page** view, shows the document as it stands.
 
 ## When open and close run

@@ -22,7 +22,7 @@ What counts as true or false is the same everywhere in the language, and is expl
 `=` and `!=` ask whether two values are the same. `<`, `<=`, `>` and `>=` ask which comes first. All of them give `true` or `false`.
 
 ::: fn =
-True when its arguments are all the same as the first. Numbers equal text that spells them. Text must match exactly, capitals included. Lists and records are the same when they hold the same things. Nothing is the same only as nothing.
+True when its arguments are all the same as the first. Numbers equal text that spells them, but only plain digits: `(= 1200 "1,200")` is `false`, though arithmetic reads `"1,200"` as 1200. Text must match exactly, capitals included. Lists and records are the same when they hold the same things. Nothing is the same only as nothing.
 
 ```sx
 (= 1 1)

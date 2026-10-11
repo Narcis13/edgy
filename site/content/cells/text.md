@@ -62,7 +62,7 @@ The **Text** section of **Cell details** opens by default for a text cell. **Tex
 | `[words](https://example.test)` | A link that opens in a new tab. Links can start with `http:`, `https:`, `mailto:`, `/` or `#`. |
 | `{{name}}`, `{{(* qty price) \| currency}}` | The value of an expression, optionally in a format. |
 
-A blank line starts a new paragraph. A new line without a blank line breaks the line inside the paragraph. Nothing else is Markdown: tables, pictures, quotes, code blocks, headings deeper than three levels and nested lists are shown as typed.
+A blank line starts a new paragraph. A new line without a blank line breaks the line inside the paragraph. Nothing else is Markdown: tables, pictures, quotes, code blocks and headings deeper than three levels are shown as typed. A nested list becomes one flat list.
 
 ## In notation
 

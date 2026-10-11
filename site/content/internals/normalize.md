@@ -159,7 +159,7 @@ All arithmetic goes through `round4`, which rounds to four decimals, so repeated
 
 ## The root
 
-The root is the top of the tree, and its id changes when its shape does. Splitting the root in the other direction makes a new group, which becomes the root. Removing all but one cell of the root group leaves that cell as the root. This is why a document's root is not always `c1`, and why the inverse of an op on the root is a `replace` of whatever the root now is.
+The root is the top of the tree, and its id changes when its shape does. Splitting the root, in either direction, makes a new group, which becomes the root. Removing all but one cell of the root group leaves that cell as the root. This is why a document's root is not always `c1`, and why the inverse of an op on the root is a `replace` of whatever the root now is.
 
 ## Helpers in tree.ts
 

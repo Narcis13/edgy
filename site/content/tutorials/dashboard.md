@@ -13,7 +13,7 @@ The dashboard reads the collection `orders`, with the fields `customer`, `qty`, 
 
 ## Start the document
 
-1. On the home page, press **New document**. Type `Orders dashboard` in the title and press Enter.
+1. On the home page, press **New document**. Click the title at the top, select all (⌘A, or Ctrl+A), type `Orders dashboard` and press Enter.
 2. With no cell selected, set **Currency** in the **Page** section of **Cell details** to `EUR` and press Enter.
 3. Click the empty cell and type `# Orders at a glance`. Press Esc.
 

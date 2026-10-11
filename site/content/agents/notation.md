@@ -59,8 +59,8 @@ A line reads, from left to right: the id, the kind, the name, the room it takes,
 
 | Part | What it says |
 | --- | --- |
-| `c7` | The cell's id. Ops take it, or the name. Ids are given by edgy and never change. |
-| `input:number` | The kind, and for an [input](kind:input) or a [list](kind:list) its type. A text cell is `text` alone. |
+| `c7` | The cell's id. Ops take it, or the name. Edgy gives each cell an id (unless the notation wrote one) and the cell keeps it. |
+| `input:number` | The kind, and for an [input](kind:input), a [list](kind:list) or a [chart](kind:chart) its type. A text cell is `text` alone. |
 | `total` | The name, when the cell has one. Other cells read the cell by it. |
 | `[hug]`, `[2]` | The room the cell takes in its row or col, when it isn't the usual 1. |
 | `(hidden)` | The cell is hidden right now, because its `hidden` condition is true. |
@@ -79,9 +79,9 @@ What follows the name depends on the kind:
 | [list](kind:list) | `= ` and the expression, or the number of items. |
 | [calendar](kind:calendar) | `events ` and the expression, then `picked ` and the day. |
 | [canvas](kind:canvas) | The number of strokes. |
-| [tabs](kind:tabs), [accordion](kind:accordion) | The number of panels and which are open. |
+| [tabs](kind:tabs), [accordion](kind:accordion) | The number of panels and which are open. An accordion also says `one open at a time` or `any number open`. |
 | [collapsible](kind:collapsible), [panel](kind:panel) | The title, and for a collapsible `open` or `folded`. |
-| [diagram](kind:diagram) | The count of shapes and connectors. |
+| [diagram](kind:diagram) | The count of shapes and connectors, and of text elements when there are any. |
 | [data](kind:data) | `(never shown)` and the value. |
 | [timer](kind:timer) | How often it ticks (or `once, after …`) and `running` or `stopped`. |
 | [fetch](kind:fetch) | The address, `every …`, and `idle`, `loading`, `ready` (then `→` the answer) or `failed: …`. |

@@ -115,7 +115,7 @@ A click on an item's words raises `click` with that `item`, besides starting to 
 
 ## On a phone and on paper
 
-On a phone the grips and the **×** are always visible and larger to touch. In a very narrow cell (under about 260 pixels) the grip is dropped, and reordering waits for a wider cell. On paper a list prints its items, ticks and progress bar, without **Add an item**, the grips or the **×**.
+On a touch screen, such as a phone, the grips and the **×** are always visible and larger to touch; with a mouse they appear when you point at a line. In a very narrow cell (under about 260 pixels) the grip is dropped, and reordering waits for a wider cell. On paper a list prints its items, ticks and progress bar, without **Add an item**, the grips or the **×**.
 
 ## Usual mistakes
 

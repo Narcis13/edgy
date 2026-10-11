@@ -32,13 +32,13 @@ If you have not used edgy yet, read [Install](/start/install/), [The screens](/s
 - **Know the keys.** The steps use a few keys of the sheet: `/` to choose what a cell holds, ⌥ with an arrow to add a cell on that side, Esc to select the cell around the selected one, and ⌘D to duplicate. ⌥ is Alt and ⌘ is Ctrl outside a Mac. They are all on [Keyboard](/start/keyboard/).
 
 > [!NOTE]
-> Keys pressed in **Cell details** stay in it. After you press a button or choose from a drop-down there, click the cell on the sheet once before you use a key such as ⌥↓. After you press Enter in one of its text fields you do not need to. Pressing a button on the sheet runs it, even in Edit, so the tutorials select buttons by creating them or with Tab and do not click them.
+> Keys pressed in **Cell details** stay in it. After you press a button or choose from a drop-down there, click the cell on the sheet once before you use a key such as ⌥↓. After you press Enter in one of its text fields you do not need to. A click on a text cell that is already selected opens it for typing; press Esc to close it again, with the cell still selected. Pressing a button on the sheet runs it, even in Edit, so the tutorials select buttons by creating them or with Tab and do not click them.
 
 ## Typing into cells and fields
 
-To set a field in **Cell details**, click it, select all (⌘A, or Ctrl+A) so that nothing old is left, type the new value and press Enter. The steps write that as "set **Label** to ...". In a field of the sheet, such as an input, the same applies.
+To set a field in **Cell details**, click it, select all (⌘A, or Ctrl+A) so that nothing old is left, type the new value and press Enter. The steps write that as "set **Label** to ...". In a field of the sheet, such as an input, and in the document's title, the same applies.
 
-The steps often say "type": in an empty cell, any letter starts its text, and a text that starts with `=` becomes a formula when you finish. Esc finishes typing in a cell. In a code field, brackets and quotes close themselves, and typing the closing one steps over it, so you can type an expression in one go; in the panel's code fields Enter keeps it.
+The steps often say "type": in an empty cell, any character starts its text, and a text that starts with `=` becomes a formula when you finish. Esc finishes typing in a cell. In a code field, brackets and quotes close themselves, and typing the closing one steps over it, so you can type an expression in one go; in the panel's code fields Enter keeps it.
 
 ## The finished documents
 

@@ -43,7 +43,7 @@ The model and the language. Plain TypeScript on plain JSON, so everything can be
 
 ### src/server
 
-A Hono app on Node. Every route is in [app.ts](src:src/server/app.ts).
+A Hono app on Node. Every `/api` route is in [app.ts](src:src/server/app.ts); [docs.ts](src:src/server/docs.ts) adds `/docs/`.
 
 | File | What it holds |
 | --- | --- |
@@ -60,7 +60,7 @@ A Hono app on Node. Every route is in [app.ts](src:src/server/app.ts).
 
 ### src/mcp
 
-[tools.ts](src:src/mcp/tools.ts) registers the tools in a list, `TOOLS`, that the docs read; [server.ts](src:src/mcp/server.ts) connects them over standard input and output. Every tool calls the HTTP API with the person's API key, so a person watching a document sees each change land. See [MCP](/agents/mcp/).
+[tools.ts](src:src/mcp/tools.ts) registers the tools in a list, `TOOLS`, that the docs read; [server.ts](src:src/mcp/server.ts) connects them over standard input and output. Every tool calls the HTTP API, with the person's API key when there is one (local mode needs none), so a person watching a document sees each change land. See [MCP](/agents/mcp/).
 
 ### src/web
 

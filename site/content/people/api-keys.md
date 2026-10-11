@@ -14,7 +14,7 @@ A key belongs to one person. Whatever uses it is that person as far as access go
 2. Give the key a **Name** that says what will use it: *Claude on my laptop*. Without one it is called *Agent*. The name can be 60 characters long.
 3. Choose **Create key**.
 
-The key appears once, in a box that starts with its name and says *Copy it now: it won’t be shown again.* Choose **Copy** (if your browser won't copy, it is selected for you to copy by hand). Under it are the two lines the MCP server needs:
+The key appears once, in a box that starts with its name and says *Copy it now: it won’t be shown again.* Choose **Copy** (if your browser won't copy, it is selected for you to copy by hand). Under it are the two lines the MCP server needs, with the address you opened edgy at:
 
 ```text
 EDGY_URL=http://127.0.0.1:8787

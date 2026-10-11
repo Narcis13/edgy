@@ -96,7 +96,7 @@ Wherever a subtree has to be written down, it is notation with ids:
 
 - **Normalized ops.** A `split` carries `{"cell": ["empty", {"id": "c7"}]}`; a `put` becomes `["replace", "c6", [...]]`.
 - **Inverse ops.** An undo of a structural change is a `replace` with the old subtree in notation (see [Applying ops](/internals/ops/)). The undo stack in the browser and the op log on the server therefore hold nothing but JSON lists.
-- **Reading a document.** [GET /api/docs/:id/read](<route:GET /api/docs/:id/read>) returns `notation` (with ids, so an agent can name any cell) next to `outline`, and its `format` query picks one or both.
+- **Reading a document.** [GET /api/docs/:id/read](<route:GET /api/docs/:id/read>) returns the `outline` by default; `?format=notation` gives the notation instead (with ids, so an agent can name any cell) and `?format=both` gives both.
 
 ## The outline
 
@@ -121,7 +121,7 @@ c1 col quote
 
 - The **id** and **kind** come first, so an agent can name a cell in its next op without asking. An input shows its type (`input:number`); a text cell does not.
 - The **summary** is what is useful about the kind: a text's words, a formula's expression (`= (* qty price)`), a table's expression or the number of rows typed into it, a button's label and action, a timer's schedule and whether it runs, a fetch cell's address and state.
-- With a `computed` result, formulas, stats and templated texts add `→ <value>`. A cell with an error shows `→ ! <message>` instead (groups don't, since their error is a child's).
+- With a `computed` result, formulas, stats and templated texts add `→ <value>`. A cell with an error shows `→ ! <message>` instead (groups don't, unless they have handlers, since a group's error is a child's).
 - Long pieces are cut: text at 64 characters, values at 80, expressions at 90, each with an ellipsis.
 
 The outline is what `view()` in [app.ts](src:src/server/app.ts) puts in `outline`, so it is what [edgy_read](tool:edgy_read) gives an agent, and `systemPrompt` in [compose.ts](src:src/server/compose.ts) puts the same text in front of the model when it writes code for a cell (see [Compose](/internals/compose/)). The expressions in it are printed with `print`, so they look as people type them.

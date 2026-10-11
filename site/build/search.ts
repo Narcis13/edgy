@@ -24,7 +24,11 @@ const KINDS: Record<string, string> = {
 const text = (html: string) => html
   .replace(/<script[\s\S]*?<\/script>/g, ' ')
   .replace(/<svg[\s\S]*?<\/svg>/g, ' ')
+  // A live example's notation is there for reading without JavaScript, not for finding.
+  .replace(/<details class="live-src">[\s\S]*?<\/details>/g, ' ')
   .replace(/<a class="anchor"[^>]*>#<\/a>/g, '')
+  // Inline tags join their text; block tags separate it.
+  .replace(/<\/?(span|a|code|b|strong|em|kbd|mark)\b[^>]*>/g, '')
   .replace(/<[^>]+>/g, ' ')
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
   .replace(/\s+/g, ' ')
@@ -33,6 +37,8 @@ const text = (html: string) => html
 export function searchEntries(site: Site): SearchEntry[] {
   const out: SearchEntry[] = [];
   for (const p of site.pages) {
+    // The A–Z lists everything else; finding it again in every search would only add noise.
+    if (p.page === 'a-z/') continue;
     const heads = [...p.html.matchAll(/<h([234]) id="([^"]+)"[^>]*>([\s\S]*?)<\/h\1>/g)];
     const intro = heads.length ? p.html.slice(0, heads[0].index) : p.html;
     out.push({ u: p.page, t: p.front.nav ?? p.title, k: p.page.startsWith('cells/') && p.page !== 'cells/' ? 'Cell' : 'Page', x: text(intro).slice(0, 2000) });

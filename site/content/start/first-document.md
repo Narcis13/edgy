@@ -10,7 +10,7 @@ You need edgy running (see [Install and run](/start/install/)) and a window on a
 
 1. Open the library at `http://localhost:5173`.
 2. Press **New document**. A blank document opens in **Edit**: one empty cell that says *Type, or press / to choose*, under the title **Untitled**.
-3. Click the title, type `Trip cost` and press Enter.
+3. Click the title, select all (⌘A, or Ctrl+A), type `Trip cost` and press Enter. Clicking puts the cursor in the title but does not select *Untitled*, so without the select-all your words would be added to it.
 
 Every document is a tree of [cells](term:cell). Yours is a tree with one cell, and you grow it by splitting.
 
@@ -53,7 +53,7 @@ Select the left cell. In **Cell details**:
 
 Select the middle cell and do the same: **Name** `price`, **Label** `Price`, **Value** `12.5`.
 
-A name starts with a letter and holds letters, digits, `-` and `_`. See [Names and references](/language/names/). Once a cell has a name, the formula bar under the header shows it in bold instead of an id such as `c4`.
+A name starts with a letter and holds letters, digits, `-` and `_`; no two cells share one. See [Names and references](/language/names/). Once a cell has a name, the formula bar under the header shows it in bold instead of an id such as `c4`.
 
 ## Add the formula
 

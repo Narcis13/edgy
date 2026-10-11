@@ -41,7 +41,7 @@ The tool answers that point a person to a document carry a link: `Open it at …
 
 ### Documents by id or title
 
-Wherever a tool takes `doc` or `deck`, it takes the id (`xebuqd2c`) or the title (`Quote`, any case). The server looks first among the person's own documents, then among those others gave them access to. A title that two documents share is refused with their ids, so the agent can choose.
+Wherever a tool takes `doc` or `deck`, it takes the id (`xebuqd2c`) or the title (`Quote`, any case). The server looks through the person's own documents and those others gave them access to; an id that matches wins. A title that two documents share, whoever owns them, is refused with their ids, so the agent can choose. A `deck` is looked up among the person's decks by id or title; for two decks with one title, the most recently changed is used.
 
 ### When something is wrong
 
@@ -55,7 +55,7 @@ A tool that fails answers with an error, and the text says what to do:
 | No such document | `no document "Qoute". Known: ndbgqcuy (Quote), l6nl6xxs (Start here)` |
 | Two documents share a title | `several documents are titled "Quote"; use an id: ndbgqcuy, abbyehyo` |
 | An op or an expression is wrong | The server's own message, such as `no cell called "nope"` or `missing )`. |
-| Anything else | The server's message, or `request failed (500)`. |
+| Anything else | The server's message, or `request failed (<status>)` when the answer has none. |
 
 ## The tools
 
@@ -78,13 +78,13 @@ It returns the guide as text, beginning `# Edgy: documents made of cells`.
 ::: tool edgy_docs
 Lists or searches the library: the documents and decks of the person whose key this is, each with a link they can open. Use it to find a document before reading it, or to see what exists.
 
-`query` finds documents whose title, description or text holds every word. `filter` is `all` (the default: a deck's documents show inside the deck, unless pinned), `pinned`, `shared`, `decks` or `archived` (archived ones show only there). `sort` is `updated` (the default), `created` or `title`. `scope: "shared"` lists the documents other people gave this person access to, with the role.
+`query` finds documents whose title, description or text holds every word. `filter` is `all` (the default: a deck's documents show inside the deck, unless pinned or found by a search), `pinned`, `shared` (documents with a link on or people added), `decks` or `archived` (archived ones show only there). `sort` is `updated` (the default), `created` or `title`. `scope: "shared"` lists the documents other people gave this person access to, with the role; `filter` doesn't apply to it.
 
 ```json
 {"query": "quote"}
 ```
 
-It returns one line for each card, pinned ones first under `Pinned:` and the rest under `Others:`. A document line is the id, the title, the version, when it changed, and the link; then flags in brackets, a description line and, for a search, where the words were found:
+It returns one line for each card, pinned ones first under `Pinned:`, and, when there are pinned ones, the rest under `Others:`. A document line is the id, the title, the version, when it changed, and the link; then flags in brackets, a description line and, for a search, where the words were found:
 
 ```text
 ndbgqcuy  "Quote"  version 2, changed 2026-10-11T07:34:25.225Z  http://localhost:5173/d/ndbgqcuy
@@ -103,7 +103,7 @@ Arranges documents in the library: describe, pin, unpin, archive, restore, or se
 {"action": "describe", "docs": ["Quote"], "description": "A quote for Northwind Studio"}
 ```
 
-It returns a sentence: `"Quote" now reads: A quote for Northwind Studio`. For the other actions it names the ids it acted on: `archive: kfgqcxen.` Anything that could not be done, such as a deck that isn't the person's, follows as `; not done: …`. For `order_pins` it lists the pinned ids in order. Archiving loses nothing; the document comes back with `restore`.
+It returns a sentence: `"Quote" now reads: A quote for Northwind Studio`. For the other actions it names the ids it acted on: `archive: kfgqcxen.` Anything that could not be done, such as pinning an archived document or a deck that isn't the person's, follows as `; not done: …`. For `order_pins` it lists the pinned ids in order: those you gave first, then any pinned ones you left out. Archiving loses nothing; the document comes back with `restore`.
 :::
 
 ::: tool edgy_deck
@@ -128,7 +128,7 @@ Play it at http://localhost:5173/deck/deck-duduji6/play
 :::
 
 ::: tool edgy_share
-Turns a link to a document on or off. Anyone with the link sees the document in **Live**, with no editor and no way to other documents; an `edit` link also lets them change it. Use it only when the person asks for a link. See [Share links](/library/share-links/).
+Turns a link to a document on or off. Anyone with the link sees the document in **Live**, with no editor and no way to other documents; an `edit` link also lets them change it. Use it only when the person asks for a link; only a document's owner can turn its links on or off. See [Share links](/library/share-links/).
 
 `action` is `on` (make the link, `access` `view` or `edit`, `view` by default; if that link is already on, you get it back), `off` (turn it off: with `access`, only that link, without it every link) or `list`.
 
@@ -154,7 +154,7 @@ It returns `Saved C:/Users/ada/Desktop/quote.html (412 KB). It opens in any brow
 :::
 
 ::: tool edgy_create
-Creates a document and returns what it looks like. Give `root`, the notation of the whole document, to start with content; give `template` (`quote`, `savings` or `feedback`, or another from [GET /api/templates](route:GET /api/templates)) to start from one; give neither for a single empty cell. Building the whole document in `root` takes one call and is how an agent should start: see [Outline and notation](/agents/notation/).
+Creates a document and returns what it looks like. Give `root`, the notation of the whole document, to start with content; give `template` (`quote`, `savings` or `feedback`, another from [GET /api/templates](route:GET /api/templates), `tour`, or a tutorial such as `tutorial-quote`) to start from one; give neither for a single empty cell. Building the whole document in `root` takes one call and is how an agent should start: see [Outline and notation](/agents/notation/).
 
 ```json
 {"title": "Quote", "root": ["col", ["input", {"name": "qty", "type": "number", "value": 2}], ["formula", {"name": "total"}, ["*", "$qty", 40]]]}
@@ -259,7 +259,7 @@ Answers a request that [edgy_listen](tool:edgy_listen) returned, with code writt
 {"doc": "Quote", "request": "r1", "code": "(* qty price 0.8)", "explanation": "Multiplies quantity by price, then keeps 80 percent of it."}
 ```
 
-The code is checked against the document before the person sees it: it must read and fit the cells there, an action is allowed only for a target that runs actions (`do`, `on.<event>`, `action`, `events`), and the ops of an `events` answer are tried against the document. If it passes, the answer is `Answered r1; the person now sees (* qty price 0.8) with a preview.` If not, it is `The code was rejected: …. Fix it and call edgy_answer again for r1.`, and the agent can try again for the same request. A request that was answered, or whose 45 seconds ran out, gives `Request r1 is no longer waiting: it was answered or timed out.`
+The code is checked against the document before the person sees it: it must read and fit the cells there, an action is allowed only for a target that runs actions (`do`, `on.<event>`, `action`, `events`), and the ops of an `events` answer are tried against the document. If it passes, the answer is `Answered r1; the person now sees (* qty price 0.8) with a preview.` (When `code` is a list of ops, as for `events`, the ending is `and can apply it` instead.) If not, it is `The code was rejected: …. Fix it and call edgy_answer again for r1.`, and the agent can try again for the same request. A request that was answered, or whose 45 seconds ran out, gives `Request r1 is no longer waiting: it was answered or timed out.`
 :::
 
 ## Without MCP

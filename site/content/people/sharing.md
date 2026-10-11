@@ -32,7 +32,7 @@ The owner's pins, archive and decks arrange the owner's own library. You can't p
 You add people by the email of their account. edgy sends no message: the document appears in their [library](/library/) under **Shared with me**.
 
 1. Open the document and choose **Share** in the header (**Share…** in the **More** menu on a phone), or **Share…** in its card's menu in the library.
-2. In **People**, under **Add people**, type **Email of their account**.
+2. In **People**, under **Add people**, type the email of their account (the field says **Email of their account**).
 3. Choose **Can edit** or **Can view** and press **Add**.
 
 The list shows the owner first (**Owner**), then everyone else with their name and email. Adding an email that is already on the list changes that person's role.
@@ -77,7 +77,7 @@ A [collection](term:collection) belongs to an account. Two people can each have 
 
 A document reads and writes its **owner's** collections, whoever is looking. So when Ben edits Ana's shared order form, the table in it shows Ana's `orders` and the button saves into Ana's `orders`. A formula `(rows "orders")` in Ben's own document reads Ben's.
 
-What a document may reach is fixed by its owner: the collections it used at the owner's last change, and when the owner first let someone in. An editor who adds `(rows "salaries")` to Ana's document does not reach Ana's `salaries`: the cell shows an error, *this document does not reach the collection “salaries”; its owner's next change to it lets it*, until Ana changes the document. Viewers read records only through a document that reaches them. The [Data page](/data/data-page/) lists only the collections of the account you are signed in as.
+What a document may reach is fixed by its owner: the collections it used at the owner's last change, and when the owner first let someone in. An editor who adds `(rows "salaries")` to Ana's document does not reach Ana's `salaries`: the cell shows an error, *this document does not reach the collection "salaries"; its owner's next change to it lets it*, until Ana changes the document. Viewers read records only through a document that reaches them. The [Data page](/data/data-page/) lists only the collections of the account you are signed in as.
 
 ## For agents and scripts
 

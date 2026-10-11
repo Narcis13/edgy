@@ -76,7 +76,7 @@ The tree keeps itself tidy. A row or column that nobody named or styled is only 
 
 A name lets a cell be read. A formula that says `(* qty price)` reads the cells named `qty` and `price`; a [text template](term:text-template) says `{{total}}`; a button says `(set! count 0)`. A cell with no name can still be read by its id, such as `c4`, but ids are for edgy: they don't tell a person anything, so name the cells that others use.
 
-A name starts with a letter and holds letters, digits, `-` and `_`. No other cell can have the same name, and a name can't be `true`, `false`, `nil`, `null`, `it`, `i` or `acc`. Type it in **Name**, at the top of **Cell details**. When you rename a cell in edgy, the formulas, buttons, handlers and templates that read it follow the new name.
+A name starts with a letter (or `_`) and holds letters, digits, `-` and `_`. No other cell can have the same name, and a name can't be `true`, `false`, `nil`, `null`, `it`, `i` or `acc`. Type it in **Name**, at the top of **Cell details**. When you rename a cell in edgy, the formulas, buttons, handlers and templates that read it follow the new name.
 
 A named group reads as the list of its cells' values. That is how a column of order lines is added up. See [Names and references](/language/names/).
 
@@ -88,7 +88,7 @@ The cells of a row share its width; the cells of a column share its height. Each
 - **Hug**, as small as its content.
 - **Fixed**, an exact number of pixels.
 
-Select a cell, open **Spacing and size** in **Cell details** and choose under **Width** (in a row) or **Height** (in a column). Dragging the edge between two cells moves room from one to the other; double-clicking the edge makes them even. The [row](kind:row) and [col](kind:col) pages have the details.
+Select a cell, open **Spacing and size** in **Cell details** and choose under **Width** (in a row) or **Height** (in a column). Dragging the edge between two cells moves room from one to the other; double-clicking the edge makes two cells that fill even. The [row](kind:row) and [col](kind:col) pages have the details.
 
 ## Kinds, and how to choose one
 
@@ -100,11 +100,11 @@ A cell's kind is what it holds. You choose it, and change it later, from the `/`
 
 ::shot slash-menu "The / menu open over an empty cell: the kinds to choose from, with a search field."
 
-An empty cell lists the choices in groups in **Cell details**, under **What should this cell hold?**. Typing into an empty cell starts a text cell; starting with `=` makes it a formula.
+An empty cell lists most of the choices in groups in **Cell details**, under **What should this cell hold?** ([timer](kind:timer) and [fetch](kind:fetch) are only in the `/` menu). Typing into an empty cell starts a text cell; starting with `=` makes it a formula.
 
 The menu is a little finer than the kinds. An [input](kind:input) appears as nine entries, one for each type of field: **Number**, **Text field**, **Slider**, **Checkbox**, **Toggle**, **Choice**, **Date**, **Long text** and **Rating**. A [chart](kind:chart) is five (**Bar chart**, **Line chart**, **Area chart**, **Donut** and **Meter**), a [list](kind:list) three (**Checklist**, **Bulleted list** and **Numbered list**), and a [canvas](kind:canvas) is **Drawing** or **Signature**. Rows, columns and panels aren't in the menu: you make a row or a column by splitting a cell, and a panel with tabs or an accordion.
 
-Choosing a kind replaces what the cell held; [undo](key:undo) brings it back. The exceptions are **Tabs**, **Accordion** and **Collapsible**, which take the old content inside their first panel or under their heading.
+Choosing a kind replaces what the cell held. Its name and size stay, and so does its style for most kinds; [undo](key:undo) brings it all back. A text cell's words carry over to a button's label or a data cell's value. The exceptions are **Tabs**, **Accordion** and **Collapsible**, which take the old cell, with its name and style, inside their first panel or under their heading.
 
 To choose, start from what you want to do:
 

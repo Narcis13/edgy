@@ -10,11 +10,11 @@ You will use a [data](kind:data) cell, [input](kind:input) cells, [button](kind:
 The idea: a data cell named `step` holds 1, 2 or 3. Each question hides unless `step` says it is its turn, and the buttons change `step`.
 
 > [!NOTE]
-> Pressing a button in Edit runs it, as it does in Live. While you build, select a button by creating it, or with Tab and Shift+Tab, and do not click it.
+> Pressing a button in Edit runs its action, as it does in Live (what only Live adds is the handlers, and these buttons have none). While you build, select a button by creating it, or with Tab and Shift+Tab, and do not click it.
 
 ## The counter and the heading
 
-1. On the home page, press **New document**. Type `Order wizard` in the title and press Enter.
+1. On the home page, press **New document**. Click the title at the top, select all (⌘A, or Ctrl+A), type `Order wizard` and press Enter.
 2. Click the empty cell and press `/`. Type `Data` and press Enter to choose **Data (hidden)**. Set **Name** to `step` and press Enter. Set **Value** to `1` and press Enter. Readers never see a data cell, and in Edit it shows as a small chip.
 3. Press [⌥↓](key:split) (Alt+↓ elsewhere). Type `Step {{step}} of 3` and press Esc. The text template shows the counter's value.
 

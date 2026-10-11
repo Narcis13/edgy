@@ -33,7 +33,7 @@ A plan you move with sliders. The monthly amount, the years, the yearly rate and
 :::
 
 ::: template feedback
-A form that saves answers. A name, a rating in stars, a topic from a list and a comment; **Send feedback** saves them into `feedback` with [insert!](fn:insert!) and clears the fields. Beside the form, the answers so far are counted, the average rating changes colour with its value, a [bar chart](kind:chart) counts how many gave each rating and a [table](kind:table) lists the last five.
+A form that saves answers. A name, a rating in stars, a topic from a list and a comment; **Send feedback** saves them into `feedback` with [insert!](fn:insert!) and clears the name and the comment. Beside the form, the answers so far are counted, the average rating changes colour with its value, a [bar chart](kind:chart) counts how many gave each rating and a [table](kind:table) lists the last five.
 :::
 
 ::: template showcase
@@ -41,7 +41,7 @@ A document with every kind of cell at work, planning a team trip. [Stats](kind:s
 :::
 
 ::: template tables
-Data tables at work, for a small studio. Ten sample invoices in `studio-invoices` are grouped by status, with a tick on every row to total them (`(selected invoices)`) and buttons on every row: **Paid** changes the record with [update!](fn:update!), the envelope drafts a reminder with [set!](fn:set!), the bin deletes with [delete!](fn:delete!) after asking. A second [table](kind:table) holds typed rows shown as badges, progress bars, ticks, stars and links, with totals. A bar chart, a calendar of due dates and a section on fonts and text styles follow.
+Data tables at work, for a small studio. Ten sample invoices in `studio-invoices` are grouped by status, with a tick on every row to total them (`(selected invoices)`) and buttons on every row: **Paid** changes the record with [update!](fn:update!), the envelope drafts a reminder with [set!](fn:set!), the bin deletes with [delete!](fn:delete!) after asking. The status of each invoice shows as a coloured badge. A second [table](kind:table) holds typed rows shown as progress bars, ticks, stars and links, with totals. A bar chart, a calendar of due dates and a section on fonts and text styles follow.
 :::
 
 ::: template elements
@@ -71,7 +71,7 @@ A list whose [change](event:change) handler shows a message and saves a record i
 :::
 
 ::: template tutorial-wizard
-A hidden `step` counter, three questions that each hide unless it is their turn, and **Back**, **Next** and **Start again** buttons that change the counter with [set!](fn:set!). Built in [A form in steps](/tutorials/wizard/).
+A hidden `step` counter, two questions and a summary that each hide unless it is their turn, and **Back**, **Next** and **Start again** buttons that change the counter with [set!](fn:set!). Built in [A form in steps](/tutorials/wizard/).
 :::
 
 ::: template tutorial-order-tracker

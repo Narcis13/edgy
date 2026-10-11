@@ -47,7 +47,7 @@ A handler of a custom event finds these names:
 | `payload` | The value sent, such as `{total 42}`. `nil` when the event was sent without one. |
 | `from` | The name of the cell whose action sent it (its id when it has no name). `nil` when the document's own handler sent it. |
 | `target` | Always `nil`: no one cell raised it. |
-| `event` | A record with `name`, `payload`, `from`, and `listener`, the name of the cell whose handler is running. |
+| `event` | A record with `name`, `payload`, `from`, and `listener`, the name of the cell whose handler is running (left out in the document's own handler). |
 
 A built-in event's name can't be sent. The cell raises those itself, and sending one would confuse its handlers:
 
@@ -69,7 +69,7 @@ The error appears in **Activity** against the handler that tried, and as a messa
 2. To listen for a new event, choose **Another event…** and type its name, `order-placed` for instance.
 3. To send one, choose **Send an event** as the second step, **What should happen**, and name it.
 
-Custom events with handlers are listed under **Custom events** in the studio's Events part.
+Custom events the document sends or handles are listed under **Custom events** in the studio's Events part.
 
 ## Custom actions
 

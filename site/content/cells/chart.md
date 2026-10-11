@@ -42,7 +42,7 @@ Move the slider: the meter follows. Point at a bar to see its figure and name. T
 - **Kind of chart**: **Bars** (compare amounts), **Line** (change over a sequence), **Area** (a filled line), **Donut** (parts of a whole) or **Meter** (one number against a maximum). Switching kind keeps the numbers.
 - **Title**: shown above the chart.
 - **Colour**: the colour of the bars, the line or the meter; **Automatic** uses the first colour of the theme. A donut always uses the theme's series of colours.
-- **Show numbers as**: the format of the figures in the tooltip, in the middle of a donut and in a meter. The scale along the side always shortens big numbers (`12k`).
+- **Show numbers as**: the format of the figures in the tooltip, in the middle of a donut and in a meter. The scale along the side shortens numbers from 10,000 up (`12k`).
 - **Maximum** (meters): a number or the name of a cell. The meter is full there.
 
 ## What it can draw
@@ -88,7 +88,7 @@ The expression giving the numbers is the body:
 
 A chart's value is what its expression gives, before it is drawn: the list of numbers, pairs or records, or the one number for a meter. Other cells read it by name, as in `(sum sales)` above.
 
-When the expression gives no numbers at all, the chart says *Nothing to draw yet. A chart needs a list of numbers.* A problem in the expression shows in a small red label on the cell.
+When the expression gives no numbers at all, a bar, line, area or donut chart says *Nothing to draw yet. A chart needs a list of numbers.* (a meter with nothing to read shows 0). A problem in the expression shows in a small red label on the cell.
 
 ## Events
 
@@ -102,7 +102,7 @@ None. A chart always draws its expression; `set!` on a chart changes nothing you
 
 ## On a phone and on paper
 
-A chart takes the width of its cell; the figures on the side and the names under the bars thin out in a narrow cell so they don't collide. A donut puts its legend underneath when its cell is under about 380 pixels wide. Every chart also carries its numbers as a hidden table for screen readers. On paper a chart prints as drawn, without a tooltip.
+A chart takes the width of its cell; the figures on the side and the names under the bars thin out in a narrow cell so they don't collide. A donut puts its legend underneath when its cell is under about 380 pixels wide. Every chart except a meter also carries its numbers as a hidden table for screen readers. On paper a chart prints as drawn, without a tooltip.
 
 ## Usual mistakes
 

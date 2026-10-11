@@ -11,7 +11,7 @@ A diagram draws in Edit and is a picture in Live. Its value is the list of its e
 
 ## The number to show
 
-1. On the home page, press **New document**. Type `Order flowchart` in the title and press Enter.
+1. On the home page, press **New document**. Click the title at the top, select all (⌘A, or Ctrl+A), type `Order flowchart` and press Enter.
 2. Click the empty cell and press `/`. Type `Number` and press Enter. Set **Name** to `waiting`, **Label** to `Orders waiting` and **Value** to `3`.
 
 ## The diagram cell

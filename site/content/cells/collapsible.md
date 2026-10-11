@@ -111,4 +111,4 @@ On paper it is always unfolded, so nothing a reader folded away is lost from the
 - **The button does nothing.** The collapsible needs a name for `(toggle! more)` to find it, and it has none. The message is *That button failed:* `no cell called "more"`.
 - **The heading reads "Details".** A collapsible with no title shows **Details**. Type a heading.
 - **I folded it and it was open when I printed.** Printed pages always show a collapsible open.
-- **I set it to `"no"` and it stayed open.** The value is `true` or `false`. In `(set! more "no")` the text `"no"` counts as true. Only `false`, `0` and empty text fold it, and `nil` removes the value, which leaves it open.
+- **I set it to `"no"` and it stayed open.** The value is `true` or `false`. In `(set! more "no")` the text `"no"` counts as true. Only `false`, `0`, empty text and an empty list fold it, and `nil` removes the value, which leaves it open.

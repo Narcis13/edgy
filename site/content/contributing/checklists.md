@@ -54,7 +54,7 @@ The example is [calendar](kind:calendar), a leaf kind with a value (the day pick
 ### Tests
 
 - [core.test.ts](src:src/core/core.test.ts): build the kind in notation, and check its value, what it reads and its line in the outline. The calendar's is *calendar, canvas, stat and break*.
-- [events.test.ts](src:src/core/events.test.ts): a handler for each event it raises. The test that every kind in `KIND_EVENTS` declares how its events are worked out covers it already.
+- [events.test.ts](src:src/core/events.test.ts): a handler for each event it raises. The test *each kind declares its events in one place* already checks that the kind raises something and, if it raises a change event, that it says how (`watch`); it does not run a handler.
 - [kinds.test.ts](src:src/web/kinds/kinds.test.ts): its pure helpers. If your test is in a folder `npm test` does not list, add the glob (see [Gates and tests](/contributing/gates/#tests)).
 
 ### The docs
@@ -62,7 +62,6 @@ The example is [calendar](kind:calendar), a leaf kind with a value (the day pick
 - `site/content/cells/calendar.md`: the page. Copy the structure of [Button](kind:button): `::ref kind calendar` for the facts box, `::ref events-of calendar` for the events, a `live` example, the designer, the notation, usual mistakes.
 - [nav.ts](src:site/nav.ts): add the page to the *Cells* section, under the group it belongs to.
 - [shots.mjs](src:site/scripts/shots.mjs): add the kind to `KIND_DESIGNERS`, which gives it a `designer-calendar` screenshot to use with `::shot`. Make the pictures with `site/scripts/shoot.mjs`.
-- [glossary.md](src:site/content/glossary.md) says how many kinds there are (under **Kind**). Change the number.
 - The entries of what it brings: a shortcut, an event, a style key.
 - [README.md](src:README.md): the sentence near the top that lists what a cell can hold.
 
@@ -126,7 +125,7 @@ What a route can need:
 The example is [edgy_deck](tool:edgy_deck).
 
 - [tools.ts](src:src/mcp/tools.ts): `tool('edgy_name', { description, inputSchema }, safely(async (args) => …))`. Registering it adds it to `TOOLS`, which the docs read. The description is what an agent reads to choose the tool: say what it does, when to use it and what an argument can be. Give each parameter a `.describe(…)`. Accept a document by id or title with `docId`. Call the HTTP API with `api(…)`, so the new route comes first; return `text(…)`. `safely` turns a thrown error into the tool's error answer.
-- [reference.ts](src:src/core/reference.ts): where the guide lists the tools (the library section names them). [README.md](src:README.md): the table of tools.
+- [reference.ts](src:src/core/reference.ts): the guide names only the library tools (`edgy_docs`, `edgy_organize`, `edgy_deck`, `edgy_share`, `edgy_export`), in its *Library* section. Name a tool there if it belongs to the library; the other tools are known to agents by their descriptions alone. [README.md](src:README.md): the table of tools.
 - The docs: a `::: tool edgy_deck` entry in [MCP](/agents/mcp/). Its parameters are made from the schema.
 
 ## A style key
@@ -164,7 +163,7 @@ The example is [warn-soft](token:warn-soft).
 The example is [undo](key:undo).
 
 - [shortcuts.ts](src:src/web/shortcuts.ts): add `{ id, keys, where, does }` to `SHORTCUTS`. Write keys the Mac way, with `Mod` for ⌘ or Ctrl. The `id` is stable: docs link to it. A shortcut for a new place also needs that place in `ShortcutPlace` and `SHORTCUT_PLACES`.
-- The list wires nothing. The handler is a separate change where the key is pressed: `useKeyboard` in [Editor.tsx](src:src/web/editor/Editor.tsx), [Studio.tsx](src:src/web/code/Studio.tsx), [CodeEditor.tsx](src:src/web/code/CodeEditor.tsx), [Play.tsx](src:src/web/play/Play.tsx), or the component of the kind.
+- The list wires nothing. The handler is a separate change where the key is pressed: `useKeyboard` in [Editor.tsx](src:src/web/editor/Editor.tsx), the key handlers in [Studio.tsx](src:src/web/code/Studio.tsx), [CodeEditor.tsx](src:src/web/code/CodeEditor.tsx) and [Play.tsx](src:src/web/play/Play.tsx), or the component of the kind.
 - [README.md](src:README.md): the **Keyboard** table is written by hand.
 - The docs: a `::: key undo` entry in [Keyboard](/start/keyboard/).
 
@@ -173,8 +172,8 @@ The example is [undo](key:undo).
 The example is [Quote](template:quote).
 
 - [templates.ts](src:src/core/templates.ts): a `Template` with an `id`, `title` and `about`; `meta` for settings, handlers and custom actions; `root`, in notation; and `data`, sample records saved into each collection that is still empty. Add it to `TEMPLATES`: that is the list `GET /api/templates` returns and the library offers. `tour` is the first-run document and sits outside the list. The documents tutorials end with go in [tutorials.ts](src:src/core/tutorials.ts) and open as `tutorial-<name>`.
-- Tests: [core.test.ts](src:src/core/core.test.ts) and [server.test.ts](src:src/server/server.test.ts) build every template and fail on any cell with an error or a handler that names something missing. There is nothing to add; run them.
-- The docs: a `::: template quote` entry in [Templates](/library/templates/).
+- Tests: [core.test.ts](src:src/core/core.test.ts) and [server.test.ts](src:src/server/server.test.ts) build every template, the tour and every tutorial document, and fail on any cell with an error; `server.test.ts` also fails on a handler that names something missing. There is nothing to add; run them.
+- The docs: a `::: template quote` entry in [Templates](/library/templates/). The tour and each tutorial document have one there too.
 
 ## An op
 

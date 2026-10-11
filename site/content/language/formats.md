@@ -197,7 +197,7 @@ Besides the names above, a format can be one of two shapes.
 
 ### A currency code
 
-Three letters name a currency: `USD`, `EUR`, `GBP`, `RON`. The case doesn't matter. The amount is written with that currency's symbol and two decimals, whatever the document's currency is.
+Three letters name a currency: `USD`, `EUR`, `GBP`, `RON`. The case doesn't matter. The amount is written with that currency's symbol and the decimals that currency uses (two for most, none for `JPY`), whatever the document's currency is.
 
 ```sx
 (fmt 1234.5 "EUR")
@@ -260,7 +260,7 @@ Everything that formats in this document follows it: the formula above, the `{{ 
 ## When the value doesn't fit
 
 - Nothing shows as nothing, whatever the format.
-- A number format on text that isn't a number leaves the text as it is: `(fmt "abc" "int")` gives `"abc"`. Text that is a number is formatted: `(fmt "1234" "int")` gives `"1,234"`.
+- A number format on text that isn't a number leaves the text as it is: `(fmt "abc" "int")` gives `"abc"`. Text that is a number is formatted: `(fmt "1234" "int")` gives `"1,234"`. Text with a comma in it, such as `"1,234"`, is not read as a number here (arithmetic does read it) and stays as it is.
 - Empty text counts as 0 in a number format: `(fmt "" "currency")` gives `"$0.00"`.
 - A list is formatted item by item, joined by commas.
 - A format that isn't known, a word that isn't three letters or a pattern, is ignored and the value shows as with **Automatic**.

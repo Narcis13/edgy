@@ -86,7 +86,7 @@ A time is longer than 0 and at most a day. Anything else is refused: *every is a
 
 ## Where it runs
 
-A timer runs on the server, once, and only while at least one person has the document open in **Live**. The first person to open it in Live starts it; when the last one leaves, it stops, and it starts from the beginning the next time. It never ticks in Edit or Page view. A hundred people watching still get one tick, because it isn't theirs: its handler runs on the server and saves what it changes, which every browser then shows.
+A timer runs on the server, once, and only while at least one person has the document open in **Live**. The first person to open it in Live starts it; when the last one leaves, it stops, and it starts from the beginning the next time. If nobody has it in Live, because everyone is in Edit or Page view, it does not tick. A hundred people watching still get one tick, because it isn't theirs: its handler runs on the server and saves what it changes, which every browser then shows.
 
 A change a tick makes is a change to the document: it is saved as a version, and Activity shows it as made by *Events*. A tick that changes nothing saves nothing.
 
@@ -107,7 +107,7 @@ A timer is never shown in Live, on a phone or on paper, and it takes no room. A 
 
 - **Nothing ticks.** The document is open in Edit or Page view, or the timer has no time (*no time set* on its chip), or it is stopped. Switch to Live and check the chip.
 - **It ticks, but nothing shows.** The tick handler is empty, or it sets a cell that nothing shows. Open **Events** and read the handler.
-- **It ticks more slowly than I set.** Times under one second become one second.
+- **It ticks more slowly than I set.** An `every` under one second becomes one second.
 - **`start! needs a timer, and "x" is not one`.** The name is another kind of cell. Name the timer and use its name.
 - **The count starts over.** Restarting a timer, or changing its time, begins a new count at 1, and so does the next time someone opens the document in Live.
 - **A one-off timer ticked again.** It ticks once each time the document goes from nobody in Live to someone in Live, and again each time `start!` is used on it.

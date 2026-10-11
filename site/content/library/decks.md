@@ -58,7 +58,7 @@ Only the slide on screen listens to the server, so its timers and fetches run wh
 | [F](key:play-full) | Full screen on or off. |
 | [Esc](key:play-leave) | Leave. In full screen the browser keeps Esc for itself and leaves full screen, and that leaves Play too. |
 
-Keys with ⌘, Ctrl or Alt are left to the browser. While you type in a field, keys type; Esc leaves the field. A focused button, tab or slider keeps Space, Enter and the arrows for itself.
+Keys with ⌘, Ctrl or Alt are left to the browser. While you type in a field, keys type; Esc leaves the field. A focused button, link or tab keeps Space for itself, and a focused tab, slider, list or menu keeps the arrows.
 
 With a mouse, click beside the slide (not on it): the left half goes back, the right half goes forward. On a touch screen, swipe across the slide. A swipe that starts on something that drags or scrolls sideways (a slider, a drawing, a [diagram](kind:diagram), a wide table) is left to it. The bar at the bottom has **Previous slide**, **Next slide**, **Full screen** and **Leave** buttons and shows **2 / 5**.
 
