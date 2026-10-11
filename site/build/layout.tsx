@@ -107,7 +107,7 @@ function Page({ v }: { v: PageView }) {
         <button type="button" className="icon-btn menu-btn js-only" data-drawer-open aria-label="Open the contents" aria-controls="side" aria-expanded="false"><Menu size={18} aria-hidden="true" /></button>
         <a className="brand" href={r('')} title="Start here"><Logo /></a>
         <a className="search-btn" href={r('a-z/')} data-search-open>
-          <Search size={15} aria-hidden="true" /><span className="search-label">Search the docs</span><kbd className="search-key">/</kbd>
+          <Search size={15} aria-hidden="true" /><span className="search-label"><span className="when-wide">Search the docs</span><span className="when-narrow">Search</span></span><kbd className="search-key">/</kbd>
         </a>
         <span className="grow" />
         <a className="top-link" href="/" data-app-link hidden>Open edgy</a>

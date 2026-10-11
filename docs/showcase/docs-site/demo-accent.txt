@@ -1,0 +1,4 @@
+# Demo: --accent in src/web/styles.css changed from #3a3dde to #c2410c, then both built:
+docs CSS (docs-BTaasaYl.css): --accent:#c2410c
+app CSS (index-DJMmKSbB.css): --accent:#c2410c
+# Reverted (git checkout -- src/web/styles.css): --accent is --accent:#3a3dde

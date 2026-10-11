@@ -1,0 +1,11 @@
+# Demo: a function added to the interpreter with no docs entry (src/core/sx.ts, BUILTINS: twice), then npm's docs test:
+coverage: kind 24, fn 112, event 9, op 15, route 64, tool 14, style 21, format 10, token 16, key 60, template 18
+✖ the app’s links into the docs land: each kind’s panel link and each function’s link in the code studio (0.5986ms)
+✖ coverage: everything the code lists has its entry in the docs (0.6594ms)
+  AssertionError [ERR_ASSERTION]: language/functions/index.md: fn "twice" has no entry (::: fn twice)
+  language/functions/logic.md: fn "twice" has no entry (::: fn twice)
+  +   'language/functions/index.md: fn "twice" has no entry (::: fn twice)',
+  +   'language/functions/logic.md: fn "twice" has no entry (::: fn twice)'
+    actual: [ 'language/functions/index.md: fn "twice" has no entry (::: fn twice)', 'language/functions/logic.md: fn "twice" has no entry (::: fn twice)' ],
+# Reverted (git checkout -- src/core/sx.ts); the test passes again:
+✔ coverage: everything the code lists has its entry in the docs (0.5845ms)

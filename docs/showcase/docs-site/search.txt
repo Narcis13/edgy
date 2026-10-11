@@ -1,0 +1,15 @@
+"sum-by": 15 results. sum-by (Function), rows (Function), selected (Function)
+PASS "sum-by" finds sum-by (Function) first
+"accordion": The first 40 results. Accordion (Cell), split (Op), merge (Op)
+PASS "accordion" finds Accordion (Cell) first
+"dblclick": 21 results. dblclick (Event), Chart (Cell), Diagram (Cell)
+PASS "dblclick" finds dblclick (Event) first
+PASS Enter opens the first result: /edgy-docs/events/reference/#event-dblclick
+"undo": The first 40 results. Undo (Section), Undo and redo (Page), Undo and redo (Section)
+PASS "undo" finds Undo (Section) first
+"keep the tab open": 27 results. The editor: saving (Section), The groups of kinds (Section), The header (Section)
+PASS a phrase only in a page's body is found (The editor: saving (Section))
+"zebrafish": Nothing in the docs matches “zebrafish”. Try fewer or shorter words, or look through the A–Z. 
+PASS a word with no match shows a clear empty state
+index: 967 KB (served gzipped by most hosts)
+PASS no console problems (none)

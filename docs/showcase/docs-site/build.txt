@@ -1,0 +1,23 @@
+# npm run docs:build, 2026-10-11
+docs: 118 pages, 14.3 MB in C:\dev\edgy\dist\docs (1.0s); search index 293 KB gzipped
+pages: 118 (index.html files, plus 404.html)
+folder: 16M (5.0M+688K of it pictures and clips)
+
+# link check of the built folder (site/scripts/linkcheck.ts)
+119 pages, 22978 links checked, 0 broken, 228 external:
+  https://claude.com/claude-code
+  https://turso.tech
+  (and 226 links to source files on GitHub)
+
+# weight (site/scripts/weight.mjs)
+heaviest pages (HTML + CSS + script, gzipped; fonts, pictures and live examples aside):
+  agents/http                            32.7 KB  (html 22.4 KB, 0 pictures, 0 live examples)
+  troubleshooting                        26.0 KB  (html 15.7 KB, 0 pictures, 0 live examples)
+  agents/ops                             25.0 KB  (html 14.8 KB, 0 pictures, 0 live examples)
+  language/functions/actions             23.9 KB  (html 13.6 KB, 0 pictures, 5 live examples)
+  language/functions/lists               23.5 KB  (html 13.3 KB, 0 pictures, 0 live examples)
+  agents/mcp                             23.5 KB  (html 13.2 KB, 0 pictures, 0 live examples)
+  start/keyboard                         22.9 KB  (html 12.6 KB, 0 pictures, 0 live examples)
+  internals/session                      21.6 KB  (html 11.4 KB, 0 pictures, 0 live examples)
+text-only pages: 74; the heaviest is agents/http at 32.7 KB; font 70.9 KB (once, cached)
+shared files (gzipped): _/docs-CulPnvA-.css 5.9 KB, _/docs-D2y613Wj.js 4.3 KB

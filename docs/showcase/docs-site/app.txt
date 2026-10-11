@@ -1,0 +1,15 @@
+PASS signed out, /docs/cells/table/ opens (Table · edgy docs)
+PASS the docs ask no /api route (0)
+PASS inside the app, the header shows Open edgy
+PASS no console problems signed out (none)
+PASS the home page's header has the Docs link
+PASS the data page's header has the Docs link
+PASS the profile page's header has the Docs link
+PASS no console problems signed in (none)
+PASS a document's header has the Docs link
+PASS the panel links the selected kind to its page: "Formula in the docs" → /docs/cells/formula/
+PASS the code studio's functions link to their entries: + in the docs → /docs/language/functions/math/#fn-plus
+PASS that entry exists (200, #fn-plus)
+PASS no console problems in the document (none)
+PASS on a phone the More menu has Docs (Activity and messages, Cell details, Show links between cells, Share…, Export as HTML, Print, Dark theme, Docs, AProfile)
+PASS in the app, the docs open in the theme the person chose there (dark)

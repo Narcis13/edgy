@@ -1,0 +1,7 @@
+PASS language/functions/actions/: the first example is 2.1 screens down; live code requested before scrolling: 0, after: 3
+PASS a ticked checkbox runs its change handler (the text now says "Status: Agreed")
+PASS no console problems on events/ (none)
+PASS changing an input updates a formula: $37.50 → $50.00
+PASS a button runs its action (pressed twice: "Pressed 2 times")
+PASS a tab changes (the text now says "Showing Details.")
+PASS an example that saves records says they live in memory: "Runs in this page. Records it saves live in memory and are gone when you leave."

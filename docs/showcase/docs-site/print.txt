@@ -1,0 +1,2 @@
+printed cells/table/ to print-cells-table.pdf
+printed internals/session/ to print-internals-session.pdf

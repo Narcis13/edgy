@@ -1,0 +1,2 @@
+PASS deployed alone with nothing stored, the docs follow the system (dark)
+PASS the toggle chose light and it is remembered on the next page

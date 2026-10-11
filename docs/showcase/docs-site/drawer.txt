@@ -1,0 +1,2 @@
+PASS Enter on the menu button opens the drawer; focus is on "Table"
+PASS Esc closes it and the focus goes back to "Open the contents"

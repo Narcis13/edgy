@@ -1,0 +1,4 @@
+# every page under http://127.0.0.1:4174/edgy-docs/ (site/scripts/serve.mjs: a plain static server), no edgy server running
+# crawl: desktop 1440x900, tablet 820x1180, phone 390x844; light and dark; axe on desktop and phone; every live example started
+crawled 118 pages × 3 sizes × 2 themes: 0 problems
+# live examples run: 65 of 65
