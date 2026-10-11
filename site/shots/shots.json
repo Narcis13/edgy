@@ -1,0 +1,828 @@
+{
+  "library": {
+    "w": 1280,
+    "h": 800,
+    "alt": "The library: pinned documents first, then the rest as cards with a small map of each document, a search box and filters above them.",
+    "marks": [
+      {
+        "x": 28.9,
+        "y": 25,
+        "label": "Search"
+      },
+      {
+        "x": 65.3,
+        "y": 25,
+        "label": "Filters"
+      },
+      {
+        "x": 50,
+        "y": 36.8,
+        "label": "Start from a template"
+      },
+      {
+        "x": 13.3,
+        "y": 59.8,
+        "label": "A pinned document, with a map of it"
+      },
+      {
+        "x": 89.4,
+        "y": 11.9,
+        "label": "New document"
+      }
+    ]
+  },
+  "library-search": {
+    "w": 1280,
+    "h": 800,
+    "alt": "The library filtered by a search for \"quote\": the matching cards, with the words that matched shown under each.",
+    "marks": [
+      {
+        "x": 27.6,
+        "y": 25,
+        "label": "Search"
+      },
+      {
+        "x": 31.7,
+        "y": 61.1,
+        "label": "Where the words matched"
+      },
+      {
+        "x": 13.3,
+        "y": 52.7,
+        "label": "The title, with the match marked"
+      }
+    ]
+  },
+  "data": {
+    "w": 1280,
+    "h": 800,
+    "alt": "The Data page: a list of collections on the left and the records of the selected one as a table.",
+    "marks": [
+      {
+        "x": 10.2,
+        "y": 29.5,
+        "label": "Collections"
+      },
+      {
+        "x": 25.2,
+        "y": 10.8,
+        "label": "The selected one"
+      },
+      {
+        "x": 60.2,
+        "y": 21.1,
+        "label": "A record"
+      },
+      {
+        "x": 94,
+        "y": 11.1,
+        "label": "Delete all"
+      }
+    ]
+  },
+  "profile": {
+    "w": 760,
+    "h": 1506,
+    "alt": "The profile page: name, avatar colour, email, password, theme and API keys.",
+    "marks": [
+      {
+        "x": 35.1,
+        "y": 11.5,
+        "label": "Name and colour"
+      },
+      {
+        "x": 50,
+        "y": 63.1,
+        "label": "Theme"
+      },
+      {
+        "x": 50,
+        "y": 81.2,
+        "label": "API keys"
+      }
+    ]
+  },
+  "api-keys": {
+    "w": 712,
+    "h": 267,
+    "alt": "The API keys section of the profile with one key listed by name and the date it was made.",
+    "marks": [
+      {
+        "x": 50,
+        "y": 79.6,
+        "label": "A key: its name, start and last use"
+      },
+      {
+        "x": 74.5,
+        "y": 56.4,
+        "label": "Create a key"
+      }
+    ]
+  },
+  "signin": {
+    "w": 1280,
+    "h": 800,
+    "alt": "The sign-in page: email, password and a Sign in button.",
+    "marks": [
+      {
+        "x": 50,
+        "y": 45.6,
+        "label": "Email"
+      },
+      {
+        "x": 50,
+        "y": 55.9,
+        "label": "Password"
+      },
+      {
+        "x": 50,
+        "y": 63.1,
+        "label": "Sign in"
+      }
+    ]
+  },
+  "editor-edit": {
+    "w": 1280,
+    "h": 800,
+    "alt": "A document in Edit: the header with Edit, Live and Page, the document with one cell selected, and the panel on the right.",
+    "marks": [
+      {
+        "x": 74.3,
+        "y": 2.9,
+        "label": "Edit, Live and Page"
+      },
+      {
+        "x": 63.3,
+        "y": 77.7,
+        "label": "The selected cell"
+      },
+      {
+        "x": 87.5,
+        "y": 69,
+        "label": "Cell details"
+      },
+      {
+        "x": 88,
+        "y": 2.2,
+        "label": "Share"
+      },
+      {
+        "x": 64.1,
+        "y": 2.9,
+        "label": "Activity"
+      }
+    ]
+  },
+  "editor-live": {
+    "w": 1280,
+    "h": 800,
+    "alt": "The same document in Live: inputs, formulas and buttons ready to use, no editing handles.",
+    "marks": [
+      {
+        "x": 74.3,
+        "y": 2.9,
+        "label": "Edit, Live and Page"
+      },
+      {
+        "x": 73.9,
+        "y": 44.9,
+        "label": "An input, ready to type in"
+      },
+      {
+        "x": 76.5,
+        "y": 57.1,
+        "label": "A formula, up to date"
+      },
+      {
+        "x": 22.8,
+        "y": 78.5,
+        "label": "A button"
+      }
+    ]
+  },
+  "editor-page": {
+    "w": 1280,
+    "h": 1236,
+    "alt": "The same document in Page view: printed pages with margins, a footer with page numbers, and the page setup.",
+    "marks": [
+      {
+        "x": 50,
+        "y": 3.9,
+        "label": "Page setup"
+      },
+      {
+        "x": 50,
+        "y": 52.9,
+        "label": "A printed page, with its margins"
+      },
+      {
+        "x": 72.6,
+        "y": 96.1,
+        "label": "The footer with its page number"
+      }
+    ]
+  },
+  "editor-phone": {
+    "w": 390,
+    "h": 844,
+    "alt": "A document in Live on a phone: the cells stacked in one column and a short header with the More button.",
+    "marks": [
+      {
+        "x": 94.1,
+        "y": 2.8,
+        "label": "More"
+      },
+      {
+        "x": 72.4,
+        "y": 2.8,
+        "label": "Edit, Live and Page"
+      },
+      {
+        "x": 34.4,
+        "y": 41.5,
+        "label": "Cells stacked in one column"
+      }
+    ]
+  },
+  "more-menu": {
+    "w": 390,
+    "h": 844,
+    "alt": "The More menu open on a phone: Activity and messages, Cell details, Show links between cells, Share, Print, Docs, theme and Profile.",
+    "marks": [
+      {
+        "x": 94.1,
+        "y": 2.8,
+        "label": "More"
+      },
+      {
+        "x": 71,
+        "y": 26.7,
+        "label": "Share"
+      },
+      {
+        "x": 71,
+        "y": 49.4,
+        "label": "Profile"
+      }
+    ]
+  },
+  "split": {
+    "w": 551,
+    "h": 207,
+    "alt": "A selected cell with a plus button in the middle of each edge, ready to split it in that direction.",
+    "marks": [
+      {
+        "x": 94.8,
+        "y": 66.4,
+        "label": "Split to the right"
+      },
+      {
+        "x": 49.9,
+        "y": 97.8,
+        "label": "Split below"
+      },
+      {
+        "x": 5.1,
+        "y": 66.4,
+        "label": "Split to the left"
+      },
+      {
+        "x": 49.9,
+        "y": 34.9,
+        "label": "Split above"
+      }
+    ]
+  },
+  "slash-menu": {
+    "w": 860,
+    "h": 642,
+    "alt": "The / menu open under an empty cell: a search field above one scrolling list of what a cell can hold, each choice with a short hint.",
+    "marks": [
+      {
+        "x": 19,
+        "y": 33.5,
+        "label": "Search"
+      },
+      {
+        "x": 19,
+        "y": 40.4,
+        "label": "A kind of cell, with a hint"
+      },
+      {
+        "x": 50,
+        "y": 25.9,
+        "label": "The empty cell"
+      }
+    ]
+  },
+  "panel": {
+    "w": 320,
+    "h": 894,
+    "alt": "Cell details for a selected formula: its name, what it is, its content, text, spacing, box and events sections.",
+    "marks": [
+      {
+        "x": 50.2,
+        "y": 26.2,
+        "label": "Content"
+      },
+      {
+        "x": 50.2,
+        "y": 52.1,
+        "label": "Text"
+      },
+      {
+        "x": 50.2,
+        "y": 56.8,
+        "label": "Spacing and size"
+      },
+      {
+        "x": 50.2,
+        "y": 70.8,
+        "label": "Events"
+      }
+    ]
+  },
+  "formula-bar": {
+    "w": 1280,
+    "h": 61,
+    "alt": "The formula bar above the document, showing the selected cell’s expression with its colours.",
+    "marks": [
+      {
+        "x": 6.2,
+        "y": 49.2,
+        "label": "The cell’s name"
+      },
+      {
+        "x": 49.2,
+        "y": 49.2,
+        "label": "Its expression"
+      },
+      {
+        "x": 90.3,
+        "y": 49.2,
+        "label": "Its result"
+      }
+    ]
+  },
+  "code-studio": {
+    "w": 1280,
+    "h": 800,
+    "alt": "The code studio: the expression in a large editor, its live result, the list of functions and the cells you can use.",
+    "marks": [
+      {
+        "x": 14.1,
+        "y": 14.5,
+        "label": "Code and Blocks"
+      },
+      {
+        "x": 36.7,
+        "y": 50.9,
+        "label": "The expression"
+      },
+      {
+        "x": 37.7,
+        "y": 91.7,
+        "label": "The result, live"
+      },
+      {
+        "x": 79.7,
+        "y": 20.8,
+        "label": "Functions and cells"
+      },
+      {
+        "x": 87.3,
+        "y": 91.7,
+        "label": "Apply"
+      }
+    ]
+  },
+  "blocks": {
+    "w": 1280,
+    "h": 800,
+    "alt": "The code studio’s Blocks tab: the same expression as nested blocks you can click together.",
+    "marks": [
+      {
+        "x": 14.1,
+        "y": 14.5,
+        "label": "Code and Blocks"
+      },
+      {
+        "x": 14.2,
+        "y": 26,
+        "label": "The expression as blocks"
+      },
+      {
+        "x": 37.7,
+        "y": 91.7,
+        "label": "The result"
+      }
+    ]
+  },
+  "ask-ai": {
+    "w": 1280,
+    "h": 800,
+    "alt": "The code studio’s Ask AI tab: a sentence typed in, the code it became, and an explanation.",
+    "marks": [
+      {
+        "x": 79.7,
+        "y": 27.5,
+        "label": "What you type"
+      },
+      {
+        "x": 79.7,
+        "y": 66.8,
+        "label": "The code it became, and why"
+      }
+    ]
+  },
+  "events-section": {
+    "w": 320,
+    "h": 741,
+    "alt": "The Events section of Cell details for a checkbox: its change handler written as an expression.",
+    "marks": [
+      {
+        "x": 50.2,
+        "y": 59.8,
+        "label": "The Events section"
+      },
+      {
+        "x": 50.2,
+        "y": 66.5,
+        "label": "A handler: when it runs, and what it does"
+      },
+      {
+        "x": 24.7,
+        "y": 73.7,
+        "label": "Add a handler"
+      }
+    ]
+  },
+  "activity": {
+    "w": 300,
+    "h": 711,
+    "alt": "The Activity panel: each change as an s-expression with who made it and when, people and agents alike.",
+    "marks": [
+      {
+        "x": 49.8,
+        "y": 3.2,
+        "label": "Who is here"
+      },
+      {
+        "x": 51.8,
+        "y": 16.2,
+        "label": "Each change, as an s-expression"
+      },
+      {
+        "x": 16.7,
+        "y": 31.7,
+        "label": "An agent, named for whom it acts"
+      },
+      {
+        "x": 49.8,
+        "y": 91,
+        "label": "A line to the agent"
+      }
+    ]
+  },
+  "links": {
+    "w": 904,
+    "h": 412,
+    "alt": "Lines drawn between a formula and the cells it reads and the cells that read it.",
+    "marks": [
+      {
+        "x": 50,
+        "y": 30.7,
+        "label": "What it reads"
+      },
+      {
+        "x": 86.5,
+        "y": 56.7,
+        "label": "The selected formula"
+      },
+      {
+        "x": 86.5,
+        "y": 69.4,
+        "label": "What reads it"
+      }
+    ]
+  },
+  "page-setup": {
+    "w": 287,
+    "h": 274,
+    "alt": "Page setup in the panel: paper size, orientation, margins and footer.",
+    "marks": [
+      {
+        "x": 63.6,
+        "y": 38.3,
+        "label": "Portrait or landscape"
+      },
+      {
+        "x": 65,
+        "y": 22.2,
+        "label": "Paper size"
+      },
+      {
+        "x": 50,
+        "y": 87,
+        "label": "See the pages"
+      }
+    ]
+  },
+  "share-dialog": {
+    "w": 512,
+    "h": 698,
+    "alt": "The Share dialog: people with access and their roles, and links anyone can open.",
+    "marks": [
+      {
+        "x": 50,
+        "y": 24.5,
+        "label": "Someone with access"
+      },
+      {
+        "x": 50,
+        "y": 33.4,
+        "label": "Add people"
+      },
+      {
+        "x": 50,
+        "y": 57.8,
+        "label": "A link anyone can open"
+      },
+      {
+        "x": 83.1,
+        "y": 61.1,
+        "label": "Copy the link"
+      }
+    ]
+  },
+  "deck": {
+    "w": 1280,
+    "h": 800,
+    "alt": "A deck’s page: its documents in order as small maps, with Play.",
+    "marks": [
+      {
+        "x": 61.4,
+        "y": 19,
+        "label": "Play"
+      },
+      {
+        "x": 26.1,
+        "y": 38.3,
+        "label": "A document, one per slide"
+      },
+      {
+        "x": 8.5,
+        "y": 38.3,
+        "label": "Drag to reorder"
+      }
+    ]
+  },
+  "play": {
+    "w": 1280,
+    "h": 800,
+    "alt": "A deck playing: one slide filling the screen, with its number and the controls to move between slides.",
+    "marks": [
+      {
+        "x": 5.9,
+        "y": 96.7,
+        "label": "Which slide"
+      },
+      {
+        "x": 9.4,
+        "y": 96.8,
+        "label": "Next slide"
+      },
+      {
+        "x": 97.7,
+        "y": 96.8,
+        "label": "Leave"
+      }
+    ]
+  },
+  "presence": {
+    "w": 1280,
+    "h": 800,
+    "alt": "Two people in one document: their avatars in the header and a coloured outline on the cell each has selected.",
+    "marks": [
+      {
+        "x": 52.2,
+        "y": 2.9,
+        "label": "Who else is here"
+      },
+      {
+        "x": 50.4,
+        "y": 84.2,
+        "label": "The cell they selected"
+      },
+      {
+        "x": 63.3,
+        "y": 96.5,
+        "label": "Your selected cell"
+      }
+    ]
+  },
+  "designer-row": {
+    "w": 320,
+    "h": 906,
+    "alt": "Cell details for a row cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-col": {
+    "w": 320,
+    "h": 813,
+    "alt": "Cell details for a col cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-empty": {
+    "w": 320,
+    "h": 2371,
+    "alt": "Cell details for a empty cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-tabs": {
+    "w": 320,
+    "h": 1032,
+    "alt": "Cell details for a tabs cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-panel": {
+    "w": 320,
+    "h": 789,
+    "alt": "Cell details for a panel cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-accordion": {
+    "w": 320,
+    "h": 1092,
+    "alt": "Cell details for a accordion cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-collapsible": {
+    "w": 320,
+    "h": 996,
+    "alt": "Cell details for a collapsible cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-text": {
+    "w": 320,
+    "h": 2023,
+    "alt": "Cell details for a text cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-image": {
+    "w": 320,
+    "h": 935,
+    "alt": "Cell details for a image cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-icon": {
+    "w": 320,
+    "h": 878,
+    "alt": "Cell details for a icon cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-break": {
+    "w": 320,
+    "h": 711,
+    "alt": "Cell details for a break cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-input": {
+    "w": 320,
+    "h": 1260,
+    "alt": "Cell details for a input cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-formula": {
+    "w": 320,
+    "h": 894,
+    "alt": "Cell details for a formula cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-data": {
+    "w": 320,
+    "h": 873,
+    "alt": "Cell details for a data cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-stat": {
+    "w": 320,
+    "h": 1193,
+    "alt": "Cell details for a stat cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-button": {
+    "w": 320,
+    "h": 1056,
+    "alt": "Cell details for a button cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-list": {
+    "w": 320,
+    "h": 1037,
+    "alt": "Cell details for a list cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-table": {
+    "w": 320,
+    "h": 2303,
+    "alt": "Cell details for a table cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-calendar": {
+    "w": 320,
+    "h": 1065,
+    "alt": "Cell details for a calendar cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-chart": {
+    "w": 320,
+    "h": 1153,
+    "alt": "Cell details for a chart cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-diagram": {
+    "w": 320,
+    "h": 816,
+    "alt": "Cell details for a diagram cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-canvas": {
+    "w": 320,
+    "h": 921,
+    "alt": "Cell details for a canvas cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-timer": {
+    "w": 320,
+    "h": 746,
+    "alt": "Cell details for a timer cell: the controls that design it.",
+    "marks": []
+  },
+  "designer-fetch": {
+    "w": 320,
+    "h": 1050,
+    "alt": "Cell details for a fetch cell: the controls that design it.",
+    "marks": []
+  },
+  "tutorial-quote": {
+    "w": 912,
+    "h": 592,
+    "alt": "The finished document of the quote tutorial, in Live.",
+    "marks": []
+  },
+  "tutorial-checklist": {
+    "w": 912,
+    "h": 592,
+    "alt": "The finished document of the checklist tutorial, in Live.",
+    "marks": []
+  },
+  "tutorial-wizard": {
+    "w": 912,
+    "h": 592,
+    "alt": "The finished document of the wizard tutorial, in Live.",
+    "marks": []
+  },
+  "tutorial-order-tracker": {
+    "w": 912,
+    "h": 592,
+    "alt": "The finished document of the order-tracker tutorial, in Live.",
+    "marks": []
+  },
+  "tutorial-dashboard": {
+    "w": 912,
+    "h": 592,
+    "alt": "The finished document of the dashboard tutorial, in Live.",
+    "marks": []
+  },
+  "tutorial-flowchart": {
+    "w": 912,
+    "h": 745,
+    "alt": "The finished document of the flowchart tutorial, in Live.",
+    "marks": []
+  },
+  "tutorial-deck": {
+    "w": 912,
+    "h": 592,
+    "alt": "The finished document of the deck tutorial, in Live.",
+    "marks": []
+  },
+  "tutorial-sharing": {
+    "w": 912,
+    "h": 592,
+    "alt": "The finished document of the sharing tutorial, in Live.",
+    "marks": []
+  },
+  "tutorial-print-export": {
+    "w": 912,
+    "h": 592,
+    "alt": "The finished document of the print-export tutorial, in Live.",
+    "marks": []
+  },
+  "tutorial-agent": {
+    "w": 912,
+    "h": 592,
+    "alt": "The finished document of the agent tutorial, in Live.",
+    "marks": []
+  }
+}

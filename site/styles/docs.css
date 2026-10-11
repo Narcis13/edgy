@@ -241,9 +241,9 @@ a > code { color: var(--accent); }
 .callout p:last-child { margin-bottom: 0; }
 .callout-label { margin: 0 0 4px !important; font-weight: 650; font-size: 14px; color: var(--accent); }
 .callout-tip { border-left-color: var(--live); }
-.callout-tip .callout-label { color: var(--live); }
+.callout-tip .callout-label { color: var(--ink); }
 .callout-warning { border-left-color: var(--warn); }
-.callout-warning .callout-label { color: var(--warn); }
+.callout-warning .callout-label { color: var(--ink); }
 
 .entry { margin: 0 0 8px; }
 .entry-head code { font-size: 0.95em; background: none; padding: 0; }
