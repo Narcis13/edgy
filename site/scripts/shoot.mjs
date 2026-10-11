@@ -752,7 +752,7 @@ spec('activity', {
     await c.p.settle(300);
   },
   crop: (c) => c.boxOf(`document.querySelector('aside.side.left')`),
-  marks: [['.activity-head', 'Who is here'], ['.block.human .ops', 'Each change, as an s-expression'], ['.block.agent .who-name', 'An agent, named for whom it acts', { at: [0.3, 0.5] }], ['.composer', 'A line to the agent']],
+  marks: [['.activity-head .chip', 'Who is here'], ['.block.human .ops', 'Each change, as an s-expression'], ['.block.agent', 'An agent, named for whom it acts'], ['.composer textarea, .composer input', 'A line to the agent', { at: [0.96, 0.5] }]],
 });
 spec('links', {
   doc: doc('quote'),
@@ -773,12 +773,12 @@ spec('page-setup', {
 spec('share-dialog', {
   doc: doc('quote'),
   setup: async (c) => { await c.p.click('.share-btn'); await c.p.until(`document.querySelector('dialog.share-dialog[open]')`); await c.p.settle(400); },
-  crop: async (c) => c.union([await c.boxOf(`document.querySelector('dialog.share-dialog')`)], 16),
+  crop: async (c) => c.union([await c.boxOf(`document.querySelector('dialog.share-dialog')`)], 0),
   marks: [['.people-list .person:nth-child(2)', 'Someone with access'], ['.people-add', 'Add people'], ['.share-row', 'A link anyone can open'], ['.share-link .btn', 'Copy the link']],
 });
 spec('deck', {
   url: (w) => `/deck/${w.ids.deck}`,
-  marks: [['.deck-actions .btn.solid', 'Play'], ['.deck-doc', 'A document, one per slide', { at: [0.2, 0.5] }], ['.deck-grip', 'Drag to reorder']],
+  marks: [['.deck-actions .btn.solid', 'Play'], ['.deck-doc', 'A document, one per slide', { at: [0.5, 0] }], ['.deck-grip', 'Drag to reorder']],
 });
 spec('play', {
   url: (w) => `/deck/${w.ids.deck}/play`,
@@ -890,9 +890,12 @@ async function shoot(name, s, dark) {
     for (const [sel, label, o] of s.marks ?? []) {
       const b = await page.box(sel, o?.nth ?? 0);
       if (!b) throw new Error(`mark "${label}": nothing matches ${sel}`);
-      const [fx, fy] = o?.at ?? [0.5, 0.5];
-      const x = ((b.x + b.w * fx - clip.x) / clip.w) * 100, y = ((b.y + b.h * fy - clip.y) / clip.h) * 100;
-      if (x < 0 || x > 100 || y < 0 || y > 100) throw new Error(`mark "${label}" (${sel}) falls outside the picture at ${x.toFixed(0)}%, ${y.toFixed(0)}%`);
+      // The pin sits just left of what it marks, at mid-height, so it never covers a label's words;
+      // `at` puts it at a point inside instead. Either way the whole pin (24px) stays in the picture.
+      const [fx, fy] = o?.at ?? [0, 0.5];
+      const px = b.x + b.w * fx - clip.x - (o?.at ? 0 : 14), py = b.y + b.h * fy - clip.y;
+      if (px + 14 < 0 || px > clip.w || py < 0 || py > clip.h) throw new Error(`mark "${label}" (${sel}) falls outside the picture at ${px.toFixed(0)}, ${py.toFixed(0)}`);
+      const x = (Math.min(Math.max(px, 13), clip.w - 13) / clip.w) * 100, y = (Math.min(Math.max(py, 13), clip.h - 13) / clip.h) * 100;
       marks.push({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, label });
     }
     const bytes = await page.capture(clip);

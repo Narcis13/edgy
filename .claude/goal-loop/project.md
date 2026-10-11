@@ -21,8 +21,14 @@ $S/gates.sh            # runs $P/gates: typecheck, npm test, production build; o
 ```
 
 - `npm test` runs the explicit globs listed in `package.json` (`src/core`, `src/server`, `src/web/print`,
-  `src/web/kinds`, `src/web/code`). **A new test file in any other directory doesn't run until you add its
-  glob to the `test` script.** Check the test count goes up when you add tests.
+  `src/web/kinds`, `src/web/code`, `src/web/editor`, `src/web/editor/inspector`, `src/web/play`,
+  `src/web/pages/library`, `src/web/account`, `site/tests`). **A new test file in any other directory doesn't
+  run until you add its glob to the `test` script.** Check the test count goes up when you add tests.
+- `site/tests/docs.test.ts` keeps the docs true and runs in every `npm test`: **adding a kind, function, event,
+  op, route, MCP tool, style key, format, colour token, shortcut (`src/web/shortcuts.ts`) or template without its
+  docs entry fails it**, as does an example whose stated result is wrong or a broken link. The message names the
+  entry to write; `site/content/contributing/docs.md` explains the format, `site/content/contributing/checklists.md`
+  every place each change touches. The build gate also builds the docs (`site/build/build.ts`).
 - Tests use Node's test runner (`node:test` + `assert`) through tsx. Follow `src/core/core.test.ts`.
 - A Vite "chunks are larger" warning counts as a finding. Lazy-load the way `src/web/App.tsx` already does.
 
@@ -122,8 +128,24 @@ src/server    Hono API, SQLite store, SSE events, compose (sentence → code); a
               auth.ts (passwords, sessions, keys), sync.ts + cloud.ts (Turso)
 src/mcp       MCP server; every tool calls the HTTP API (with EDGY_API_KEY)
 src/web       React app: editor/, code/ (code studio), kinds/ (cell types), print/, pages/, account/ (sign-in,
-              profile, me.ts: who is signed in), share/, sync/ (the badge)
+              profile, me.ts: who is signed in), share/, sync/ (the badge); shortcuts.ts (every key), docsLinks.ts
+site/         the documentation site: content/ (Markdown, the folder is the URL), nav.ts (the order), build/ (the
+              build, the lists read from the code, the tests' helpers), client/ (search, drawer, live examples),
+              diagrams/, shots/ + clips/ (made by scripts/shoot.mjs), scripts/, tests/
 ```
+
+- **The docs** build with `npm run docs:build` into `dist/docs` (relative links; `npm run build` does it too, and
+  `serve.sh` builds them into its own dist so `/docs/` works on the isolated server, signed out too).
+  `npx tsx site/scripts/check.ts <page prefix>` checks pages while writing them. `npm run docs:preview` (or
+  `MSYS_NO_PATHCONV=1 node site/scripts/serve.mjs dist/docs 4174 /edgy-docs/` from Git Bash) serves the folder the
+  way a static host would. `node site/scripts/crawl.mjs <docs-url> <out> --axe --live --shots` is the docs' sweep
+  (every page × 3 sizes × 2 themes; console, requests outside the folder, overflow, clipped text, 40px targets,
+  heading levels, alt text, axe); `node site/scripts/sheets.mjs <out> <sheets>` makes one contact sheet per page
+  for reading; `node site/scripts/weight.mjs` weighs the pages; `npx tsx site/scripts/linkcheck.ts` checks the folder.
+- **Pictures in the docs** come only from `node site/scripts/shoot.mjs` (its own server on 8793; names and alt text
+  in `site/scripts/shots.mjs`). After a UI change, rerun it (`--only name,…` for some) and commit the WebP files.
+- **Ports**: 8791 isolated app, 8792+ second app, 8793 the docs' screenshots, 8794 the tutorial replays, 4174 the
+  static docs. The docs' evidence: `docs/showcase/docs-site/shoot.sh` (see its INDEX.md).
 
 - A new API route needs `need(…)` before its handler (see `server/access.ts`); the route-table test fails otherwise.
   A route that reads or writes records goes through `checked.dataOwner`; never `store.rows` with a name from the request alone.

@@ -43,6 +43,8 @@ const kindLink = (ctx: PageCtx, kind: string) => {
 const table = (head: string[], rows: string[][], label: string) =>
   tableWrap(`<table class="ref"><thead><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('\n')}</tbody></table>`, label);
 
+const inline = (links: string[], label: string) => `<p class="ref-inline" aria-label="${label}">${links.join(' ')}</p>\n`;
+
 const groupChip = (group: string) => `<span class="group" style="--group: ${C.GROUP_COLOR[group as keyof typeof C.GROUP_COLOR]}">${esc(group)}</span>`;
 
 /** The page summaries a section index lists. */
@@ -112,15 +114,15 @@ function ref(ctx: PageCtx, list: string, arg: string): string {
       return table(['Event', 'Its data'], evs.map((e) => [entryLink(ctx, 'event', e.name), esc(e.data)]), `Events a ${arg} raises`);
     }
     case 'ops':
-      return table(['Op'], C.ops().map((o) => [entryLink(ctx, 'op', o)]), 'Every op');
+      return inline(C.ops().map((o) => entryLink(ctx, 'op', o)), 'Every op');
     case 'routes':
       return table(['Route', 'Who may call it'], C.routes().map((r) => [entryLink(ctx, 'route', `${r.method} ${r.path}`, code(`${r.method} ${r.path}`)), esc(C.sayNeed(r.need))]), 'Every route');
     case 'tools':
       return table(['Tool', 'What it does'], C.tools().map((t) => [entryLink(ctx, 'tool', t.name), esc(firstSentence(t.description))]), 'Every MCP tool');
     case 'style-keys':
-      return table(['Key'], C.styleKeys().map((k) => [entryLink(ctx, 'style', k)]), 'Every style key');
+      return inline(C.styleKeys().map((k) => entryLink(ctx, 'style', k)), 'Every style key');
     case 'formats':
-      return table(['Format'], C.formats().map((k) => [entryLink(ctx, 'format', k)]), 'Every format');
+      return inline(C.formats().map((k) => entryLink(ctx, 'format', k)), 'Every format');
     case 'tokens':
       return table(['Token', 'Looks like'], C.tokens().map((t) => [entryLink(ctx, 'token', t), swatch(t)]), 'Every colour token');
     case 'fonts':

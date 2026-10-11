@@ -51,7 +51,7 @@ A typical run: the agent reads [edgy_guide](tool:edgy_guide), builds the documen
 ## Watch it work
 
 6. Open the link, or find the document in the library. If the left-hand panel is closed, press the **Activity and messages** button in the header.
-7. **Activity** lists the agent next to your name, and each of its changes as an op, written the way the language writes them and cut short, such as `(put c1 ("col …"))` for a whole tree put into a cell. Cells it changed flash for a moment with the agent's name over them.
+7. **Activity** lists the agent next to your name, and each of its changes as an op, written the way the language writes them and cut short, such as `(replace c1 ("col …"))` for a whole tree written into a cell, and `(meta currency EUR)` for a setting of the document. Cells it changed flash for a moment with the agent's name over them.
 
 ::shot activity "Activity: the agent's changes as ops, with its name, and a line to write to it."
 

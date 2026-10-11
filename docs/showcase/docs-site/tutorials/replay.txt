@@ -1,0 +1,344 @@
+Tutorials, replayed for real
+==========================
+Each tutorial of site/content/tutorials/ was followed step by step on a fresh production server (port 8794, empty data) with real input in headless Chrome:
+mouse clicks at the element's place on the screen, key presses, characters typed one key at a time. window.edgy was read, never written.
+The document each one builds was then compared with its template (src/core/tutorials.ts, tutorial-<name>): the cell trees with ids removed (kinds, names, props,
+values, expressions, order), and both were shot in Live at 1280 wide and put side by side (<name>-side-by-side.png: the replay on the left, the template on the right).
+
+Rerun: bash docs/showcase/docs-site/tutorials/replay.sh        (one tutorial: bash docs/showcase/docs-site/tutorials/replay.sh quote)
+
+Summary
+-------
+  PASS  quote          20 steps followed, trees match, console problems: 0
+  PASS  checklist      16 steps followed, trees match, console problems: 0
+  PASS  wizard         13 steps followed, trees match, console problems: 0
+  PASS  order-tracker  12 steps followed, trees match, console problems: 0
+  PASS  dashboard      15 steps followed, trees match, console problems: 0
+  PASS  flowchart      15 steps followed, trees match, console problems: 0
+  PASS  deck           19 steps followed, trees match, console problems: 0
+  PASS  sharing        20 steps followed, trees match, console problems: 0, 1 note(s)
+  PASS  print-export   15 steps followed, trees match, console problems: 0
+  PASS  agent          11 steps followed, trees match, console problems: 0
+
+========================================================================
+quote: PASS
+========================================================================
+Steps followed (20), as the page numbers them:
+  ok    1. New document: opens in Edit with one empty cell and the Document panel
+  ok    2. Click the title, select all, type Quote, Enter
+  ok    3. With no cell selected, Currency = EUR
+  ok    4. Click the empty cell, press /, type Text field, Enter
+  ok    5. Name client, Label Client, Value Ada Lovelace
+  ok    6. Alt+Up, a new empty cell above; type the heading, Esc
+  ok    7. Tab to the Client field, Alt+Down, / Text field, Label Item, Value Brand identity
+  ok    8. Alt+Right, / Number, Label Qty, Value 1
+  ok    9. Alt+Right, / Number, Label Price, Value 2400
+  ok   10. Alt+Right, / Formula, type (* (sib 1) (sib 2)), Enter
+  ok   11. Show the result as Currency, Name amount
+  ok   12. Esc selects the row, Ctrl+D duplicates it; the copy's amount is amount2
+  ok   13. In the copy: Item, Qty and Price typed in; the amount reads €2,280.00
+  ok   14. Click amount2, Esc, Alt+Down, type Subtotal, Esc
+  ok   15. Alt+Right, / Formula, (+ amount amount2), Enter, Currency, Name subtotal
+  ok   16. Esc, Alt+Down, / Number, Label VAT rate (%), Value 19, Name rate
+  ok   17. Alt+Right, / Formula, (* subtotal (/ rate 100)), Enter, Currency, Name vat
+  ok   18. Esc, Alt+Down, **Total**, Esc, Alt+Right, / Formula, (+ subtotal vat), Currency, Name total
+  ok   19. Esc, Alt+Down, type the sentence, Esc
+  ok   20. Live: Qty on the first line 2 changes amount, subtotal, VAT, total and the sentence; Client Grace Hopper
+
+Tree comparison: PASS
+  Ignored in the comparison:
+    - title (the replay types the page's title; the template has its own name)
+    - size (what splitting a cell leaves: shares of the row or column; the template leaves every cell its equal share)
+    - an input's empty value (a field made in the editor holds '' where the template writes nothing: the same thing)
+  Differences: none
+  Console problems: none
+  Page/template changes: none
+  Evidence: quote-replayed.png, quote-template.png, quote-side-by-side.png
+  (73s)
+
+========================================================================
+checklist: PASS
+========================================================================
+Steps followed (16), as the page numbers them:
+  ok    1. New document, title Workshop checklist
+  ok    2. Click the empty cell, type the heading, Esc
+  ok    3. Alt+Down, / Checklist, Enter: three sample items and a bar
+  ok    4. Name steps, Title Before the workshop starts
+  ok    5. Click each item's text, select all, type, Tab
+  ok    6. Click the first box to untick it: nothing ticked
+  ok    7. Add an item, type Send the reminder, Enter, Esc
+  ok    8. Click the list title, Alt+Down, type the message, Esc
+  ok    9. Name ready; Show only when: Never
+  ok   10. Click the message (it opens for typing), Esc, Alt+Down, type the sentence, Esc
+  ok   11. Click the list title, Events, Add a handler: the code studio opens on the events of steps
+  ok   12. When: change; What should happen: Start from nothing
+  ok   13. Code tab, click in the editor, type the handler on one line
+  ok   14. Apply: the studio closes and Events lists the handler
+  ok   15. Live: tick four boxes (message and "finished so far: 1"), untick one (message goes), tick again (a second record)
+  ok   16. Home, Data: the checklists collection holds one record per completion
+
+Tree comparison: PASS
+  Ignored in the comparison:
+    - title (the replay types the page's title; the template has its own name)
+    - size (what splitting a cell leaves: shares of the row or column; the template leaves every cell its equal share)
+    - an input's empty value (a field made in the editor holds '' where the template writes nothing: the same thing)
+  Differences: none
+  Console problems: none
+  Page/template changes: none
+  Evidence: checklist-replayed.png, checklist-template.png, checklist-side-by-side.png
+  (49s)
+
+========================================================================
+wizard: PASS
+========================================================================
+Steps followed (13), as the page numbers them:
+  ok    1. New document, title Order wizard
+  ok    2. Click the empty cell, / Data, Name step, Value 1
+  ok    3. Alt+Down, type Step {{step}} of 3, Esc
+  ok    4. Alt+Down, / Text field, Name customer, Label, Value
+  ok    5. Show only when: Depends…, Hide it when (!= step 1)
+  ok    6. Alt+Down, / Number, Name qty, Label How many mugs?, Value 2
+  ok    7. Depends…, Hide it when (!= step 2)
+  ok    8. Alt+Down, type the summary text, Esc
+  ok    9. Depends…, (!= step 3)
+  ok   10. Alt+Down, / Button, Look Quiet, Label Back, What it does, Depends… (<= step 1)
+  ok   11. Alt+Right, / Button, Label Next, What it does, Depends… (>= step 3)
+  ok   12. Alt+Right, / Button, Look Soft, Label Start again, What it does, Depends… (!= step 3)
+  ok   13. Live: only the first question and Next; Next, Next, Start again
+
+Tree comparison: PASS
+  Ignored in the comparison:
+    - title (the replay types the page's title; the template has its own name)
+    - size (what splitting a cell leaves: shares of the row or column; the template leaves every cell its equal share)
+    - an input's empty value (a field made in the editor holds '' where the template writes nothing: the same thing)
+  Differences: none
+  Console problems: none
+  Page/template changes: none
+  Evidence: wizard-replayed.png, wizard-template.png, wizard-side-by-side.png
+  (58s)
+
+========================================================================
+order-tracker: PASS
+========================================================================
+Steps followed (12), as the page numbers them:
+  ok    1. New document, title Order tracker
+  ok    2. With no cell selected, Currency EUR
+  ok    3. Click the empty cell, type # Orders, Esc
+  ok    4. Alt+Down, / Text field, Name customer, Label Customer
+  ok    5. Alt+Right, / Number, Name qty, Label Quantity, Value 1
+  ok    6. Alt+Right, / Formula, (* qty 24), Enter, Currency, Name total
+  ok    7. Esc, Alt+Down, / Button, Label Save order, What it does
+  ok    8. Alt+Down, / Table, the formula bar: (rows "orders"), Enter: the table empties
+  ok    9. Live: Ada Lovelace, Save order; Grace Hopper, Quantity 3, Save order: two rows, Customer empties
+  ok   10. Edit, click the table, Columns: untick Show at
+  ok   11. Row buttons: Change a field, Field status, New value Shipped, Add the button
+  ok   12. Live: press Shipped on Ada's row: its status changes at once
+
+Tree comparison: PASS
+  Ignored in the comparison:
+    - title (the replay types the page's title, the template has its own name)
+    - size (what splitting a cell leaves: shares of the row or column; the template leaves every cell its equal share)
+    - value of the table (the three sample rows the table starts with stay in the cell after its rows come from (rows "orders"); the formula decides what it shows)
+    - value of the Customer and Quantity inputs (step 9 types in them in Live: Customer ends empty, Quantity at 3; the template keeps Quantity 1). The picture shows Quantity 3 for that reason.
+  Differences: none
+  Console problems: none
+  Page/template changes: none
+  Evidence: order-tracker-replayed.png, order-tracker-template.png, order-tracker-side-by-side.png
+  (54s)
+
+========================================================================
+dashboard: PASS
+========================================================================
+Steps followed (15), as the page numbers them:
+  ok    0. Have records to read: on the Templates page, Open in edgy beside Order tracker (six sample orders are saved)
+  ok    1. New document, title Orders dashboard
+  ok    2. With no cell selected, Currency EUR
+  ok    3. Click the empty cell, type # Orders at a glance, Esc
+  ok    4. Alt+Down, / Stat, Enter: a sample figure
+  ok    5. Number: (sum (column (rows "orders") "total"))
+  ok    6. Label Taken; Show the number as stays Currency
+  ok    7. Compare with 360; Trend (column (rows "orders") "total")
+  ok    8. Alt+Right, / Stat, Number (len (rows "orders")), Label Orders
+  ok    9. Default beside Compare with and Trend; Show the number as: Automatic
+  ok   10. Click the second stat, Alt+Right, / Stat, Number (count-if …), Label Waiting to ship
+  ok   11. Compare with 4; Default beside Trend; Automatic; Lower is better
+  ok   12. Click the third stat, Esc, Alt+Down, / Bar chart; Numbers, Title Total by customer, Show numbers as Currency
+  ok   13. Click the chart, Alt+Right, / Donut; Numbers, Title Orders by status
+  ok   14. Live: open the Order tracker, save an order, come back: the numbers and charts follow the records
+
+Tree comparison: PASS
+  Ignored in the comparison:
+    - title (the replay types the page's title; the template has its own name)
+    - size (what splitting a cell leaves: shares of the row or column; the template leaves every cell its equal share)
+    - an input's empty value (a field made in the editor holds '' where the template writes nothing: the same thing)
+  Differences: none
+  Console problems: none
+  Page/template changes: none
+  Evidence: dashboard-replayed.png, dashboard-template.png, dashboard-side-by-side.png
+  (66s)
+
+========================================================================
+flowchart: PASS
+========================================================================
+Steps followed (15), as the page numbers them:
+  ok    1. New document, title Order flowchart
+  ok    2. Click the empty cell, / Number, Name waiting, Label Orders waiting, Value 3
+  ok    3. Alt+Down, / Diagram, Name flow: a sample of two boxes joined by an arrow
+  ok    4. Cell details: Clear; the cell says Pick a shape above, then drag to draw it
+  ok    5. Ellipse, click at 110,50; Enter, Order placed, Enter
+  ok    6. Diamond, click at 360,50; Enter, Paid?, Enter
+  ok    7. Rectangle, click at 610,50; Enter, the label with {{waiting}}, Enter
+  ok    8. Rectangle, click at 360,170; Enter, Send a reminder, Enter
+  ok    9. Rectangle, click at 610,170; Enter, the Ship label, Enter
+  ok   10. Arrow: drag from Order placed to Paid?
+  ok   11. Arrow: drag from Paid? to Pick and pack; label yes
+  ok   12. Arrow: drag from Paid? to Send a reminder; label no
+  ok   13. Arrow: drag from Pick and pack to Ship
+  ok   14. Cell details: Tidy layout
+  ok   15. Live: change Orders waiting to 5; the two labels follow
+
+Tree comparison: PASS
+  Ignored in the comparison:
+    - title (the replay types the page's title, the template has its own name)
+    - size (what splitting a cell leaves: shares of the row or column)
+    - element ids (arrows are compared by the text of the shapes they join) and the elements' places and sizes (the template writes none down, the replay's come from where it clicked and Tidy layout)
+  Differences: none
+  Console problems: none
+  Page/template changes: none
+  Evidence: flowchart-replayed.png, flowchart-template.png, flowchart-side-by-side.png
+  (100s)
+
+========================================================================
+deck: PASS
+========================================================================
+Steps followed (19), as the page numbers them:
+  ok    1. New document, title Q4 review: title
+  ok    2. Click the empty cell, type # Q4 review, Esc
+  ok    3. Alt+Down, type Northwind Studio, Esc
+  ok    4. Click the logo (All documents) to go back to the home page
+  ok    5. New document, title Q4 review: numbers; Currency EUR
+  ok    6. Click the empty cell, # Numbers, Esc, Alt+Down, / Stat
+  ok    7. Default beside Trend; Number 41200, Label Billed, Compare with 38000
+  ok    8. Click the stat, Alt+Right, / Stat, Default beside Trend, Percent, Number 0.85, Label On time, Compare with 0.8
+  ok    9. Click the logo to go back to the home page
+  ok   10. New document, title Q4 review: next
+  ok   11. Click the empty cell, # Next, Esc, Alt+Down, / Bulleted list: two sample items
+  ok   12. Click the first item, select all, type, Tab; the second the same
+  ok   13. Click the logo to go back to the home page
+  ok   14. Tick the box on the three Q4 review cards: a bar appears at the bottom
+  ok   15. Group into a deck; Title Q4 review; Group
+  ok   16. Click the deck card's title: its page lists the slides
+  ok   17. Move up and Move down until the order is title, numbers, next
+  ok   18. Description: The Q4 numbers in three slides, Enter
+  ok   19. Play: the first slide fills the screen; → next, ← back, Esc leaves
+
+Tree comparison: PASS
+  Ignored in the comparison:
+    - title (the replay types the page's title; the template has its own name)
+    - size (what splitting a cell leaves: shares of the row or column; the template leaves every cell its equal share)
+    - an input's empty value (a field made in the editor holds '' where the template writes nothing: the same thing)
+  Differences: none
+  Console problems: none
+  Page/template changes: none
+  Evidence: deck-replayed.png, deck-template.png, deck-side-by-side.png
+  (74s)
+
+========================================================================
+sharing: PASS
+========================================================================
+Steps followed (20), as the page numbers them:
+  ok    1. Ada: open the app, Create an account: Name Ada Lovelace, Email, Password, Create account
+  ok    2. A private window next to it, on another host: Create an account: Ana Silva, Email, Password
+  ok    3. Ada: New document, title Planning notes
+  ok    4. Click the empty cell, # Planning notes, Esc, Alt+Down, / Checklist, Title Actions
+  ok    5. Alt+Down, / Long text, Name notes, Label Notes, Placeholder Write what was decided
+  ok    6. Alt+Down, type Notes so far: {{notes}}, Esc
+  ok    7. Share in the header: the dialog lists People: Ada, as Owner
+  ok    8. Add people: Email of their account ana@example.test, Can edit, Add: Ana joins the list
+  ok    9. Ana: the home page, Shared with me: the document is there with Can edit; open it
+  ok   10. Ana has Edit, Live and Page and Cell details; Ada sees Ana's avatar in her header (presence)
+  ok   11. Ana, in Live: ticks an action and types a note; Ada sees both as she makes them, and Activity lists the changes under her name
+  ok   12. Ana, in Edit, clicks the Notes field; in Ada's window, in Edit, that cell is outlined in her colour with her name; clicking her avatar goes to it
+  ok   13. Ada: Share again; the menu beside Ana's name: Can edit to Can view
+  ok   14. Ana's window, not reloaded: moved to Live, Edit and Cell details gone, header says Can view, the note above the document
+  ok   15. Ana ticks an action: it shows in her window, not in Ada's, and is gone when she reloads
+  ok   16. Ada: Share, the Can view row: Make a link; the address appears with a Copy button; press Copy
+  ok   17. A second private window (no account): paste the address: Live with a View only badge and the note; no editor
+  ok   18. Ada: Make a link on the Can edit row too; open it: the badge reads Can edit, and what the person changes is saved and shows in Ada's window
+  ok   19. Ada: Turn off on the Can edit row: the address now says No longer shared; Make a link makes a different address
+  ok   20. Remove beside Ana: in her window, at once, the document is replaced by No longer shared with you and Back to your documents
+
+Tree comparison: PASS
+  Ignored in the comparison:
+    - title (the replay types the page's title; the template has its own name)
+    - size (what splitting a cell leaves: shares of the row or column)
+    - the tree is compared the moment the document is built (steps 3 to 6); steps 7 to 20 then change it on purpose (ticks, notes, who may open it)
+  Differences: none
+  Console problems: none
+  NOTE: DEFECT (app, not changed here): after Turn off on a link, the owner editor window, and the colleague window too (every signed-in window on that document), turns into "No document here" (status unshared) until it is reloaded. The server sends the "unshared" event to every signed-in listener (guestHears in src/server/access.ts returns true for users) and the session (src/web/session.ts, on("unshared")) does not check whose link it was. The guest page does say "No longer shared".
+  Page/template changes: none
+  Evidence: sharing-replayed.png, sharing-template.png, sharing-side-by-side.png
+  (93s)
+
+========================================================================
+print-export: PASS
+========================================================================
+Steps followed (15), as the page numbers them:
+  ok    1. New document, title Corner Cafe: quarterly report
+  ok    2. Click the empty cell, type the heading, Esc
+  ok    3. Alt+Down, type the sentence, Esc
+  ok    4. Alt+Down, / Table: three sample rows; Look > Title Sold this quarter
+  ok    5. Alt+Down, / Page break: a dashed line in Edit
+  ok    6. Alt+Down, type ## Next quarter, Esc
+  ok    7. Alt+Down, / Bulleted list, the two items
+  ok    8. Esc until no cell is selected: the Document panel has a Printing section with Paper, Turn, Margins, Footer
+  ok    9. Margins Wide, Footer Title and numbers; Paper A4 and Portrait left as they are
+  ok   10. See the pages: the document opens in Page view
+  ok   read. Read the pages: 2 pages, the table on page 1, Next quarter on page 2, a footer with the title and Page 1 of 2
+  ok   11. Print: the print dialog opens on those pages (headless: the Page view is printed to a PDF with Page.printToPDF)
+  ok   12. Switch to Edit, press Export as HTML: the browser saves corner-cafe-quarterly-report.html (downloaded here with GET /api/docs/<id>/export and the cookie)
+  ok   13. Open the file with a double-click (file://): the report opens with no edgy running, with an Offline copy bar
+  ok   14. Turn off the network and reload the file: it still opens
+
+Tree comparison: PASS
+  Ignored in the comparison:
+    - title (the replay types the page's title; the template has its own name)
+    - size (what splitting a cell leaves: shares of the row or column; the template leaves every cell its equal share)
+    - an input's empty value (a field made in the editor holds '' where the template writes nothing: the same thing)
+  Differences: none
+  Console problems: none
+  Printed: the Page view printed to a PDF with Page.printToPDF has 2 pages (print-export-printed.pdf); the export downloaded (1060222 bytes) opened from file:// with the network off made 0 network requests and 0 console problems.
+  Page/template changes: none
+  Evidence: print-export-replayed.png, print-export-template.png, print-export-side-by-side.png
+  (251s)
+
+========================================================================
+agent: PASS
+========================================================================
+Steps followed (11), as the page numbers them:
+  ok    1. Start edgy: the replay server is on 8794 and asks for sign-in (accounts mode), so the signed-in case below is the one followed
+  ok   12. Avatar in the header, Profile; API keys: Name Claude on my laptop, Create key; the key is shown once: Copy, I have copied it
+  ok    2. Connect the agent: start the MCP server of .mcp.json (npx tsx src/mcp/server.ts, EDGY_URL, EDGY_API_KEY, EDGY_AGENT_NAME=Claude) from an MCP client
+  ok    4. Ask the agent: List my edgy documents; it answers from edgy_docs
+  ok    5. Ask for the Team lunch document: the agent reads edgy_guide, builds it with edgy_create, reads it back with edgy_read
+  ok    6. Open the link; open Activity (the Activity and messages button)
+  ok    7. Activity lists the agent next to the person and each of its changes as an op
+  ok    8. Live: change People, the total follows; press Order lunch: the line below reads Lunches ordered so far: 1
+  ok    9. Home, Data: the collection lunches holds the record the button saved
+  ok   10. Ask the agent: Listen for requests in the Team lunch document: it calls edgy_listen, and the box under Activity says An agent is listening.
+  ok   11. In the box, Ask the agent for something…: type Show the total in bold, Enter; the agent picks it up, changes the document with edgy_apply and answers with edgy_say
+
+Tree comparison: PASS
+  Ignored in the comparison:
+    - title (the agent is asked for 'Team lunch'; the template has the same, the comparison ignores titles everywhere)
+    - size (none: the agent writes the notation, no cell has a size)
+    - the agent's own wording is not compared: the replay's agent writes the document from the prompt, and the comparison shows it matches the template cell for cell
+  Differences: none
+  Console problems: none
+  MCP: the server offered 14 tools (edgy_guide, edgy_docs, edgy_organize, edgy_deck, edgy_share, edgy_export, edgy_create, edgy_read, edgy_apply, edgy_eval, edgy_data, edgy_say, edgy_listen, edgy_answer).
+  Activity, as the page shows it: Activity | AR | Agent Reader | (you) | Claude for Agent Reader | just now | (replace c1 ("col …")) | (meta currency EUR) |  | No agent is connected. Messages wait here until one is. | Connect one
+  Page/template changes: 
+    - site/content/tutorials/agent.md, step 7: the example op in Activity said (put c1 ("col …")); what edgy_create leaves in Activity is (replace c1 ("col …")), followed by the (meta currency EUR) the agent sets afterwards. The page now says that.
+  Evidence: agent-replayed.png, agent-template.png, agent-side-by-side.png
+  (39s)
+

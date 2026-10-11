@@ -5,27 +5,27 @@
     "alt": "The library: pinned documents first, then the rest as cards with a small map of each document, a search box and filters above them.",
     "marks": [
       {
-        "x": 28.9,
+        "x": 6.1,
         "y": 25,
         "label": "Search"
       },
       {
-        "x": 65.3,
+        "x": 50.7,
         "y": 25,
         "label": "Filters"
       },
       {
-        "x": 50,
+        "x": 3.6,
         "y": 36.8,
         "label": "Start from a template"
       },
       {
-        "x": 13.3,
+        "x": 4.5,
         "y": 59.8,
         "label": "A pinned document, with a map of it"
       },
       {
-        "x": 89.4,
+        "x": 82.3,
         "y": 11.9,
         "label": "New document"
       }
@@ -37,17 +37,17 @@
     "alt": "The library filtered by a search for \"quote\": the matching cards, with the words that matched shown under each.",
     "marks": [
       {
-        "x": 27.6,
+        "x": 6.1,
         "y": 25,
         "label": "Search"
       },
       {
-        "x": 31.7,
+        "x": 22.8,
         "y": 61.1,
         "label": "Where the words matched"
       },
       {
-        "x": 13.3,
+        "x": 4.5,
         "y": 52.7,
         "label": "The title, with the match marked"
       }
@@ -64,17 +64,17 @@
         "label": "Collections"
       },
       {
-        "x": 25.2,
+        "x": 21.4,
         "y": 10.8,
         "label": "The selected one"
       },
       {
-        "x": 60.2,
+        "x": 21.4,
         "y": 21.1,
         "label": "A record"
       },
       {
-        "x": 94,
+        "x": 89,
         "y": 11.1,
         "label": "Delete all"
       }
@@ -86,17 +86,17 @@
     "alt": "The profile page: name, avatar colour, email, password, theme and API keys.",
     "marks": [
       {
-        "x": 35.1,
+        "x": 4.3,
         "y": 11.5,
         "label": "Name and colour"
       },
       {
-        "x": 50,
+        "x": 4.3,
         "y": 63.1,
         "label": "Theme"
       },
       {
-        "x": 50,
+        "x": 4.3,
         "y": 81.2,
         "label": "API keys"
       }
@@ -108,12 +108,12 @@
     "alt": "The API keys section of the profile with one key listed by name and the date it was made.",
     "marks": [
       {
-        "x": 50,
+        "x": 1.8,
         "y": 79.6,
         "label": "A key: its name, start and last use"
       },
       {
-        "x": 74.5,
+        "x": 65.2,
         "y": 56.4,
         "label": "Create a key"
       }
@@ -125,17 +125,17 @@
     "alt": "The sign-in page: email, password and a Sign in button.",
     "marks": [
       {
-        "x": 50,
+        "x": 35.5,
         "y": 45.6,
         "label": "Email"
       },
       {
-        "x": 50,
+        "x": 35.5,
         "y": 55.9,
         "label": "Password"
       },
       {
-        "x": 50,
+        "x": 35.5,
         "y": 63.1,
         "label": "Sign in"
       }
@@ -147,27 +147,27 @@
     "alt": "A document in Edit: the header with Edit, Live and Page, the document with one cell selected, and the panel on the right.",
     "marks": [
       {
-        "x": 74.3,
+        "x": 67.7,
         "y": 2.9,
         "label": "Edit, Live and Page"
       },
       {
-        "x": 63.3,
+        "x": 55.7,
         "y": 77.7,
         "label": "The selected cell"
       },
       {
-        "x": 87.5,
+        "x": 74,
         "y": 69,
         "label": "Cell details"
       },
       {
-        "x": 88,
+        "x": 83.9,
         "y": 2.2,
         "label": "Share"
       },
       {
-        "x": 64.1,
+        "x": 61.9,
         "y": 2.9,
         "label": "Activity"
       }
@@ -179,22 +179,22 @@
     "alt": "The same document in Live: inputs, formulas and buttons ready to use, no editing handles.",
     "marks": [
       {
-        "x": 74.3,
+        "x": 67.7,
         "y": 2.9,
         "label": "Edit, Live and Page"
       },
       {
-        "x": 73.9,
+        "x": 65.5,
         "y": 44.9,
         "label": "An input, ready to type in"
       },
       {
-        "x": 76.5,
+        "x": 69.7,
         "y": 57.1,
         "label": "A formula, up to date"
       },
       {
-        "x": 22.8,
+        "x": 17.7,
         "y": 78.5,
         "label": "A button"
       }
@@ -206,12 +206,12 @@
     "alt": "The same document in Page view: printed pages with margins, a footer with page numbers, and the page setup.",
     "marks": [
       {
-        "x": 50,
+        "x": 1,
         "y": 3.9,
         "label": "Page setup"
       },
       {
-        "x": 50,
+        "x": 17.9,
         "y": 52.9,
         "label": "A printed page, with its margins"
       },
@@ -228,17 +228,17 @@
     "alt": "A document in Live on a phone: the cells stacked in one column and a short header with the More button.",
     "marks": [
       {
-        "x": 94.1,
+        "x": 86.7,
         "y": 2.8,
         "label": "More"
       },
       {
-        "x": 72.4,
+        "x": 51.5,
         "y": 2.8,
         "label": "Edit, Live and Page"
       },
       {
-        "x": 34.4,
+        "x": 4.6,
         "y": 41.5,
         "label": "Cells stacked in one column"
       }
@@ -250,17 +250,17 @@
     "alt": "The More menu open on a phone: Activity and messages, Cell details, Show links between cells, Share, Print, Docs, theme and Profile.",
     "marks": [
       {
-        "x": 94.1,
+        "x": 86.7,
         "y": 2.8,
         "label": "More"
       },
       {
-        "x": 71,
+        "x": 42.1,
         "y": 26.7,
         "label": "Share"
       },
       {
-        "x": 71,
+        "x": 42.1,
         "y": 49.4,
         "label": "Profile"
       }
@@ -272,22 +272,22 @@
     "alt": "A selected cell with a plus button in the middle of each edge, ready to split it in that direction.",
     "marks": [
       {
-        "x": 94.8,
+        "x": 90.5,
         "y": 66.4,
         "label": "Split to the right"
       },
       {
-        "x": 49.9,
-        "y": 97.8,
+        "x": 45.6,
+        "y": 93.7,
         "label": "Split below"
       },
       {
-        "x": 5.1,
+        "x": 2.4,
         "y": 66.4,
         "label": "Split to the left"
       },
       {
-        "x": 49.9,
+        "x": 45.6,
         "y": 34.9,
         "label": "Split above"
       }
@@ -299,17 +299,17 @@
     "alt": "The / menu open under an empty cell: a search field above one scrolling list of what a cell can hold, each choice with a short hint.",
     "marks": [
       {
-        "x": 19,
+        "x": 1.5,
         "y": 33.5,
         "label": "Search"
       },
       {
-        "x": 19,
+        "x": 1.5,
         "y": 40.4,
         "label": "A kind of cell, with a hint"
       },
       {
-        "x": 50,
+        "x": 1.5,
         "y": 25.9,
         "label": "The empty cell"
       }
@@ -321,22 +321,22 @@
     "alt": "Cell details for a selected formula: its name, what it is, its content, text, spacing, box and events sections.",
     "marks": [
       {
-        "x": 50.2,
+        "x": 4.1,
         "y": 26.2,
         "label": "Content"
       },
       {
-        "x": 50.2,
+        "x": 4.1,
         "y": 52.1,
         "label": "Text"
       },
       {
-        "x": 50.2,
+        "x": 4.1,
         "y": 56.8,
         "label": "Spacing and size"
       },
       {
-        "x": 50.2,
+        "x": 4.1,
         "y": 70.8,
         "label": "Events"
       }
@@ -348,17 +348,17 @@
     "alt": "The formula bar above the document, showing the selected cell’s expression with its colours.",
     "marks": [
       {
-        "x": 6.2,
+        "x": 1,
         "y": 49.2,
         "label": "The cell’s name"
       },
       {
-        "x": 49.2,
+        "x": 10.9,
         "y": 49.2,
         "label": "Its expression"
       },
       {
-        "x": 90.3,
+        "x": 86,
         "y": 49.2,
         "label": "Its result"
       }
@@ -370,7 +370,7 @@
     "alt": "The code studio: the expression in a large editor, its live result, the list of functions and the cells you can use.",
     "marks": [
       {
-        "x": 14.1,
+        "x": 6.9,
         "y": 14.5,
         "label": "Code and Blocks"
       },
@@ -380,7 +380,7 @@
         "label": "The expression"
       },
       {
-        "x": 37.7,
+        "x": 7.2,
         "y": 91.7,
         "label": "The result, live"
       },
@@ -390,7 +390,7 @@
         "label": "Functions and cells"
       },
       {
-        "x": 87.3,
+        "x": 81.4,
         "y": 91.7,
         "label": "Apply"
       }
@@ -402,7 +402,7 @@
     "alt": "The code studio’s Blocks tab: the same expression as nested blocks you can click together.",
     "marks": [
       {
-        "x": 14.1,
+        "x": 6.9,
         "y": 14.5,
         "label": "Code and Blocks"
       },
@@ -412,7 +412,7 @@
         "label": "The expression as blocks"
       },
       {
-        "x": 37.7,
+        "x": 7.2,
         "y": 91.7,
         "label": "The result"
       }
@@ -424,12 +424,12 @@
     "alt": "The code studio’s Ask AI tab: a sentence typed in, the code it became, and an explanation.",
     "marks": [
       {
-        "x": 79.7,
+        "x": 66.3,
         "y": 27.5,
         "label": "What you type"
       },
       {
-        "x": 79.7,
+        "x": 66.3,
         "y": 66.8,
         "label": "The code it became, and why"
       }
@@ -441,17 +441,17 @@
     "alt": "The Events section of Cell details for a checkbox: its change handler written as an expression.",
     "marks": [
       {
-        "x": 50.2,
+        "x": 4.1,
         "y": 59.8,
         "label": "The Events section"
       },
       {
-        "x": 50.2,
+        "x": 4.1,
         "y": 66.5,
         "label": "A handler: when it runs, and what it does"
       },
       {
-        "x": 24.7,
+        "x": 4.1,
         "y": 73.7,
         "label": "Add a handler"
       }
@@ -463,23 +463,23 @@
     "alt": "The Activity panel: each change as an s-expression with who made it and when, people and agents alike.",
     "marks": [
       {
-        "x": 49.8,
-        "y": 3.2,
+        "x": 59.4,
+        "y": 3.7,
         "label": "Who is here"
       },
       {
-        "x": 51.8,
+        "x": 4.3,
         "y": 16.2,
         "label": "Each change, as an s-expression"
       },
       {
-        "x": 16.7,
-        "y": 31.7,
+        "x": 4.3,
+        "y": 34.3,
         "label": "An agent, named for whom it acts"
       },
       {
-        "x": 49.8,
-        "y": 91,
+        "x": 78.6,
+        "y": 95.6,
         "label": "A line to the agent"
       }
     ]
@@ -490,17 +490,17 @@
     "alt": "Lines drawn between a formula and the cells it reads and the cells that read it.",
     "marks": [
       {
-        "x": 50,
+        "x": 2.9,
         "y": 30.7,
         "label": "What it reads"
       },
       {
-        "x": 86.5,
+        "x": 75.8,
         "y": 56.7,
         "label": "The selected formula"
       },
       {
-        "x": 86.5,
+        "x": 75.8,
         "y": 69.4,
         "label": "What reads it"
       }
@@ -512,45 +512,45 @@
     "alt": "Page setup in the panel: paper size, orientation, margins and footer.",
     "marks": [
       {
-        "x": 63.6,
+        "x": 25.1,
         "y": 38.3,
         "label": "Portrait or landscape"
       },
       {
-        "x": 65,
+        "x": 25.1,
         "y": 22.2,
         "label": "Paper size"
       },
       {
-        "x": 50,
+        "x": 4.5,
         "y": 87,
         "label": "See the pages"
       }
     ]
   },
   "share-dialog": {
-    "w": 512,
-    "h": 698,
+    "w": 480,
+    "h": 666,
     "alt": "The Share dialog: people with access and their roles, and links anyone can open.",
     "marks": [
       {
-        "x": 50,
-        "y": 24.5,
+        "x": 2.7,
+        "y": 23.3,
         "label": "Someone with access"
       },
       {
-        "x": 50,
-        "y": 33.4,
+        "x": 2.7,
+        "y": 32.6,
         "label": "Add people"
       },
       {
-        "x": 50,
-        "y": 57.8,
+        "x": 2.7,
+        "y": 58.2,
         "label": "A link anyone can open"
       },
       {
-        "x": 83.1,
-        "y": 61.1,
+        "x": 75.1,
+        "y": 61.6,
         "label": "Copy the link"
       }
     ]
@@ -561,17 +561,17 @@
     "alt": "A deck’s page: its documents in order as small maps, with Play.",
     "marks": [
       {
-        "x": 61.4,
+        "x": 57.2,
         "y": 19,
         "label": "Play"
       },
       {
-        "x": 26.1,
-        "y": 38.3,
+        "x": 47.3,
+        "y": 34.3,
         "label": "A document, one per slide"
       },
       {
-        "x": 8.5,
+        "x": 6.8,
         "y": 38.3,
         "label": "Drag to reorder"
       }
@@ -583,17 +583,17 @@
     "alt": "A deck playing: one slide filling the screen, with its number and the controls to move between slides.",
     "marks": [
       {
-        "x": 5.9,
+        "x": 3.3,
         "y": 96.7,
         "label": "Which slide"
       },
       {
-        "x": 9.4,
+        "x": 6.7,
         "y": 96.8,
         "label": "Next slide"
       },
       {
-        "x": 97.7,
+        "x": 95,
         "y": 96.8,
         "label": "Leave"
       }
@@ -605,17 +605,17 @@
     "alt": "Two people in one document: their avatars in the header and a coloured outline on the cell each has selected.",
     "marks": [
       {
-        "x": 52.2,
+        "x": 49.9,
         "y": 2.9,
         "label": "Who else is here"
       },
       {
-        "x": 50.4,
+        "x": 42.8,
         "y": 84.2,
         "label": "The cell they selected"
       },
       {
-        "x": 63.3,
+        "x": 55.7,
         "y": 96.5,
         "label": "Your selected cell"
       }

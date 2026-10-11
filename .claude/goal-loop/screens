@@ -16,6 +16,10 @@ data              /data                 desktop --full
 profile           /profile              desktop --full
 phone-home        /                     phone
 phone-profile     /profile              phone --scroll
+# The documentation, served by the app (signed out too). Every docs page at every size: site/scripts/crawl.mjs.
+docs-home         /docs/                desktop --cookie none
+docs-page         /docs/cells/table/    desktop
+phone-docs        /docs/cells/table/    phone --cookie none
 
 {id}-edit         /d/{id}?view=edit     desktop --full
 {id}-live         /d/{id}?view=live     desktop --full

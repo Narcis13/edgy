@@ -1,0 +1,2 @@
+# name<TAB>what was changed and why. Read by report.mjs into replay.txt.
+agent	site/content/tutorials/agent.md, step 7: the example op in Activity said (put c1 ("col …")); what edgy_create leaves in Activity is (replace c1 ("col …")), followed by the (meta currency EUR) the agent sets afterwards. The page now says that.
