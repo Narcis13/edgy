@@ -20,6 +20,7 @@ import { SxError, read } from '../core/sx';
 import { indexTree, walk } from '../core/tree';
 import { GUIDE } from '../core/reference';
 import { TEMPLATES, tour } from '../core/templates';
+import { TUTORIALS } from '../core/tutorials';
 import { type Entry, type Filter, type Sort, FILTERS, SORTS, arrange, match, queryWords } from '../core/library';
 import { collectionsUsed } from '../core/events';
 import {
@@ -581,7 +582,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   }
 
   function create(title: string | undefined, templateId: string | undefined, root: Json | undefined, actor: Actor, owner: string | null): Doc {
-    const template = templateId === 'tour' ? tour : TEMPLATES.find((t) => t.id === templateId);
+    const template = templateId === 'tour' ? tour : [...TEMPLATES, ...TUTORIALS].find((t) => t.id === templateId);
     if (templateId && !template) throw new OpError(`no template "${templateId}"`);
     let doc = newDoc(shortId(), title?.trim() || template?.title || 'Untitled');
     const ops: Op[] = [];

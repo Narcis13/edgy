@@ -13,11 +13,16 @@ import { OP_VERBS } from '../../src/core/ops';
 import { STYLE_KEYS } from '../../src/core/notation';
 import { FONTS } from '../../src/core/fonts';
 import { TEMPLATES, tour } from '../../src/core/templates';
+import { TUTORIALS } from '../../src/core/tutorials';
 import { COLOR_TOKENS } from '../../src/web/editor/look';
 import { SHORTCUTS, SHORTCUT_PLACES } from '../../src/web/shortcuts';
 import { GROUPS, GROUP_COLOR, docFor, signature } from '../../src/web/code/docs';
 import { KIND_ABOUT } from '../../src/web/editor/inspector/about';
 import { KIND_LABEL } from '../../src/web/editor/ctx';
+import { KIND_OPTIONS } from '../../src/web/editor/KindMenu';
+
+/** What the / menu offers for a kind: its entries' labels (none for row, col and panel). */
+export const menuLabels = (kind: string): string[] => KIND_OPTIONS.filter((o) => o.kind === kind).map((o) => o.label);
 import { TOOLS } from '../../src/mcp/tools';
 import { createApp } from '../../src/server/app';
 import { Store } from '../../src/server/store';
@@ -60,7 +65,7 @@ export const ops = (): string[] => [...OP_VERBS];
 export const styleKeys = (): string[] => [...STYLE_KEYS];
 export const formats = (): string[] => [...FORMATS];
 export const tokens = (): string[] => [...COLOR_TOKENS];
-export const templates = () => [...TEMPLATES, tour].map((t) => ({ id: t.id, title: t.title, about: t.about }));
+export const templates = () => [...TEMPLATES, tour, ...TUTORIALS].map((t) => ({ id: t.id, title: t.title, about: t.about }));
 
 export interface RouteInfo { method: string; path: string; need: Need }
 

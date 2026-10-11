@@ -293,7 +293,8 @@ test('page setup lives in meta and a row can opt out of stacking', () => {
 
 test('every template builds and evaluates without errors', async () => {
   const { TEMPLATES, tour } = await import('./templates');
-  for (const t of [...TEMPLATES, tour]) {
+  const { TUTORIALS } = await import('./tutorials');
+  for (const t of [...TEMPLATES, tour, ...TUTORIALS]) {
     // Settings first (a template's handlers and custom actions), then its cells, as the server builds it.
     const doc = applyOps(newDoc('t'), [...Object.entries(t.meta ?? {}).map(([k, v]) => ['meta', k, v] as Op), ['put', 'c1', t.root]]).doc;
     const c = evaluate(doc, world);

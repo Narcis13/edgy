@@ -89,6 +89,12 @@ function Toc({ headings, inline }: { headings: Heading[]; inline?: boolean }) {
   );
 }
 
+/** The page's HTML split after its first paragraph. */
+function intro(html: string): [string, string] {
+  const end = html.startsWith('<p>') ? html.indexOf('</p>') : -1;
+  return end < 0 ? ['', html] : [html.slice(0, end + 4), html.slice(end + 4)];
+}
+
 function Page({ v }: { v: PageView }) {
   const r = (to: string) => rel(v.page, to);
   const crumbs: { label: string; href?: string }[] = [{ label: 'Docs', href: r('') }];
@@ -99,7 +105,7 @@ function Page({ v }: { v: PageView }) {
       <a className="skip" href="#main">Skip to the content</a>
       <header className="top">
         <button type="button" className="icon-btn menu-btn js-only" data-drawer-open aria-label="Open the contents" aria-controls="side" aria-expanded="false"><Menu size={18} aria-hidden="true" /></button>
-        <a className="brand" href={r('')} aria-label="edgy docs, start here"><Logo /></a>
+        <a className="brand" href={r('')} title="Start here"><Logo /></a>
         <a className="search-btn" href={r('a-z/')} data-search-open>
           <Search size={15} aria-hidden="true" /><span className="search-label">Search the docs</span><kbd className="search-key">/</kbd>
         </a>
@@ -120,8 +126,10 @@ function Page({ v }: { v: PageView }) {
             )}
             <article className="prose">
               <h1>{v.title}</h1>
+              {/* The first paragraph says what the page covers; On this page follows it. */}
+              <div dangerouslySetInnerHTML={{ __html: intro(v.html)[0] }} />
               <Toc headings={v.headings} inline />
-              <div dangerouslySetInnerHTML={{ __html: v.html }} />
+              <div dangerouslySetInnerHTML={{ __html: intro(v.html)[1] }} />
             </article>
             {(v.prev || v.next) && (
               <nav className="pager" aria-label="Previous and next">

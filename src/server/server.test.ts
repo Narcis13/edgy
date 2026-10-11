@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createApp } from './app';
 import { Store } from './store';
 import { TEMPLATES, tour } from '../core/templates';
+import { TUTORIALS } from '../core/tutorials';
 import { applyOp, applyOps } from '../core/ops';
 import { actionProblems, evaluate } from '../core/engine';
 import { type Op, newDoc } from '../core/types';
@@ -25,7 +26,7 @@ function api() {
 }
 
 test('templates build and evaluate without errors', () => {
-  for (const t of [...TEMPLATES, tour]) {
+  for (const t of [...TEMPLATES, tour, ...TUTORIALS]) {
     // As the server builds them: settings (handlers, custom actions) first, then the cells.
     const doc = applyOps(newDoc('t'), [...Object.entries(t.meta ?? {}).map(([k, v]) => ['meta', k, v] as Op), ['put', 'c1', t.root]]).doc;
     const computed = evaluate(doc, { rows: () => [], now: Date.now() });

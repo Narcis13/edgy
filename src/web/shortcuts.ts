@@ -38,7 +38,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'split', keys: ['Alt+Arrow'], where: 'editor', does: 'Split the selected cell in that direction; the new, empty cell is on that side.' },
   { id: 'next-cell', keys: ['Tab', 'Shift+Tab'], where: 'editor', does: 'Select the next or the previous cell.' },
   { id: 'edit', keys: ['Enter'], where: 'editor', does: 'Edit a text, empty, formula or button cell; on a group, select its first cell.' },
-  { id: 'type', keys: ['any letter'], where: 'editor', does: 'In an empty cell, start typing its text with that letter.' },
+  { id: 'type', keys: ['any character'], where: 'editor', does: 'In an empty cell, start typing its text with that character (= starts a formula).' },
   { id: 'parent', keys: ['Esc'], where: 'editor', does: 'Close the / menu; otherwise select the cell around the selected one.' },
   { id: 'kind-menu', keys: ['/'], where: 'editor', does: 'Open the / menu to choose what the cell holds.' },
   { id: 'clear', keys: ['Backspace', 'Delete'], where: 'editor', does: 'Clear the cell; on a cell that is already empty, remove it.' },
@@ -70,7 +70,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'diagram-delete', keys: ['Backspace', 'Delete'], where: 'diagram', does: 'Delete the picked elements.' },
   { id: 'diagram-duplicate', keys: ['Mod+D'], where: 'diagram', does: 'Duplicate the picked elements.' },
   { id: 'diagram-all', keys: ['Mod+A'], where: 'diagram', does: 'Pick every element.' },
-  { id: 'diagram-text', keys: ['Enter'], where: 'diagram', does: 'Write the text of the picked element; Enter again (or Esc, or Tab) finishes, Shift+Enter starts a new line.' },
+  { id: 'diagram-label', keys: ['Enter'], where: 'diagram', does: 'Write the text of the picked element; Enter again (or Esc, or Tab) finishes, Shift+Enter starts a new line.' },
   { id: 'diagram-escape', keys: ['Esc'], where: 'diagram', does: 'Close the colours, then go back to the select tool, then let go of what is picked.' },
 
   { id: 'list-next', keys: ['Enter'], where: 'list', does: 'Keep the item and start the next one.' },
@@ -86,7 +86,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'tabs-rename', keys: ['Enter', 'Esc'], where: 'tabs', does: 'Keep or drop a new title while renaming a tab or a section.' },
 
   { id: 'table-search', keys: ['Esc'], where: 'table', does: 'Clear the table’s search.' },
-  { id: 'table-edit', keys: ['Enter', 'Tab', 'Esc'], where: 'table', does: 'While editing a table cell: keep it, keep it and go to the next, or drop the change.' },
+  { id: 'table-edit', keys: ['Enter', 'Tab', 'Esc'], where: 'table', does: 'While editing a table cell: Enter keeps it and goes down to the same column of the next row, Tab (Shift+Tab) keeps it and goes across, Esc drops the change.' },
 
   { id: 'play-next', keys: ['ArrowRight', 'PageDown'], where: 'play', does: 'Next slide (Page Down first scrolls a long slide).' },
   { id: 'play-previous', keys: ['ArrowLeft', 'PageUp'], where: 'play', does: 'Previous slide (Page Up first scrolls a long slide).' },
@@ -96,5 +96,5 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'play-leave', keys: ['Esc'], where: 'play', does: 'Leave the deck.' },
 
   { id: 'library-search', keys: ['Esc'], where: 'library', does: 'Clear the search.' },
-  { id: 'library-rename', keys: ['Enter', 'Esc'], where: 'library', does: 'Keep or drop a new title while renaming a card.' },
+  { id: 'library-describe', keys: ['Enter', 'Esc'], where: 'library', does: 'While writing a card’s description: Enter keeps it (Shift+Enter starts a new line), Esc drops the change.' },
 ];

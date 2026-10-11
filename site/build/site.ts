@@ -6,7 +6,7 @@ import { join, relative } from 'node:path';
 import type { Token, Tokens } from 'marked';
 import { NAV, navPages } from '../nav';
 import { type Example, type Heading, type PageCtx, lexPage, renderTokens } from './markdown';
-import { type PageInfo, SITE, blocks, firstSentence, setPageInfo } from './blocks';
+import { type PageInfo, SITE, blocks, firstSentence, setIndex, setPageInfo } from './blocks';
 import { pageOf } from './ids';
 import { type PageView, renderPage } from './layout';
 import { type SearchEntry, searchEntries } from './search';
@@ -87,6 +87,7 @@ export function loadSite(fresh = false): Site {
   }
   const pages = new Set(raw.map((p) => p.page));
   setPageInfo(new Map<string, PageInfo>(raw.map((p) => [p.page, { page: p.page, title: p.front.nav ?? p.title, summary: p.summary }])));
+  setIndex(raw.flatMap((p) => p.labels.map((l) => ({ ...l, page: p.page }))));
   const out: SitePage[] = raw.map((p) => {
     const ctx: PageCtx = { page: p.page, anchors, pages, headings: [], examples: p.examples, errors: [], blocks, used: new Set(['main', 'side', 'toc-title']) };
     const html = renderTokens(ctx, p.tokens);

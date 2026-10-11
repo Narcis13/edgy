@@ -10,6 +10,7 @@ import { newDoc } from '../../src/core/types';
 import { applyOp } from '../../src/core/ops';
 import { collectionsUsed } from '../../src/core/events';
 import { TEMPLATES, tour } from '../../src/core/templates';
+import { TUTORIALS } from '../../src/core/tutorials';
 import * as C from './catalog';
 import { type Blocks, type EntryType, type Example, type PageCtx, codeBlock, tableWrap } from './markdown';
 import { entryId, rel } from './ids';
@@ -48,6 +49,41 @@ const groupChip = (group: string) => `<span class="group" style="--group: ${C.GR
 export interface PageInfo { page: string; title: string; summary: string }
 let pageInfo = new Map<string, PageInfo>();
 export const setPageInfo = (m: Map<string, PageInfo>) => void (pageInfo = m);
+/** Every entry and explicit anchor in the site, for the A–Z. */
+let index: { id: string; label: string; type: string; page: string }[] = [];
+export const setIndex = (list: typeof index) => void (index = list);
+
+const TYPE_NAMES: Record<string, string> = {
+  fn: 'function', event: 'event', op: 'op', route: 'route', tool: 'MCP tool', style: 'style key', format: 'format',
+  token: 'colour token', key: 'shortcut', template: 'template', term: 'glossary', kind: 'cell',
+};
+
+/** Everything, A to Z: pages, kinds, entries and glossary words, each with what it is. */
+function aToZ(ctx: PageCtx): string {
+  const items: { label: string; href: string; what: string }[] = [];
+  for (const p of pageInfo.values()) {
+    if (p.page === '' || p.page === ctx.page) continue;
+    const kind = /^cells\/([\w-]+)\/$/.exec(p.page);
+    items.push({ label: kind ? kind[1] : p.title, href: rel(ctx.page, p.page), what: kind ? 'cell' : 'page' });
+  }
+  for (const a of index) {
+    if (a.type === 'key') continue;
+    items.push({ label: a.label, href: `${rel(ctx.page, a.page)}#${a.id}`, what: TYPE_NAMES[a.type] ?? 'section' });
+  }
+  const letter = (s: string) => (/^[a-z]/i.test(s) ? s[0].toUpperCase() : '#');
+  items.sort((a, b) => a.label.localeCompare(b.label, 'en', { sensitivity: 'base' }) || a.what.localeCompare(b.what));
+  const groups = new Map<string, typeof items>();
+  for (const i of items) (groups.get(letter(i.label)) ?? groups.set(letter(i.label), []).get(letter(i.label))!).push(i);
+  const letters = [...groups.keys()].sort((a, b) => (a === '#' ? -1 : b === '#' ? 1 : a.localeCompare(b)));
+  const jump = `<nav class="az-jump" aria-label="Letters">${letters.map((l) => `<a href="#az-${l === '#' ? 'symbols' : l.toLowerCase()}">${l}</a>`).join('')}</nav>`;
+  return jump + letters.map((l) => {
+    const id = `az-${l === '#' ? 'symbols' : l.toLowerCase()}`;
+    ctx.used.add(id);
+    return `<h2 id="${id}">${l === '#' ? 'Symbols' : l}</h2>
+<ul class="az">${groups.get(l)!.map((i) => `<li><a href="${i.href}">${esc(i.label)}</a> <span class="muted">${esc(i.what)}</span></li>`).join('')}</ul>
+`;
+  }).join('');
+}
 
 function ref(ctx: PageCtx, list: string, arg: string): string {
   switch (list) {
@@ -66,7 +102,7 @@ function ref(ctx: PageCtx, list: string, arg: string): string {
       }
       const evs = C.eventsOf(k);
       const group = ['row', 'col', 'tabs', 'accordion', 'collapsible', 'panel'].includes(k);
-      return `<dl class="facts"><div><dt>In notation</dt><dd>${code(`["${k}", …]`)}</dd></div><div><dt>In the / menu</dt><dd>${esc(C.KIND_LABEL[k] ?? k)}</dd></div><div><dt>Holds</dt><dd>${group ? 'other cells' : 'no other cells'}</dd></div><div><dt>Raises</dt><dd>${evs.length ? evs.map((e) => entryLink(ctx, 'event', e.name)).join(', ') : 'no events'}</dd></div></dl>\n`;
+      return `<dl class="facts"><div><dt>In notation</dt><dd>${code(`["${k}", …]`)}</dd></div><div><dt>In the / menu</dt><dd>${C.menuLabels(k).length ? C.menuLabels(k).map((l) => `<b>${esc(l)}</b>`).join(', ') : k === 'panel' ? 'no: made with tabs or an accordion' : 'no: made by splitting'}</dd></div><div><dt>Holds</dt><dd>${group ? 'other cells' : 'no other cells'}</dd></div><div><dt>Raises</dt><dd>${evs.length ? evs.map((e) => entryLink(ctx, 'event', e.name)).join(', ') : 'no events'}</dd></div></dl>\n`;
     }
     case 'events':
       return table(['Event', 'Raised by', 'Comes from'], C.events().map((e) => [entryLink(ctx, 'event', e.name), [...e.kinds.map((k) => kindLink(ctx, k.kind)), ...(e.doc ? ['the document'] : [])].join(', '), esc(FROM[e.from] ?? e.from)]), 'Every event');
@@ -109,6 +145,8 @@ function ref(ctx: PageCtx, list: string, arg: string): string {
         return `<li><a href="${rel(ctx.page, p)}">${esc(info.title)}</a><span>${esc(info.summary)}</span></li>`;
       }).join('')}</ul>\n`;
     }
+    case 'a-z':
+      return aToZ(ctx);
     default:
       ctx.errors.push(`::ref ${list}: no such list`);
       return '';
@@ -216,8 +254,9 @@ function clip(ctx: PageCtx, name: string, caption: string): string {
 function diagram(ctx: PageCtx, name: string): string {
   const D = DIAGRAMS[name];
   if (!D) {
-    ctx.errors.push(`::diagram ${name}: no such diagram in site/diagrams`);
-    return '';
+    missing.add(`diagram ${name}`);
+    return `<figure class="diagram"><p class="muted">Diagram ${esc(name)} is not drawn yet.</p></figure>
+`;
   }
   return `<figure class="diagram">${renderToStaticMarkup(createElement(D))}</figure>\n`;
 }
@@ -228,7 +267,7 @@ export interface LiveSource { title: string; root: Json; meta?: Record<string, J
 export function liveSource(ex: Example): LiveSource {
   const t = ex.attrs.template;
   if (t) {
-    const tpl = [...TEMPLATES, tour].find((x) => x.id === t);
+    const tpl = [...TEMPLATES, tour, ...TUTORIALS].find((x) => x.id === t);
     if (!tpl) throw new Error(`live template=${t}: no such template`);
     return { title: ex.attrs.title ?? tpl.title, root: tpl.root, meta: tpl.meta, data: tpl.data };
   }

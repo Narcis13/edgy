@@ -76,6 +76,8 @@ test('doc-tests: every example runs and gives what the page says', () => {
           const after = applyOpsBlock(base, ex.source);
           if (ex.id) docs.set(ex.id, after);
         } else {
+          // A snippet with no stated result and no document is only shown.
+          if (!ex.in && !ex.source.includes('⇒')) continue;
           sx++;
           const base = ex.in ? docs.get(ex.in) : undefined;
           if (ex.in && !base) throw new Error(`no live or notation block with id=${ex.in} above it`);

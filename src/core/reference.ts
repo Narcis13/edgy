@@ -61,6 +61,8 @@ export const GUIDE = `# Edgy: documents made of cells
 
 A document is one cell. Splitting a cell turns it into a row (side by side) or a col (stacked) of cells, and so on, so a document is a tree. Every change is an op; every formula and action is an s-expression written as a JSON array. A person may be editing the same document live, so make small, legible changes and check the result.
 
+This guide is your reference. People learn edgy from the documentation the server shows at /docs/ (for example /docs/cells/table/ for tables, /docs/language/functions/ for every function, /docs/tutorials/ to start): when a person asks how to do something in edgy, you can send them there.
+
 ## Cells, as notation
 
 A cell is written [kind, props?, ...body]:

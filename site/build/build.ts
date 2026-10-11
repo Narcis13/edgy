@@ -23,11 +23,12 @@ const arg = (name: string, fallback: string) => {
   return i >= 0 ? process.argv[i + 1] : fallback;
 };
 
-export async function buildDocs(out = resolve(ROOT, 'dist/docs'), opts: { quiet?: boolean } = {}): Promise<{ pages: number; bytes: number; out: string }> {
+export async function buildDocs(out = resolve(ROOT, 'dist/docs'), opts: { quiet?: boolean; draft?: boolean } = {}): Promise<{ pages: number; bytes: number; out: string }> {
   const log = (s: string) => opts.quiet || console.log(s);
   const started = Date.now();
   const site = loadSite(true);
-  if (site.errors.length) throw new Error(`the docs have ${site.errors.length} problems:\n  ${site.errors.join('\n  ')}`);
+  if (site.errors.length && opts.draft) log(`docs: ${site.errors.length} problems (draft build, kept going):\n  ${site.errors.slice(0, 20).join('\n  ')}`);
+  else if (site.errors.length) throw new Error(`the docs have ${site.errors.length} problems:\n  ${site.errors.join('\n  ')}`);
 
   mkdirSync(join(SITE, '.gen'), { recursive: true });
   writeFileSync(join(SITE, '.gen/tokens.css'), tokenCss());
@@ -95,7 +96,7 @@ function size(dir: string): number {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {
-  buildDocs(resolve(ROOT, arg('out', 'dist/docs'))).catch((e) => {
+  buildDocs(resolve(ROOT, arg('out', 'dist/docs')), { draft: process.argv.includes('--draft') }).catch((e) => {
     console.error(e instanceof Error ? e.message : e);
     process.exit(1);
   });

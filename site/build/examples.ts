@@ -88,7 +88,8 @@ export interface Checked { expr: string; expect?: string; got: string; ok: boole
  * and the expressions after it see what it changed. `⇒ error: words` expects an error containing them.
  */
 export function runSx(source: string, start?: Run): Checked[] {
-  let run: Run = start ?? { doc: newDoc('ex'), rows: {} };
+  // Each block starts from the example as written: records one block saves never leak into the next.
+  let run: Run = start ? { doc: start.doc, rows: structuredClone(start.rows) } : { doc: newDoc('ex'), rows: {} };
   const out: Checked[] = [];
   for (const step of sxSteps(source)) {
     const x = read(step.expr);

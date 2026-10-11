@@ -11,7 +11,7 @@ exist in code are generated from it and a coverage test fails when one has no do
 
 Started 2026-10-11 on branch `main` at `8d674e4`. Brief: `/goal-loop Brief 5 (Documentation site) in FEATURES_PROMPTS.md, that brief only`.
 
-**Next:** milestone 2 — the site tests go into `npm test` once the pages exist; first the style guide (site/content/contributing/docs.md), glossary and sample pages, then writer agents by section.
+**Next:** 13 writer agents (sonnet) are writing site/content by section (brief: site/WRITERS.md); meanwhile build site/scripts/crawl.mjs and shoot.mjs. When they report: check every section with site/scripts/check.ts, fix, add site/tests to npm test.
 
 ## Contract (Done means)
 
@@ -166,6 +166,8 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 - Some files are CRLF in the working tree (autocrlf). Scripted edits must normalise `
 ` first, or use the Edit tool.
 - Shell state does not persist: export `TMPDIR` (the scratchpad) and `CHROME` in every command that needs them.
+- Never write fix scripts as Bash heredocs with backslashes: the escapes get eaten. Use the Write tool for scripts, or the Edit tool.
+- No git identity is configured on this machine: commit with `git -c user.name="Narcis Brindusescu" -c user.email="narcis75@gmail.com" commit …` (the repo's author).
 - `site/tests/docs.test.ts` (coverage, doc-tests, links, look) is not in `npm test` yet: it fails until every page in site/nav.ts is written. It joins the glob at the end of milestone 5.
 - The app's own CSS (gradients for dot and line patterns, the studio's backdrop blur) is in the live runtime's stylesheet, which only the example iframes load; the look test checks the docs' CSS and diagrams.
 

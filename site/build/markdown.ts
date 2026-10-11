@@ -151,7 +151,7 @@ export const md = new Marked({
       level: 'block',
       start: (src: string) => src.match(/^::(?!:)\w/m)?.index,
       tokenizer(src: string) {
-        const m = /^::(ref|diagram|shot|clip) +([\w./-]+)(?: +([\w./-]+))?(?: +"([^"]*)")? *(?:\n|$)/.exec(src);
+        const m = /^::(ref|diagram|shot|clip) +([\w./-]+)(?: +([\w./,-]+))?(?: +"([^"]*)")? *(?:\n|$)/.exec(src);
         if (!m) return undefined;
         const token: DirectiveToken = { type: 'directive', raw: m[0], name: m[1], arg: m[2], caption: m[4] ?? m[3] ?? '' };
         if (m[1] === 'ref') token.caption = m[3] ?? '';
@@ -240,9 +240,13 @@ function sxBlock(text: string, _attrs: Record<string, string>): string {
 export interface Lexed { tokens: Token[]; examples: Example[] }
 
 /** First pass: the tokens, the entries and explicit anchors (for the site-wide index), and the examples. */
-export function lexPage(page: string, body: string, bodyLine: number): Lexed & { anchors: string[] } {
+/** An anchor the whole site can link to and the A–Z lists: an entry or a heading with an explicit id. */
+export interface Anchor { id: string; label: string; type: string }
+
+export function lexPage(page: string, body: string, bodyLine: number): Lexed & { anchors: string[]; labels: Anchor[] } {
   const tokens = md.lexer(body);
   const anchors: string[] = [];
+  const labels: Anchor[] = [];
   const examples: Example[] = [];
   let lastHeading = 1;
   let n = 0;
@@ -252,12 +256,16 @@ export function lexPage(page: string, body: string, bodyLine: number): Lexed & {
     if (t.type === 'heading') {
       lastHeading = (t as Tokens.Heading).depth;
       const m = /\{#([\w-]+)\}\s*$/.exec((t as Tokens.Heading).text);
-      if (m) anchors.push(m[1]);
+      if (m) {
+        anchors.push(m[1]);
+        labels.push({ id: m[1], label: (t as Tokens.Heading).text.replace(/\s*\{#[\w-]+\}\s*$/, '').replace(/[`*]/g, ''), type: m[1].split('-')[0] });
+      }
     }
     if (t.type === 'entry') {
       const e = t as unknown as EntryToken;
       e.level = Math.min(4, lastHeading + 1);
       anchors.push(entryId(e.etype, e.name));
+      labels.push({ id: entryId(e.etype, e.name), label: e.name, type: e.etype });
     }
     const visit = (tok: Token, at: number) => {
       if (tok.type === 'code') {
@@ -278,7 +286,7 @@ export function lexPage(page: string, body: string, bodyLine: number): Lexed & {
     visit(t, line);
     line += (t.raw.match(/\n/g) ?? []).length;
   }
-  return { tokens, examples, anchors };
+  return { tokens, examples, anchors, labels };
 }
 
 /** Second pass: HTML, with the headings and errors gathered into the context. */

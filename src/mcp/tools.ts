@@ -223,7 +223,7 @@ tool('edgy_export', {
 }));
 
 tool('edgy_create', {
-  description: 'Create a document. Give root (cell notation) to start with content, or template (quote, savings, feedback). Without either it is a single empty cell.',
+  description: 'Create a document. Give root (cell notation) to start with content, or template: an id from GET /api/templates (quote, savings, feedback, showcase, tables, elements, events), tour, or a tutorial document (tutorial-quote, tutorial-checklist, …). Without either it is a single empty cell.',
   inputSchema: {
     title: z.string().describe('The title people see'),
     root: z.any().optional().describe('Cell notation for the whole document, e.g. ["col", ["text", "Hello"], ["input", {"name": "n", "type": "number", "value": 1}]]'),

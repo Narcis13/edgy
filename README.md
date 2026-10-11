@@ -38,6 +38,19 @@ Other scripts:
 
 Requires Node 22.13 or newer (it uses `node:sqlite`).
 
+## Documentation
+
+The full documentation is a site of its own: getting started, ten tutorials, a page for every kind of cell, every function with an example, the editor, events, data, people, the agents' API, and how edgy works inside. Open it from **Docs** in any header, or at http://localhost:5173/docs/ while `npm run dev` runs (the server builds it on the first visit).
+
+| script | what it does |
+| --- | --- |
+| `npm run docs:build` | writes the site to `dist/docs/`: a folder of static files whose links are all relative (`npm run build` does it too, and `npm start` serves it at `/docs/`) |
+| `npm run docs:preview` | serves `dist/docs/` the way a static host would, at http://127.0.0.1:4174/edgy-docs/ |
+| `node site/scripts/shoot.mjs` | remakes every screenshot and clip in the docs from a fresh server, in light and dark |
+| `node site/scripts/crawl.mjs <url> <out>` | opens every docs page at desktop, tablet and phone size in both themes and reports console errors, overflow, small targets and (with `--axe`) accessibility issues |
+
+To put the docs online, build them and copy `dist/docs/` to any static host, at any path: GitHub Pages, Netlify, an S3 bucket, or a folder on a web server. Nothing in it calls a server; search runs in the browser and live examples run the document in the page. A host that serves `404.html` for missing pages (GitHub Pages and Netlify do) shows the docs' own. The pages are written in Markdown in `site/content/`; [Writing the docs](site/content/contributing/docs.md) explains the format and the checks (`npm test` fails when something in the code has no docs entry, an example's result is wrong, or a link is broken).
+
 ## Writing code without knowing the language
 
 Every place that takes an expression is a code editor: colours, matching brackets, autocomplete for functions and for the document's own cells (with their current values), the signature of the function you are in, and errors underlined where they are. Press **⌘E** (or the expand button) for the **code studio**: the same expression as **Blocks** you can click together, a searchable list of functions, the cells you can use, and the live result. The **Ask AI** tab turns a sentence into code in the context of the document — "what is left of the budget, never below zero" becomes `(max 0 (- budget total))`, checked against the document before you see it. It answers with Claude when `ANTHROPIC_API_KEY` is set (model `EDGY_AI_MODEL`, default `claude-sonnet-5-5`), with an agent connected over MCP when one is listening (`edgy_listen` shows the request, `edgy_answer` replies), and otherwise with a built-in composer that understands everyday phrasings offline.
