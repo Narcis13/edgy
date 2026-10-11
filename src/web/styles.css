@@ -212,6 +212,9 @@ select.text-field { appearance: auto; }
 }
 .topbar .title:hover { border-color: var(--line); }
 .topbar .title:focus { outline: 2px solid var(--accent); outline-offset: -1px; background: var(--raised); }
+.docs-link { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 7px; color: var(--muted); text-decoration: none; }
+.docs-link:hover { color: var(--ink); background: var(--sunken); }
+@media (max-width: 720px) { .docs-link { padding: 0; width: 40px; height: 40px; justify-content: center; } .docs-link span { display: none; } }
 .save-state { color: var(--faint); font-size: 12px; }
 .save-state.is-busy { color: var(--muted); }
 .save-state.is-off { color: var(--warn); }

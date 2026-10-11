@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { ENTRIES, GROUP_COLOR, GROUPS } from './docs';
 import { KIND_NAMES, cellIcon, useDocInfo } from './info';
+import { fnDocs } from '../docsLinks';
 
 function SearchBox({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
   return (
@@ -42,7 +43,7 @@ export function FunctionsPanel({ onInsert }: { onInsert: (name: string) => void 
                     )) : <span className="sp-name is-note">{e.label}</span>}
                   </div>
                   <code className="sp-use">{e.use}</code>
-                  <p className="sp-does">{e.does}</p>
+                  <p className="sp-does">{e.does}{e.names[0] && <> <a className="sp-docs" href={fnDocs(e.names[0], e.group)} target="_blank" rel="noopener" aria-label={`${e.names[0]} in the docs`}>Docs</a></>}</p>
                 </div>
               ))}
             </section>

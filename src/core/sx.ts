@@ -350,6 +350,10 @@ export function show(v: unknown): string {
   return JSON.stringify(v);
 }
 
+/** The formats formatValue knows by name (keep in step with it), and the shapes it reads: a currency code, a number pattern. */
+export const FORMATS = ['auto', 'int', 'number', 'percent', 'compact', 'currency', 'date', 'time', 'datetime', 'ago'] as const;
+export const FORMAT_SHAPES = ['USD', '0.00', '0.0%'] as const;
+
 /** Named formats: int, number, percent, compact, currency, USD/EUR/…, 0.00, date, time, datetime, ago. */
 export function formatValue(v: unknown, format?: string | null, currency = 'USD', now = Date.now()): string {
   if (v == null) return '';

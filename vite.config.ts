@@ -9,6 +9,8 @@ export default defineConfig({
     proxy: {
       '/api': { target: api, changeOrigin: true },
       '/assets': { target: api, changeOrigin: true },
+      // The docs are built and served by the API server (src/server/docs.ts).
+      '/docs': { target: api, changeOrigin: true },
     },
   },
   build: { outDir: 'dist', assetsDir: 'static' },

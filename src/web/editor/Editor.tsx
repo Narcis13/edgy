@@ -1,7 +1,7 @@
 // The document screen: header, formula bar, activity, the sheet, inspector.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity as ActivityIcon, Download, Ellipsis, Eye, Moon, PanelRight, Printer, Redo2, Share2, Spline, Sun, Undo2 } from 'lucide-react';
+import { BookOpen, Activity as ActivityIcon, Download, Ellipsis, Eye, Moon, PanelRight, Printer, Redo2, Share2, Spline, Sun, Undo2 } from 'lucide-react';
 import type { Cell } from '../../core/types';
 import { isGroup } from '../../core/types';
 import { leaves } from '../../core/tree';
@@ -227,6 +227,7 @@ function Header(props: { navigate: (p: string) => void; showActivity: boolean; s
         <button className="icon-btn wide-only" title="Print (⌘P)" aria-label="Print" onClick={() => session.print()}><Printer size={16} /></button>
         {owner && <a className="icon-btn wide-only" title="Export as one HTML file that works offline" aria-label="Export as HTML" href={`/api/docs/${session.id}/export`} download><Download size={16} /></a>}
         <button className="btn soft small share-btn wide-only" title="Share a link to this document" onClick={() => setSharing(true)}><Share2 size={14} /> Share</button>
+        <a className="icon-btn wide-only" href="/docs/" target="_blank" rel="noopener" title="Docs (opens in a new tab)" aria-label="Docs"><BookOpen size={16} /></a>
         <button className="icon-btn wide-only" title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
         <span className="wide-only"><UserMenu navigate={props.navigate} /></span>
         <More {...props} share={() => setSharing(true)} />
@@ -267,6 +268,7 @@ function More(props: { navigate: (p: string) => void; showActivity: boolean; set
           {owner && item('Export as HTML', <Download size={16} />, false, () => { window.location.href = `/api/docs/${session.id}/export`; })}
           {item('Print', <Printer size={16} />, false, () => session.print())}
           {item(theme === 'dark' ? 'Light theme' : 'Dark theme', theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />, false, () => setTheme(theme === 'dark' ? 'light' : 'dark'))}
+          {item('Docs', <BookOpen size={16} />, false, () => window.open('/docs/', '_blank', 'noopener'))}
           {me && item('Profile', <Avatar name={me.name} color={me.color} size={18} />, false, () => props.navigate('/profile'))}
         </div>
       )}

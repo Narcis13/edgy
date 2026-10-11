@@ -21,6 +21,7 @@ import { EventsSection } from './EventsSection';
 import { Section } from './Section';
 import { Source } from './Source';
 import { TextSection } from './TextSection';
+import { kindDocs } from '../../docsLinks';
 
 /** Kinds whose text settings change nothing. */
 const NO_TEXT = new Set(['break', 'image', 'canvas', 'diagram', 'data', 'timer', 'fetch']);
@@ -75,7 +76,8 @@ export function CellPanel({ cell, ids }: { cell: Cell; ids: string[] }) {
         {multi ? `${ids.length} cells` : titleOf(cell, parent, opt?.label)}
         <code className="id">{cell.id}</code>
       </h2>
-      <p className="ins-about">{multi ? 'Changes to text, spacing and the box apply to every selected cell.' : KIND_ABOUT[cell.kind]}</p>
+      <p className="ins-about">{multi ? 'Changes to text, spacing and the box apply to every selected cell.' : KIND_ABOUT[cell.kind]}
+        {!multi && <> <a className="ins-docs" href={kindDocs(cell.kind)} target="_blank" rel="noopener">{KIND_LABEL[cell.kind] ?? cell.kind} in the docs</a></>}</p>
 
       {!multi && (
         <Prop label="Name" hint="Name it to use it in formulas.">

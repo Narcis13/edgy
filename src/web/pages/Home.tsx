@@ -1,4 +1,4 @@
-import { Database, Moon, Sun } from 'lucide-react';
+import { BookOpen, Database, Moon, Sun } from 'lucide-react';
 import { UserMenu } from '../account/UserMenu';
 import { SyncBadge } from '../sync/SyncBadge';
 import { useTheme } from '../theme';
@@ -18,6 +18,7 @@ export function Shell({ page, navigate, children }: { page: 'docs' | 'data' | nu
           <a href="/data" className={page === 'data' ? 'is-on' : ''} onClick={go('/data')}><Database size={14} /> Data</a>
         </nav>
         <div className="grow" />
+        <a className="docs-link" href="/docs/" target="_blank" rel="noopener" title="The documentation (opens in a new tab)" aria-label="Docs"><BookOpen size={15} aria-hidden="true" /><span>Docs</span></a>
         <SyncBadge />
         <button className="icon-btn" title={theme === 'dark' ? 'Light theme' : 'Dark theme'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
         <UserMenu navigate={navigate} />

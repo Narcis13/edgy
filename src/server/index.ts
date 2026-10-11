@@ -7,6 +7,7 @@ import { createApp } from './app';
 import { Store } from './store';
 import { bundleLoader } from './export';
 import { cloudFromEnv } from './cloud';
+import { serveDocs } from './docs';
 
 const port = Number(process.env.EDGY_PORT ?? 8787);
 const hostname = process.env.HOST ?? '127.0.0.1';
@@ -33,6 +34,13 @@ const offline = built ? bundleLoader(join(dist, 'offline'), false) : bundleLoade
 const cloud = cloudFromEnv();
 const { app, sync } = createApp(store, join(dataDir, 'assets'), webUrl, { offline, auth, cloud, syncInterval: Number(process.env.EDGY_SYNC_INTERVAL ?? 3000) });
 sync?.start();
+
+// The documentation at /docs/: next to a production build, or built once on the first visit in development.
+const docsDir = built ? join(dist, 'docs') : mkdtempSync(join(tmpdir(), 'edgy-docs-'));
+serveDocs(app, docsDir, built ? undefined : async () => {
+  const { buildDocs } = await import('../../site/build/build');
+  await buildDocs(docsDir, { quiet: true });
+});
 
 // After `npm run build`, this one process serves the app too.
 if (built) {

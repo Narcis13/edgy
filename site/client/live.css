@@ -1,0 +1,8 @@
+/* A live example sits in the docs' page: as tall as the document, no desk around it. */
+html,
+body,
+#root { height: auto; }
+body { overflow: hidden; background: var(--glass); }
+#root { padding: 12px; }
+#root > .sheet { margin: 0; }
+.toast { position: fixed; left: 12px; right: 12px; bottom: 12px; }

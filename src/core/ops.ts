@@ -31,6 +31,9 @@ import { PLACE_FORMS, isBuiltin, mapTemplate } from './sx';
 import { freeTitle, renamedValue } from './containers';
 import { DiagramError, elementsOf, eraseElements, prepareDiagram, upsertElements } from './diagram';
 
+/** Every verb applyOp accepts (`name` is short for setting a cell's name). */
+export const OP_VERBS = ['split', 'merge', 'remove', 'dup', 'swap', 'move', 'put', 'replace', 'set', 'name', 'style', 'draw', 'erase', 'meta', 'do'] as const;
+
 export class OpError extends Error {}
 
 export interface Applied {
@@ -605,7 +608,7 @@ function run(w: Work, op: Op): Result {
     case 'draw': return draw(w, op);
     case 'erase': return erase(w, op);
     default:
-      throw new OpError(`unknown op "${op[0]}"; known: split, merge, remove, dup, swap, move, put, replace, set, style, draw, erase, meta, do`);
+      throw new OpError(`unknown op "${op[0]}"; known: ${OP_VERBS.join(', ')}`);
   }
 }
 
