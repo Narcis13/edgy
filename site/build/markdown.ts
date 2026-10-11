@@ -92,7 +92,7 @@ export function resolveHref(c: PageCtx, href: string): string {
       if (!c.pages.has(page)) c.errors.push(`link to kind "${name}": no page ${page}`);
       return rel(c.page, page);
     }
-    const id = scheme === 'term' ? `term-${slug(name)}` : entryId(scheme, name);
+    const id = scheme === 'term' ? `term-${slug(name)}` : entryId(scheme, scheme === 'route' ? name.replace('%20', ' ') : name);
     const page = c.anchors.get(id);
     if (page === undefined) {
       c.errors.push(`link ${href}: no entry #${id} anywhere`);
@@ -244,7 +244,8 @@ export interface Lexed { tokens: Token[]; examples: Example[] }
 export interface Anchor { id: string; label: string; type: string }
 
 export function lexPage(page: string, body: string, bodyLine: number): Lexed & { anchors: string[]; labels: Anchor[] } {
-  const tokens = md.lexer(body);
+  // A route's name has a space ("GET /api/docs/:id"), which a Markdown link can't hold: encode it.
+  const tokens = md.lexer(body.replace(/\]\(route:([A-Z]+) ([^)\s]+)\)/g, '](route:$1%20$2)'));
   const anchors: string[] = [];
   const labels: Anchor[] = [];
   const examples: Example[] = [];

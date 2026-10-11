@@ -27,6 +27,13 @@ test('the pages build without problems', () => {
   assert.deepEqual(site.errors, [], site.errors.join('\n'));
 });
 
+test('every link written in the pages became a link (none left as text)', () => {
+  for (const p of site.pages) {
+    const raw = /\]\((fn|event|op|route|tool|style|format|token|key|template|term|kind|src):[^)]*\)|\]\(\/[^)]*\)/.exec(p.html.replace(/<pre[\s\S]*?<\/pre>|<code>[\s\S]*?<\/code>/g, ''));
+    assert.equal(raw, null, `${p.file}: "${raw?.[0]}" was not read as a link`);
+  }
+});
+
 test('every page is in the contents once, and every page in the contents exists', () => {
   const listed = navPages().map((p) => p.page);
   assert.equal(new Set(listed).size, listed.length, 'a page is listed twice in site/nav.ts');
