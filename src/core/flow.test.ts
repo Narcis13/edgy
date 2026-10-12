@@ -137,7 +137,7 @@ test('the feed groups posts by their last activity, newest first, and filters', 
     item({ id: 'b', kind: 'task', text: 'Finish report', at: d(11), updated: d(12, 8), done: true }),
     item({ id: 'c', kind: 'event', text: 'Standup', at: d(12, 9), updated: d(12, 9) }),
   ];
-  const comments = [{ id: 'k1', at: d(12), item: 'a', text: 'great sales idea', by: claude }];
+  const comments = [{ id: 'k1', at: d(12), posted: d(12), item: 'a', text: 'great sales idea', by: claude }];
   const reactions = [
     { id: 'r1', at: 1, item: 'a', kind: 'like' as const, by: ana },
     { id: 'r2', at: 2, item: 'a', kind: 'like' as const, by: claude },

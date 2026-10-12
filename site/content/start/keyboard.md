@@ -285,3 +285,29 @@ In the library's search box, Esc empties the search and shows every document aga
 ::: key library-describe
 On a card, **Edit description** (or **Add a description**) opens a box for the words under the title: Enter keeps them, Shift+Enter starts a new line and Esc drops the change. Clicking away keeps them too. A document's title is renamed in the editor, in the header.
 :::
+
+## In Flow
+
+::: key flow-views
+On the [Flow](/flow/) page, the digits 1 to 5 open the timeline, the board, the tasks, the calendar and the notes, in the order of the tabs. Not while typing in a box.
+:::
+
+::: key flow-new
+N jumps to the composer on the timeline, ready to type; on any other view it opens the editor for a new item. The **New** button does the same.
+:::
+
+::: key flow-post
+In the composer, Ctrl+Enter (⌘Enter on a Mac) posts what you wrote, the same as the **Post** button.
+:::
+
+::: key flow-search
+/ jumps to the search box of the view you are on; Esc there empties it and shows everything again.
+:::
+
+::: key flow-comment
+In a comment box under a post, Enter sends the comment; Shift+Enter starts a new line instead.
+:::
+
+::: key flow-move
+On the board, Tab to a card and press Shift+← or Shift+→ to move it one column to the left or the right. Into the last column marks it done; out of it marks it not done. The card's **⋯** menu has **Move to …** as well.
+:::

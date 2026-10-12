@@ -1,0 +1,179 @@
+/* ─────────────────────────── Flow: the page, the timeline, the shared bits ─────────────────────────── */
+
+.home.flow { padding: 24px 40px 60px; max-width: 1240px; }
+.home.flow.is-board { max-width: none; }
+
+/* the head: the title, the view tabs, New */
+.flow-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+.flow-head h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+.flow-views { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--sunken); }
+.flow-view {
+  display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 8px; color: var(--muted); text-decoration: none; font-weight: 550; font-size: 13.5px;
+}
+.flow-view:hover { color: var(--ink); }
+.flow-view.is-on { background: var(--raised); color: var(--ink); box-shadow: 0 1px 2px rgba(28, 26, 58, 0.12); }
+.flow-new { margin-left: auto; min-height: 36px; }
+
+/* who wrote it */
+.flow-who { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.flow-who-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.flow-who-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.flow-who-name b { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-who-at { color: var(--faint); font-size: 12px; }
+.flow-who .chip.agent { padding: 0 6px; font-size: 11px; line-height: 1.6; }
+
+/* the small marks every view shares */
+.flow-kind { background: var(--sunken); color: var(--muted); }
+.flow-kind.task { background: var(--accent-soft); color: var(--accent); }
+.flow-kind.event { background: var(--live-soft); color: var(--live); }
+.flow-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.flow-tag {
+  display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border: 1px solid transparent; border-radius: 999px; background: var(--sunken);
+  color: var(--muted); font-size: 12px; line-height: 1.5; white-space: nowrap;
+}
+button.flow-tag:hover { color: var(--ink); border-color: var(--line-strong); }
+.flow-tag.is-on { background: var(--ink); color: var(--paper); }
+.flow-tag.is-on .lib-n { color: var(--paper); opacity: 0.7; }
+.flow-when { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.flow-when.is-late { color: var(--bad); font-weight: 600; }
+.flow-when.is-done { color: var(--faint); }
+.flow-prio { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 4px; border: 0; border-radius: 6px; background: transparent; color: var(--faint); font-weight: 800; font-size: 12px; }
+.flow-prio.p1 { background: var(--warn-soft); color: var(--warn); }
+.flow-prio.p2 { background: var(--bad-soft); color: var(--bad); }
+button.flow-prio:hover { outline: 1px solid var(--line-strong); }
+.flow-clock { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 999px; background: var(--sunken); color: var(--muted); font-size: 12px; font-variation-settings: 'MONO' 1; }
+.flow-clock.is-running { background: var(--live-soft); color: var(--live); }
+.flow-clock.is-running svg { animation: pulse 1.6s infinite; }
+.flow-doc { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 12.5px; text-decoration: none; max-width: 100%; }
+.flow-doc:hover { text-decoration: underline; text-underline-offset: 2px; }
+.flow-done { position: relative; display: inline-grid; place-items: center; width: 28px; height: 28px; flex: 0 0 auto; cursor: pointer; }
+.flow-done input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.flow-done-box { display: grid; place-items: center; width: 18px; height: 18px; border: 1.5px solid var(--line-strong); border-radius: 6px; background: var(--raised); color: var(--on-accent); transition: background 120ms; }
+.flow-done:hover .flow-done-box { border-color: var(--accent); }
+.flow-done.is-done .flow-done-box { background: var(--live); border-color: var(--live); }
+.flow-done input:focus-visible + .flow-done-box { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── the composer ── */
+.flow-composer { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); box-shadow: var(--shadow); }
+.flow-composer-text { font-size: 15px; line-height: 1.45; padding: 8px 10px; border-color: transparent; background: transparent; }
+.flow-composer-text:focus { outline: none; background: var(--sunken); }
+.flow-composer-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.flow-preview { flex: 1 1 220px; margin: 0; color: var(--accent); font-size: 12.5px; font-weight: 550; min-width: 0; }
+.flow-preview.is-empty { color: var(--faint); font-weight: 400; }
+.flow-kinds button { padding: 3px 8px; }
+.flow-attached { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 12.5px; }
+.flow-attached .icon-btn { width: 24px; height: 24px; color: var(--accent); }
+.flow-pick-doc { width: auto; max-width: 240px; height: 32px; padding: 0 6px; }
+.flow-post { min-height: 34px; padding: 5px 14px; }
+
+/* ── today ── */
+.flow-today { margin: 18px 0 20px; padding: 12px 14px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); }
+.flow-today h2 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 8px; font-size: 14px; font-weight: 650; }
+.flow-today-quiet { margin: 0; color: var(--faint); font-size: 13px; }
+.flow-today-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.flow-today-item { display: flex; align-items: center; gap: 6px; min-height: 32px; }
+.flow-today-btn { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; min-height: 32px; padding: 2px 8px; border: 0; border-radius: 8px; background: none; color: var(--ink); text-align: left; }
+.flow-today-btn:hover { background: var(--sunken); }
+.flow-today-time { flex: 0 0 auto; min-width: 86px; color: var(--muted); font-size: 12.5px; font-variation-settings: 'MONO' 1; }
+.flow-today-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-today-side { color: var(--faint); font-size: 12.5px; white-space: nowrap; }
+.flow-today-item.is-running .flow-today-btn { color: var(--live); font-weight: 600; }
+.flow-today-item.is-late .flow-today-btn { color: var(--bad); }
+.flow-today-item.is-done .flow-today-btn { color: var(--muted); }
+
+/* ── filters, search, tags ── */
+.flow-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.flow-filters { overflow-x: auto; }
+.flow-search { flex: 1 1 220px; }
+.flow-tagrow { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 14px; }
+
+/* ── the feed ── */
+.flow-feed { display: flex; flex-direction: column; gap: 22px; }
+.flow-day-head { display: flex; align-items: baseline; gap: 8px; margin: 0 0 10px; font-size: 14px; font-weight: 650; color: var(--muted); }
+.flow-day { display: flex; flex-direction: column; }
+.post {
+  position: relative; display: flex; flex-direction: column; gap: 8px; padding: 14px 16px 10px; margin-bottom: 12px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--paper); transition: box-shadow 160ms;
+}
+.post:hover, .post.is-menu { box-shadow: var(--shadow); }
+.post.is-agent { border-color: color-mix(in srgb, var(--agent) 35%, transparent); }
+.post-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.post-marks { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.post-marks .badge.pin { background: var(--accent-soft); color: var(--accent); padding: 4px; }
+.post .lc-menu { position: static; }
+.post .lc-menu-btn { opacity: 1; box-shadow: none; }
+.post-body { display: flex; align-items: flex-start; gap: 8px; }
+.post-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.post-text { display: block; width: 100%; padding: 0; border: 0; background: none; color: var(--ink); text-align: left; font-size: 16px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.post-text:hover { color: var(--accent); }
+.post.is-done .post-text { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--faint); }
+.post-more { margin: 0; color: var(--ink); font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.post-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.post-react { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; padding-top: 6px; border-top: 1px solid var(--line); }
+.post-reaction {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 32px; height: 30px; padding: 0 8px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font-size: 12.5px;
+}
+.post-reaction:hover { background: var(--sunken); color: var(--ink); }
+.post-reaction.has-count { color: var(--ink); }
+.post-reaction.is-mine { background: var(--accent-soft); color: var(--accent); }
+.post-reaction-n { font-weight: 600; font-variation-settings: 'MONO' 1; }
+.post-comments-n { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: var(--faint); font-size: 12.5px; }
+.post-more-comments { align-self: flex-start; font-size: 12.5px; }
+.post-comments { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.post-comment { display: flex; align-items: flex-start; gap: 8px; }
+.post-comment-bubble { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 6px 10px; border-radius: 10px; background: var(--sunken); }
+.post-comment.is-agent .post-comment-bubble { background: var(--agent-soft); }
+.post-comment-who { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.post-comment-who time { color: var(--faint); }
+.post-comment-who .chip.agent { padding: 0 6px; font-size: 11px; line-height: 1.6; background: var(--raised); }
+.post-comment-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13.5px; line-height: 1.45; }
+.post-comment-x { width: 26px; height: 26px; opacity: 0; }
+.post-comment:hover .post-comment-x, .post-comment-x:focus-visible { opacity: 1; }
+.post-write { display: flex; align-items: center; gap: 8px; }
+.post-write-text { flex: 1; min-width: 0; font-size: 13.5px; padding: 5px 9px; }
+.post-write .btn { min-height: 30px; }
+
+/* ── the editor dialog ── */
+.flow-dialog { width: min(560px, calc(100vw - 32px)); }
+.flow-form { display: flex; flex-direction: column; gap: 12px; }
+.flow-form .seg { align-self: flex-start; }
+.flow-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.flow-form-when { display: flex; gap: 6px; }
+.flow-form-when input[type='date'] { flex: 1 1 60%; min-width: 0; }
+.flow-form-when input[type='time'] { flex: 1 1 40%; min-width: 0; }
+.flow-form-when select { flex: 1; min-width: 0; }
+.flow-form-check { flex-direction: row; align-items: center; gap: 8px; padding-top: 22px; }
+.flow-form-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.flow-form-actions { align-items: center; }
+.flow-form-delete { min-height: 36px; }
+.flow-dialog .dialog-body { max-height: calc(100dvh - 32px); overflow: auto; }
+
+/* ── phones ── */
+@media (max-width: 720px) {
+  .home.flow { padding: 16px 12px 60px; }
+  .flow-head { gap: 8px; margin-bottom: 12px; }
+  .flow-head h1 { font-size: 22px; }
+  .flow-views { order: 3; width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .flow-view { height: 38px; padding: 0 12px; flex: 1 0 auto; justify-content: center; }
+  .flow-new { min-height: 40px; }
+  .flow-composer { padding: 10px; border-radius: 12px; }
+  .flow-composer-row { gap: 6px; }
+  .flow-kinds button { min-height: 36px; padding: 0 8px; }
+  .flow-preview { flex-basis: 100%; }
+  .flow-post { min-height: 40px; }
+  .flow-today { margin: 14px 0; padding: 10px 12px; }
+  .flow-today-item, .flow-today-btn { min-height: 40px; }
+  .flow-today-time { min-width: 72px; }
+  .flow-tools { gap: 8px; }
+  .lib-chip.flow-chip, .flow-filters .lib-chip { height: 36px; }
+  .flow-tagrow .flow-tag { min-height: 32px; padding: 0 10px; }
+  .post { padding: 12px 12px 8px; border-radius: 12px; }
+  .post-text { font-size: 15px; }
+  .post-reaction { height: 40px; min-width: 40px; }
+  .post-comment-x { opacity: 1; width: 36px; height: 36px; }
+  .post-write .btn { min-height: 40px; }
+  .flow-form-row { grid-template-columns: 1fr; }
+  .flow-form-check { padding-top: 0; }
+  .flow-form-actions { flex-wrap: wrap; }
+  .flow-form-actions .btn { min-height: 42px; }
+}

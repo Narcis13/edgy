@@ -12,7 +12,7 @@
     "build": "vite build && vite build -c vite.offline.config.ts && npm run --silent docs:build",
     "start": "NODE_ENV=production tsx --disable-warning=ExperimentalWarning src/server/index.ts",
     "mcp": "tsx src/mcp/server.ts",
-    "test": "tsx --disable-warning=ExperimentalWarning --test src/core/*.test.ts src/server/*.test.ts src/web/print/*.test.ts src/web/kinds/*.test.ts src/web/code/*.test.ts src/web/editor/*.test.ts src/web/editor/inspector/*.test.ts src/web/play/*.test.ts src/web/pages/library/*.test.ts src/web/account/*.test.ts site/tests/*.test.ts",
+    "test": "tsx --disable-warning=ExperimentalWarning --test src/core/*.test.ts src/server/*.test.ts src/web/print/*.test.ts src/web/kinds/*.test.ts src/web/code/*.test.ts src/web/editor/*.test.ts src/web/editor/inspector/*.test.ts src/web/play/*.test.ts src/web/pages/library/*.test.ts src/web/pages/flow/*.test.ts src/web/account/*.test.ts site/tests/*.test.ts",
     "typecheck": "tsc --noEmit",
     "docs:build": "tsx --disable-warning=ExperimentalWarning site/build/build.ts",
     "docs:preview": "node site/scripts/serve.mjs dist/docs 4174 /edgy-docs/"

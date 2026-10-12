@@ -43,6 +43,8 @@ export interface FlowItem {
   id: string;
   /** When the record was saved (set by the store). */
   at: number;
+  /** When it was written: the same, unless it was brought in from elsewhere with its own time. */
+  posted: number;
   kind: ItemKind;
   /** The first line: what the post says, a card's title, a note's heading. */
   text: string;
@@ -76,6 +78,7 @@ export interface FlowItem {
 export interface FlowComment {
   id: string;
   at: number;
+  posted: number;
   item: string;
   text: string;
   by: Who;
@@ -134,9 +137,11 @@ export function normalizeItem(raw: Raw, owner: Who): FlowItem {
   const text = str(raw.text ?? raw.title ?? raw.name).trim();
   const tags = Array.isArray(raw.tags) ? [...new Set(raw.tags.map((t) => tagOf(str(t))).filter(Boolean))] : [];
   const p = num(raw.priority);
+  const posted = num(raw.posted, at);
   return {
     id: str(raw.id),
     at,
+    posted,
     kind,
     text,
     body: str(raw.body).trim(),
@@ -153,13 +158,14 @@ export function normalizeItem(raw: Raw, owner: Who): FlowItem {
     spent: Math.max(0, Math.round(num(raw.spent))),
     clock: raw.clock == null ? null : num(raw.clock, 0) || null,
     by: who(raw.by, owner),
-    updated: num(raw.updated, at),
-    order: num(raw.order, at),
+    updated: num(raw.updated, posted),
+    order: num(raw.order, posted),
   };
 }
 
 export function normalizeComment(raw: Raw, owner: Who): FlowComment {
-  return { id: str(raw.id), at: num(raw.at, Date.now()), item: str(raw.item), text: str(raw.text).trim(), by: who(raw.by, owner) };
+  const at = num(raw.at, Date.now());
+  return { id: str(raw.id), at, posted: num(raw.posted, at), item: str(raw.item), text: str(raw.text).trim(), by: who(raw.by, owner) };
 }
 
 export function normalizeReaction(raw: Raw, owner: Who): FlowReaction | null {
@@ -619,7 +625,7 @@ export function parseQuick(input: string, now: Date = new Date()): Quick {
 /** What quick-add understood, as a line under the composer: "Event · Tomorrow 15:00–16:00 · #sales · urgent". */
 export function describeQuick(q: Quick, today: string): string {
   const parts: string[] = [q.kind === 'task' ? 'Task' : q.kind === 'event' ? 'Event' : 'Note'];
-  const item = { ...q, id: '', at: 0, status: '', done: false, doneAt: null, pinned: false, doc: null, spent: 0, clock: null, by: { kind: 'human', name: '' }, updated: 0, order: 0 } as FlowItem;
+  const item = { ...q, id: '', at: 0, posted: 0, status: '', done: false, doneAt: null, pinned: false, doc: null, spent: 0, clock: null, by: { kind: 'human', name: '' }, updated: 0, order: 0 } as FlowItem;
   const when = whenLabel(item, today);
   if (when) parts.push(when);
   for (const t of q.tags) parts.push('#' + t);
@@ -630,6 +636,7 @@ export function describeQuick(q: Quick, today: string): string {
 /** The fields a new item gets from quick-add, as a record. */
 export function recordOf(q: Quick, by: Who, now: number, firstColumn: string): Record<string, Json> {
   return {
+    posted: now,
     kind: q.kind, text: q.text, body: q.body, tags: q.tags, status: q.kind === 'task' ? firstColumn : '', done: false, doneAt: null,
     due: q.due, start: q.start, end: q.end, priority: q.priority, pinned: false, doc: null, spent: 0, clock: null,
     by: by as unknown as Json, updated: now, order: now,

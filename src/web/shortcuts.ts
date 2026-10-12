@@ -7,7 +7,7 @@
 
 import { TOOLS as DIAGRAM_TOOLS } from './kinds/diagram-tools';
 
-export type ShortcutPlace = 'editor' | 'cell' | 'code' | 'studio' | 'play' | 'diagram' | 'list' | 'calendar' | 'tabs' | 'table' | 'library';
+export type ShortcutPlace = 'editor' | 'cell' | 'code' | 'studio' | 'play' | 'diagram' | 'list' | 'calendar' | 'tabs' | 'table' | 'library' | 'flow';
 
 export interface Shortcut {
   /** Stable, for links: `#key-<id>` in the docs. */
@@ -31,6 +31,7 @@ export const SHORTCUT_PLACES: Record<ShortcutPlace, string> = {
   table: 'In a table',
   play: 'Playing a deck',
   library: 'In the library',
+  flow: 'In Flow',
 };
 
 export const SHORTCUTS: Shortcut[] = [
@@ -97,5 +98,11 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'play-leave', keys: ['Esc'], where: 'play', does: 'Leave the deck.' },
 
   { id: 'library-search', keys: ['Esc'], where: 'library', does: 'Clear the search.' },
+  { id: 'flow-views', keys: ['1', '2', '3', '4', '5'], where: 'flow', does: 'Open the timeline, the board, the tasks, the calendar or the notes.' },
+  { id: 'flow-new', keys: ['N'], where: 'flow', does: 'Write: jump to the composer on the timeline; elsewhere, open the editor for a new item.' },
+  { id: 'flow-post', keys: ['Mod+Enter'], where: 'flow', does: 'In the composer, post what you wrote.' },
+  { id: 'flow-search', keys: ['/'], where: 'flow', does: 'Jump to the search box; Esc clears it.' },
+  { id: 'flow-comment', keys: ['Enter', 'Shift+Enter'], where: 'flow', does: 'In a comment box, send the comment; with Shift, start a new line.' },
+  { id: 'flow-move', keys: ['Shift+Arrow'], where: 'flow', does: 'On the board, with a card focused, move it one column left or right.' },
   { id: 'library-describe', keys: ['Enter', 'Esc'], where: 'library', does: 'While writing a card’s description: Enter keeps it (Shift+Enter starts a new line), Esc drops the change.' },
 ];

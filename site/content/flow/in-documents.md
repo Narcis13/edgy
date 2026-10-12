@@ -23,6 +23,7 @@ Because items are records, any of your documents can read them, count them, char
 | `doc` | the id of an attached document |
 | `spent`, `clock` | minutes logged, and when the clock started if it runs |
 | `by` | who wrote it: `{kind, name, id, for}` |
+| `posted` | when it was written (the same as `at`, unless it was brought in with its own time) |
 | `updated`, `order` | the last activity, and the place within a column |
 | `id`, `at` | given to every record |
 

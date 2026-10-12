@@ -8,6 +8,7 @@ import { Home } from './pages/Home';
 // The editor and the data browser load when first visited, so the document list opens fast.
 const Editor = lazy(() => import('./editor/Editor').then((m) => ({ default: m.Editor })));
 const DataPage = lazy(() => import('./pages/DataPage').then((m) => ({ default: m.DataPage })));
+const FlowPage = lazy(() => import('./pages/flow/FlowPage').then((m) => ({ default: m.FlowPage })));
 const DeckPage = lazy(() => import('./decks/DeckPage').then((m) => ({ default: m.DeckPage })));
 const Play = lazy(() => import('./play/Play').then((m) => ({ default: m.Play })));
 const SharedPage = lazy(() => import('./share/SharedPage').then((m) => ({ default: m.SharedPage })));
@@ -65,6 +66,7 @@ export function App() {
     page = <Play key={deck[1]} id={deck[1]} onLeave={() => navigate(back, { replace: true })} />;
   } else if (deck) page = <DeckPage key={deck[1]} id={deck[1]} navigate={navigate} />;
   else if (pathname === '/data') page = <DataPage navigate={navigate} />;
+  else if (pathname === '/flow') page = <FlowPage navigate={navigate} />;
   else if (pathname === '/profile') page = <Profile navigate={navigate} />;
   else page = <Home navigate={navigate} />;
   return <Suspense fallback={<div className="screen-note">Opening…</div>}>{page ?? <div className="screen-note">Opening…</div>}</Suspense>;

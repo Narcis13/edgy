@@ -115,6 +115,8 @@ test('Flow: columns and done agree; the board is editable; an attached document 
   assert.deepEqual(b.json.columns, ['Backlog', 'Doing', 'Review', 'Shipped']);
   const after = (await s.call('GET', '/api/flow', undefined, ana)).json;
   assert.equal(after.items.find((i: any) => i.id === t.id).status, 'Backlog', 'Inbox went, so the card starts again');
+  await s.call('PUT', '/api/flow/board', { columns: ['Todo', 'Doing', 'Review', 'Shipped'], rename: { from: 'Backlog', to: 'Todo' } }, ana);
+  assert.equal((await s.call('GET', '/api/flow', undefined, ana)).json.items.find((i: any) => i.id === t.id).status, 'Todo', 'a renamed column keeps its cards');
   r = await s.call('PATCH', `/api/flow/${t.id}`, { status: 'Shipped' }, ana);
   assert.equal(r.json.done, true);
 

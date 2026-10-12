@@ -1,0 +1,71 @@
+/* ─────────────────────────── Flow: the task list ─────────────────────────── */
+
+.tasks { display: flex; flex-direction: column; gap: 14px; max-width: 920px; }
+
+/* the add box */
+.tasks-add { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--paper); box-shadow: var(--shadow); }
+.tasks-add input { flex: 1 1 260px; min-width: 0; font-size: 15px; }
+.tasks-add-btn { min-height: 36px; }
+.tasks-preview { flex: 1 1 100%; margin: 0; color: var(--accent); font-size: 12.5px; font-weight: 550; min-width: 0; }
+.tasks-preview.is-error { color: var(--bad); }
+
+/* the count and the search */
+.tasks-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tasks-count { margin: 0; flex: 0 0 auto; }
+.tasks-search { flex: 1 1 220px; max-width: 360px; margin-left: auto; }
+
+/* the groups */
+.tasks-groups { display: flex; flex-direction: column; gap: 20px; }
+.tasks-head { display: flex; align-items: baseline; gap: 8px; margin: 0 0 6px; font-size: 14px; font-weight: 650; color: var(--muted); }
+.tasks-head h2 { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: inherit; font-weight: inherit; color: inherit; }
+.tasks-group[data-bucket='overdue'] .tasks-head { color: var(--bad); }
+summary.tasks-head { cursor: pointer; list-style: none; padding: 4px 0; }
+summary.tasks-head::-webkit-details-marker { display: none; }
+summary.tasks-head::before { content: '▸'; display: inline-block; width: 12px; color: var(--faint); transition: transform 120ms; }
+details[open] > summary.tasks-head::before { transform: rotate(90deg); }
+summary.tasks-head:hover { color: var(--ink); }
+.tasks-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+
+/* a row: the box, the words, then the marks */
+.tasks-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 8px; min-height: 44px; border-top: 1px solid var(--line); }
+.tasks-row:first-child { border-top: 0; border-radius: 12px 12px 0 0; }
+.tasks-row:last-child { border-radius: 0 0 12px 12px; }
+.tasks-row:only-child { border-radius: 12px; }
+.tasks-row:hover, .tasks-row.is-menu { background: var(--panel); }
+.tasks-main { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; }
+.tasks-text { min-width: 0; padding: 2px 0; border: 0; background: none; color: var(--ink); text-align: left; font-size: 15px; font-weight: 550; line-height: 1.35; overflow-wrap: anywhere; }
+.tasks-text:hover { color: var(--accent); }
+.tasks-row.is-done .tasks-text { color: var(--muted); font-weight: 450; text-decoration: line-through; text-decoration-color: var(--faint); }
+.tasks-meta { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+.tasks-row .lc-menu { position: static; }
+.tasks-row .lc-menu-btn { opacity: 1; box-shadow: none; }
+
+.tasks-due {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 26px; padding: 0 8px; border: 1px solid transparent; border-radius: 999px; background: transparent;
+  color: var(--muted); font-size: 12.5px; white-space: nowrap;
+}
+.tasks-due:hover { background: var(--sunken); color: var(--ink); border-color: var(--line-strong); }
+.tasks-due.is-late { color: var(--bad); font-weight: 600; }
+.tasks-due.is-none { color: var(--faint); }
+.tasks-row.is-done .tasks-due { color: var(--faint); }
+.tasks-due-input { width: auto; min-width: 140px; height: 30px; padding: 0 6px; font-size: 13px; }
+.tasks-column { background: var(--sunken); color: var(--muted); white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── phones: every target 40px, the marks under the words ── */
+@media (max-width: 720px) {
+  .tasks { gap: 12px; }
+  .tasks-add-btn { min-height: 40px; }
+  .tasks-add input { min-height: 40px; }
+  .tasks-search { max-width: none; height: 40px; flex-basis: 100%; margin-left: 0; }
+  .tasks-count { flex-basis: 100%; }
+  .tasks-row { flex-wrap: wrap; align-items: flex-start; padding: 6px 8px; row-gap: 0; }
+  .tasks-main { flex: 1 1 0; min-height: 40px; align-content: center; }
+  .tasks-text { min-height: 40px; padding: 8px 0; }
+  .tasks-meta { flex: 1 1 100%; flex-wrap: wrap; gap: 6px; padding-left: 36px; padding-bottom: 4px; }
+  .tasks-due, .tasks-meta .flow-prio { min-height: 40px; }
+  .tasks-meta .flow-prio { min-width: 40px; }
+  .tasks-due { padding: 0 12px; }
+  .tasks-due-input { height: 40px; }
+  .tasks-meta .lc-menu-btn { width: 40px; height: 40px; }
+  summary.tasks-head { min-height: 40px; align-items: center; }
+}

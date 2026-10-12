@@ -400,7 +400,7 @@ Everything at once: `{"items": [...], "comments": [...], "reactions": [...], "bo
 :::
 
 ::: route POST /api/flow
-Posts an item. `text` is read as [quick-add](/flow/#quick-add): `{"text": "Call Ben tomorrow 3pm-4pm #sales !!"}` makes an event tomorrow 15:00–16:00, tagged `sales`, urgent; a day alone makes a task due then; `todo …` a task; anything else a note. Lines after the first are the body. Fields beside the text win over what was read: `kind`, `body`, `tags`, `status`, `due` (`2026-10-20`), `start` and `end` (`2026-10-20T15:00`), `priority` (0–2), `pinned`, `doc` (a document of yours to attach), `order`. With `"plain": true` the text is kept as typed. The answer is `201` and the item.
+Posts an item. `text` is read as [quick-add](/flow/#quick-add): `{"text": "Call Ben tomorrow 3pm-4pm #sales !!"}` makes an event tomorrow 15:00–16:00, tagged `sales`, urgent; a day alone makes a task due then; `todo …` a task; anything else a note. Lines after the first are the body. Fields beside the text win over what was read: `kind`, `body`, `tags`, `status`, `due` (`2026-10-20`), `start` and `end` (`2026-10-20T15:00`), `priority` (0–2), `pinned`, `doc` (a document of yours to attach), `order`. With `"plain": true` the text is kept as typed. `posted` (milliseconds, in the past) keeps the time of something brought in from elsewhere; otherwise it is now. The answer is `201` and the item.
 :::
 
 ::: route PATCH /api/flow/:id
@@ -412,7 +412,7 @@ Deletes the item with its comments and reactions. The answer is `{"ok": true}`.
 :::
 
 ::: route POST /api/flow/:id/comments
-Adds a comment: `{"text": "Bring the numbers"}`. The answer is `201` and the comment, with `by` set from who asked. The item moves up the timeline.
+Adds a comment: `{"text": "Bring the numbers"}` (`posted`, in the past, keeps the time of one brought in from elsewhere). The answer is `201` and the comment, with `by` set from who asked. The item moves up the timeline.
 :::
 
 ::: route DELETE /api/flow/comments/:id
@@ -428,7 +428,7 @@ Starts or stops the clock on an item: `{"running": true}` or `{"running": false}
 :::
 
 ::: route PUT /api/flow/board
-Sets the board's columns: `{"columns": ["Backlog", "Doing", "Review", "Shipped"]}`, two to eight. Cards of a column that went start again in the first; the last column means done. The answer is the board.
+Sets the board's columns: `{"columns": ["Backlog", "Doing", "Review", "Shipped"]}`, two to eight. With `"rename": {"from": "Inbox", "to": "Backlog"}` the cards of that column follow its new name; cards of a column that went start again in the first; the last column means done. The answer is the board.
 :::
 
 ::: route GET /api/flow/events

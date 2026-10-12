@@ -1,0 +1,112 @@
+/* ─────────────────────────── Flow: the board ─────────────────────────── */
+
+.board-none { margin-bottom: 14px; }
+
+.board {
+  display: flex; align-items: stretch; gap: 12px; min-height: 440px; padding: 2px 2px 12px; overflow-x: auto;
+}
+.board.is-dragging { cursor: grabbing; user-select: none; -webkit-user-select: none; scroll-snap-type: none; }
+
+/* ── a column ── */
+.board-col {
+  flex: 1 1 272px; min-width: 252px; max-width: 380px; display: flex; flex-direction: column; gap: 8px; padding: 8px;
+  border: 1px solid transparent; border-radius: 12px; background: var(--sunken); transition: border-color 120ms, box-shadow 120ms;
+}
+.board-col.is-over { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.board-col-head { position: relative; display: flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 2px 0 6px; }
+.board-col-name { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 650; }
+.board-col-tick { flex: 0 0 auto; color: var(--live); }
+.board-col.is-done .board-col-name { color: var(--live); }
+.board-col-head .lc-menu { position: static; z-index: auto; margin-left: auto; }
+.board-col-head .lc-menu-btn { opacity: 1; box-shadow: none; background: transparent; }
+.board-col-head .lc-menu-btn:hover { background: var(--raised); }
+
+.board-rename { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.board-rename .text-field { padding: 4px 8px; font-size: 14px; font-weight: 600; }
+.board-rename-error { margin: 0; color: var(--bad); font-size: 12px; }
+
+.board-cards { flex: 1; display: flex; flex-direction: column; gap: 8px; min-height: 48px; }
+.board-empty {
+  margin: 0; padding: 16px 10px; border: 1px dashed var(--line-strong); border-radius: 10px; color: var(--faint); text-align: center; font-size: 13px;
+}
+
+/* the line where a held card would land; it takes no room, so nothing shifts under the pointer */
+.board-drop { position: relative; height: 0; margin: -4px 0; pointer-events: none; }
+.board-drop::before { content: ''; position: absolute; left: 0; right: 0; top: -1.5px; height: 3px; border-radius: 3px; background: var(--accent); }
+
+/* ── a card ── */
+.board-card {
+  position: relative; display: flex; flex-direction: column; gap: 6px; padding: 6px 4px 8px 6px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--paper); cursor: grab; user-select: none; -webkit-user-select: none; transition: box-shadow 160ms;
+}
+.board-card:hover, .board-card.is-menu { box-shadow: var(--shadow); }
+.board-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.board-card.is-lifted { border-style: dashed; border-color: var(--line-strong); background: transparent; box-shadow: none; }
+.board-card.is-lifted > * { visibility: hidden; }
+.board-card-top { display: flex; align-items: flex-start; gap: 2px; }
+.board-card-text {
+  flex: 1; min-width: 0; padding: 4px 4px; border: 0; border-radius: 8px; background: none; color: var(--ink); text-align: left;
+  font-size: 14px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; cursor: inherit;
+}
+.board-card-text:hover { color: var(--accent); }
+.board-untitled { color: var(--faint); font-weight: 400; }
+.board-card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 0 6px 0 30px; }
+.board-count { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); font-size: 12px; font-variation-settings: 'MONO' 1; }
+.board-card .lc-menu { position: static; z-index: auto; flex: 0 0 auto; }
+.board-card .lc-menu-btn { opacity: 1; box-shadow: none; background: transparent; }
+.board-card .flow-done { width: 26px; height: 26px; }
+
+/* the last column is done */
+.board-card.is-done .board-card-text { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--faint); }
+.board-card.is-done .board-card-text:hover { color: var(--ink); }
+.board-card.is-done .flow-tag { background: transparent; }
+
+/* the grip: how a finger picks a card up on a phone, so the rest of the card still scrolls the board */
+.board-grip { display: none; flex: 0 0 auto; place-items: center; width: 22px; height: 28px; color: var(--faint); touch-action: none; -webkit-touch-callout: none; }
+
+/* a mouse, a pen, or a finger on a wide screen grabs the whole card */
+@media (min-width: 721px) and (pointer: fine) {
+  .board-card { touch-action: none; }
+}
+
+/* the card that follows the pointer */
+.board-ghost {
+  position: fixed; z-index: 60; display: flex; align-items: flex-start; gap: 6px; max-height: 84px; overflow: hidden; padding: 10px 12px;
+  border: 1px solid var(--accent); border-radius: 12px; background: var(--paper); color: var(--ink); box-shadow: var(--pop);
+  font-size: 14px; font-weight: 600; line-height: 1.35; pointer-events: none; transform: rotate(1.5deg); overflow-wrap: anywhere;
+}
+
+/* ── add a card, add a column ── */
+.board-add {
+  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 34px; padding: 6px 8px; border: 0; border-radius: 8px; background: none;
+  color: var(--muted); text-align: left; font-size: 13px;
+}
+button.board-add:hover { background: var(--paper); color: var(--ink); }
+.board-add.is-open { padding: 0; }
+.board-add .text-field { width: 100%; }
+.board-new-col {
+  flex: 0 0 200px; align-self: flex-start; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 14px;
+  border: 1px dashed var(--line-strong); border-radius: 12px; background: transparent; color: var(--muted); font-size: 13px;
+}
+.board-new-col:hover { background: var(--sunken); color: var(--ink); }
+
+/* ── phones: one column about 85vw wide, the board scrolls sideways and settles on a column ── */
+@media (max-width: 720px) {
+  .board { gap: 10px; min-height: 60vh; padding-bottom: 16px; scroll-snap-type: x mandatory; }
+  .board-col { flex: 0 0 85vw; min-width: 0; max-width: none; scroll-snap-align: start; }
+  .board-new-col { flex: 0 0 70vw; scroll-snap-align: start; min-height: 44px; }
+  .board-col-head { min-height: 44px; }
+  .board-col-head .icon-btn, .board-card .icon-btn { width: 40px; height: 40px; }
+  .board-card { padding: 4px 2px 8px 4px; cursor: default; }
+  .board-card .flow-done { width: 40px; height: 40px; }
+  .board-card-text { min-height: 40px; padding: 9px 4px; font-size: 15px; }
+  .board-card-meta { padding-left: 4px; }
+  .board-add { min-height: 40px; }
+  .board-add .text-field { min-height: 40px; }
+  .board-rename .text-field { min-height: 40px; }
+  .board-grip { display: grid; width: 32px; height: 40px; }
+}
+@media (pointer: coarse) {
+  .board-grip { display: grid; width: 32px; height: 40px; }
+  .board-card { cursor: default; }
+}

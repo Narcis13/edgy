@@ -137,7 +137,7 @@ export function flowRoutes(app: Hono<AppEnv>, deps: FlowDeps) {
 
   /** A comment the server writes for the person: the clock's log line. */
   const say = (owner: string, item: string, who: Who, text: string, now: number) =>
-    store.insert(owner, FLOW.comments, { item, text, by: who as unknown as Json, updated: now });
+    store.insert(owner, FLOW.comments, { item, text, by: who as unknown as Json, posted: now });
 
   /** Stop the clock on an item: its minutes are kept, and a comment says so. */
   function stopClock(owner: string, item: FlowItem, who: Who, now: number): void {
@@ -197,16 +197,20 @@ export function flowRoutes(app: Hono<AppEnv>, deps: FlowDeps) {
 
   app.put('/api/flow/board', need('user'), async (c) => {
     const { owner } = ownerOf(c);
-    const body = (await c.req.json()) as { columns?: unknown };
+    const body = (await c.req.json()) as { columns?: unknown; rename?: { from?: unknown; to?: unknown } };
     const cols = Array.isArray(body.columns) ? [...new Set(body.columns.map((x) => String(x ?? '').trim().slice(0, 40)).filter(Boolean))] : [];
     if (cols.length < 2 || cols.length > 8) return c.json({ error: 'the board has two to eight columns' }, 400);
     const cur = store.rows(owner, FLOW.board)[0];
     if (cur) store.update(owner, FLOW.board, cur.id, { columns: cols });
     else store.insert(owner, FLOW.board, { columns: cols });
-    // Cards of a column that went start again; the last column still means done.
+    // A renamed column keeps its cards; cards of a column that went start again; the last column still means done.
+    const from = typeof body.rename?.from === 'string' ? body.rename.from : null;
+    const to = typeof body.rename?.to === 'string' && cols.includes(body.rename.to) ? body.rename.to : null;
     for (const r of store.rows(owner, FLOW.items)) {
       const s = r.status as string | undefined;
-      if (r.kind === 'task' && !r.done && s && !cols.includes(s)) store.update(owner, FLOW.items, r.id, { status: cols[0] });
+      if (r.kind !== 'task' || !s) continue;
+      if (from && to && s === from) store.update(owner, FLOW.items, r.id, { status: to });
+      else if (!r.done && !cols.includes(s)) store.update(owner, FLOW.items, r.id, { status: cols[0] });
     }
     changed(owner, FLOW.board, FLOW.items);
     return c.json(board(owner));
@@ -221,19 +225,21 @@ export function flowRoutes(app: Hono<AppEnv>, deps: FlowDeps) {
     const now = Date.now();
     const cols = board(owner).columns;
     const text = String(body.text ?? '');
+    // Something brought in from elsewhere keeps its own time, as long as it is in the past.
+    const posted = typeof body.posted === 'number' && Number.isFinite(body.posted) && body.posted <= now + 60_000 ? Math.round(body.posted) : now;
     if (!text.trim() && !String(body.body ?? '').trim()) return c.json({ error: 'say something: {"text": "Call Ben tomorrow 3pm #sales"}' }, 400);
     // The text is read as quick-add (a date, a time, #tags, !); fields given beside it win. plain: keep the text as it is.
     const lines = text.replace(/\r/g, '').split('\n');
     const quick = body.plain
       ? { kind: 'note' as const, text: lines[0].trim(), body: lines.slice(1).join('\n').trim(), tags: [], priority: 0 as const, due: null, start: null, end: null }
       : parseQuick(text);
-    const base = recordOf(quick, who, now, cols[0]);
+    const base = recordOf(quick, who, posted, cols[0]);
     const { fields, error } = cleanFields(body, cols);
     if (error) return c.json({ error }, 400);
     delete fields.text;
     if (fields.doc && !canOpen(user, fields.doc as string)) return c.json({ error: 'no such document to attach' }, 400);
-    const merged = settle(normalizeItem({ ...base, id: 'new', at: now }, who), { ...base, ...fields }, cols, now);
-    merged.order = typeof fields.order === 'number' ? fields.order : now;
+    const merged = settle(normalizeItem({ ...base, id: 'new', at: now }, who), { ...base, ...fields }, cols, posted);
+    merged.order = typeof fields.order === 'number' ? fields.order : posted;
     const row = store.insert(owner, FLOW.items, merged, { flow: true });
     changed(owner, FLOW.items);
     return c.json(normalizeItem(row as Raw, ownerWho(user)), 201);
@@ -272,13 +278,15 @@ export function flowRoutes(app: Hono<AppEnv>, deps: FlowDeps) {
   app.post('/api/flow/:id/comments', need('user'), async (c) => {
     const { owner, user } = ownerOf(c);
     const id = c.req.param('id');
-    if (!itemOf(owner, user, id)) return notFound(c, id);
-    const body = ((await c.req.json()) ?? {}) as { text?: unknown; actor?: unknown };
+    const cur = itemOf(owner, user, id);
+    if (!cur) return notFound(c, id);
+    const body = ((await c.req.json()) ?? {}) as { text?: unknown; actor?: unknown; posted?: unknown };
     const text = String(body.text ?? '').trim().slice(0, 5000);
     if (!text) return c.json({ error: 'send {"text": "…"}' }, 400);
     const now = Date.now();
-    const row = say(owner, id, whoOf(c, body.actor), text, now);
-    bump(owner, id, now);
+    const posted = typeof body.posted === 'number' && Number.isFinite(body.posted) && body.posted <= now + 60_000 ? Math.round(body.posted) : now;
+    const row = say(owner, id, whoOf(c, body.actor), text, posted);
+    bump(owner, id, Math.max(posted, cur.updated));
     changed(owner, FLOW.comments, FLOW.items);
     return c.json(normalizeComment(row as Raw, ownerWho(user)), 201);
   });
