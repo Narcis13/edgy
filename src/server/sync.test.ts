@@ -292,3 +292,33 @@ test('a page pulled again is not news: nothing is applied twice or skipped', asy
   assert.deepEqual(two.log(id), before);
   assert.equal(two.sync.status().skipped, 0);
 });
+
+test('Flow travels like any record: an item posted on one, commented on the other, reacted to on both while the cloud is down', async () => {
+  const { cloud, one, two } = await pair();
+  const item = (await one.call('POST', '/api/flow', { text: 'Call Ben tomorrow 3pm #sales' })).json;
+  assert.equal(item.kind, 'event');
+  await settle(one, two);
+  const onTwo = (await two.call('GET', '/api/flow')).json;
+  assert.deepEqual(onTwo.items.map((i: any) => [i.id, i.text, i.tags]), [[item.id, 'Call Ben', ['sales']]], 'the item is on the second machine');
+  await two.call('POST', `/api/flow/${item.id}/comments`, { text: 'Bring the numbers' });
+  cloud.down = true;
+  await one.call('POST', `/api/flow/${item.id}/react`, { kind: 'like' });
+  await two.call('POST', `/api/flow/${item.id}/react`, { kind: 'idea' });
+  await one.call('PATCH', `/api/flow/${item.id}`, { priority: 2 });
+  await two.call('PATCH', `/api/flow/${item.id}`, { pinned: true });
+  cloud.down = false;
+  await settle(one, two);
+  const a = (await one.call('GET', '/api/flow')).json;
+  const b = (await two.call('GET', '/api/flow')).json;
+  assert.deepEqual(a.comments.map((k: any) => k.text), ['Bring the numbers']);
+  assert.deepEqual(a.reactions.map((r: any) => r.kind).sort(), ['idea', 'like'], 'both reactions survive');
+  assert.deepEqual([a.items[0].priority, a.items[0].pinned], [2, true], 'fields changed on each side both survive');
+  assert.deepEqual(a.items, b.items);
+  assert.deepEqual(a.comments, b.comments);
+  assert.deepEqual(a.reactions.map((r: any) => r.id).sort(), b.reactions.map((r: any) => r.id).sort());
+  // Deleting on one takes the comments and reactions away on the other too.
+  await one.call('DELETE', `/api/flow/${item.id}`);
+  await settle(one, two);
+  const gone = (await two.call('GET', '/api/flow')).json;
+  assert.deepEqual([gone.items.length, gone.comments.length, gone.reactions.length], [0, 0, 0]);
+});

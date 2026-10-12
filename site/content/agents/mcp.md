@@ -220,6 +220,18 @@ Works with the collections that documents save records into. Collections belong 
 It returns the API's answer as JSON. An insert gives the record with the `id` and `at` (the time) it was given: `{"client":"Ada Lovelace","total":80,"id":"rafgpwqg","at":1791704065247}`. `collections` gives `[{"name":"quotes","count":1,"updatedAt":…}]`, `rows` the list of records, `delete` `{"ok":true}` and `clear` `{"removed":1}`. Through a document that isn't the person's own, only the collections that document's owner let it use are open, and writing needs edit access.
 :::
 
+::: tool edgy_flow
+The person's Flow: notes, tasks on a board, events on a calendar, all one timeline of posts with comments and reactions, where the person and their agents meet. What an agent posts, comments or reacts shows in the timeline as the agent's, with the person's name beside. See [Flow](/flow/) and [Flow for agents](/flow/agents/).
+
+`action` is `list` (the items, latest activity first, one line each with the id, the column or kind, when, tags, who and how many comments; `filter` is `all`, `notes`, `tasks`, `events`, `done`, `today` or `overdue`, `query` words that must appear), `post` (`text` in [quick-add](/flow/#quick-add) syntax, `fields` beside it win), `edit` (`fields` of the item `id`), `move` (the item to `column`), `done` (`done` true or false), `comment` (`text` on the item), `react` (toggle `kind`), `clock` (`running` true or false), `delete`, or `board` (`columns`, the last one meaning done).
+
+```json
+{"action": "post", "text": "Call Ben tomorrow 3pm-4pm #sales !!"}
+```
+
+It returns the API's answer as JSON: a post gives the item with its `id`, `kind`, `start`, `end`, `tags` and `by`. `list` gives text such as `r7x2k1ab  [Doing · due 2026-10-20 · high]  Write the report  #q4  by Ana  (2 comments, like)`.
+:::
+
 ::: tool edgy_say
 Leaves a short message in a document's **Activity** panel, for the person who is working there. Use it to say what was changed and why, or to ask a question. It can be about one cell.
 

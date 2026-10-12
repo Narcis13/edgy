@@ -565,4 +565,81 @@ const events: Template = {
   ],
 };
 
-export const TEMPLATES: Template[] = [events, elements, showcase, tables, quote, savings, feedback];
+// ── Flow dashboard: a document that reads the Flow (see core/flow.ts) ──
+
+const flowDay = (n: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+/** A sample item, with the fields the Flow page fills in itself left out. */
+const flowItem = (kind: string, text: string, more: Record<string, Json> = {}): Record<string, Json> =>
+  ({ kind, text, body: '', tags: [], status: kind === 'task' ? 'Inbox' : '', done: false, doneAt: null, due: null, start: null, end: null, priority: 0, pinned: false, doc: null, spent: 0, clock: null, ...more });
+const openTask: Json = ['and', ['=', ['get', '$it', 'kind'], 'task'], ['not', ['get', '$it', 'done']]];
+
+const flow: Template = {
+  id: 'flow',
+  title: 'Flow dashboard',
+  about: 'A document that reads your Flow: open and overdue tasks, what is due this week with a Done button on each row, what was finished day by day, and the month’s events.',
+  meta: { page: 'A4', orientation: 'portrait', margin: 14, footer: 'title', font: 'inter', headFont: 'fraunces' },
+  data: {
+    flow: [
+      flowItem('note', 'Ideas for the launch post', { body: 'Lead with the timeline. Show the board second.', tags: ['launch'] }),
+      flowItem('task', 'Send the Northwind quote', { due: flowDay(-2), tags: ['sales'], priority: 2 }),
+      flowItem('task', 'Write the launch post', { due: flowDay(0), status: 'Doing', tags: ['launch'], priority: 1 }),
+      flowItem('task', 'Book the offsite venue', { due: flowDay(3), tags: ['team'] }),
+      flowItem('task', 'Review the Q4 numbers', { due: flowDay(-1), done: true, doneAt: Date.now() - 86_400_000, status: 'Done' }),
+      flowItem('event', 'Standup', { start: `${flowDay(0)}T09:30`, end: `${flowDay(0)}T09:45`, tags: ['team'] }),
+      flowItem('event', 'Call Ben', { start: `${flowDay(1)}T15:00`, end: `${flowDay(1)}T16:00`, tags: ['sales'] }),
+    ],
+  },
+  root: ['col', { style: { gap: 10 } },
+    ['row', { size: 'hug' },
+      ['col', { size: 4 },
+        ['text', { style: eyebrow }, 'Flow · {{(fmt (now) "date")}}'],
+        ['text', { style: { font: 'fraunces', size: 40, weight: 700, line: 1.06, tracking: -0.02 } }, 'Flow dashboard'],
+        ['text', { style: { font: 'source-serif', size: 17, line: 1.55, fg: 'muted' } },
+          'Your notes, tasks and events are records in the collection `flow`, so a document can count them, list them, chart them and change them. Open **Flow** in the top bar to add to it; this page follows.']],
+      ['icon', { size: 'hug', style: { fg: 'accent', size: 34 } }, 'activity']],
+    ['formula', { name: 'items', hidden: true }, ['rows', 'flow']],
+    ['formula', { name: 'open', hidden: true }, ['filter', openTask, '$items']],
+    ['row', { size: 'hug', style: { gap: 8 } },
+      ['stat', { name: 'open-n', label: 'Open tasks', icon: 'circle-dashed', better: 'down' }, ['len', '$open']],
+      ['stat', { name: 'overdue-n', label: 'Overdue', icon: 'alarm-clock', better: 'down', compare: 0 },
+        ['count-if', ['and', ['get', '$it', 'due'], ['<', ['get', '$it', 'due'], ['today']]], '$open']],
+      ['stat', { name: 'done-n', label: 'Done this week', icon: 'circle-check' },
+        ['count-if', ['and', ['get', '$it', 'done'], ['get', '$it', 'doneAt'], ['>=', ['get', '$it', 'doneAt'], ['-', ['now'], 604800000]]], '$items']],
+      ['stat', { name: 'minutes', label: 'Minutes on the clock', icon: 'timer' }, ['sum-by', ['get', '$it', 'spent'], '$items']]],
+    ['text', { size: 'hug', style: heading }, 'Due this week'],
+    ['text', { size: 'hug', style: note }, 'Open tasks due in the next seven days, the overdue ones first. **Done** changes the record, and the Flow board agrees.'],
+    ['table', {
+      name: 'due', label: 'Due this week', header: 'filled', stripes: true,
+      columns: [
+        { key: 'text', label: 'Task', bold: true },
+        { key: 'status', label: 'Column', show: 'badge', colors: { Inbox: 'accent', Doing: 'warn' } },
+        { key: 'due', label: 'Due', format: 'date' },
+        { key: 'priority', label: 'Priority', show: 'stars' },
+      ],
+      actions: [{ label: 'Done', icon: 'check', variant: 'soft', do: ['update!', 'flow', ['get', '$row', 'id'], { done: true, doneAt: ['now'] }] }],
+    }, ['sort-by', ['get', '$it', 'due'], ['filter', ['and', ['get', '$it', 'due'], ['<=', ['days', ['today'], ['get', '$it', 'due']], 7]], '$open']]],
+    ['row', { size: 'hug', style: { gap: 10 } },
+      ['col', { style: card },
+        ['text', { size: 'hug', style: label }, 'Finished, day by day'],
+        ['chart', { type: 'bar', label: 'Finished, day by day' },
+          ['map', ['fn', ['i'], { label: ['weekday', ['date+', ['today'], '$i']], value: ['count-if', ['and', ['get', '$it', 'done'], ['get', '$it', 'doneAt'], ['>=', ['get', '$it', 'doneAt'], ['-', ['now'], 604800000]], ['=', ['day', ['get', '$it', 'doneAt']], ['day', ['date+', ['today'], '$i']]]], '$items'] }], ['range', -6, 1]]]],
+      ['col', { style: card },
+        ['text', { size: 'hug', style: label }, 'Open tasks by column'],
+        ['chart', { type: 'donut', label: 'Open tasks by column' },
+          ['map', ['fn', ['c'], { label: '$c', value: ['len', ['where', '$open', 'status', '$c']] }], ['list', 'Inbox', 'Doing']]]]],
+    ['text', { size: 'hug', style: heading }, 'On the calendar'],
+    ['text', { size: 'hug', style: note }, 'Events by their start, and tasks by their due day. Pick a day to see what is on it.'],
+    ['calendar', { name: 'cal', label: 'This month', value: ['today'] },
+      ['concat',
+        ['map', { date: ['get', '$it', 'start'], end: ['get', '$it', 'end'], title: ['get', '$it', 'text'], color: 'accent' }, ['filter', ['get', '$it', 'start'], '$items']],
+        ['map', { date: ['get', '$it', 'due'], title: ['get', '$it', 'text'], color: ['if', ['get', '$it', 'done'], 'live', 'warn'] }, ['filter', ['get', '$it', 'due'], '$items']]]],
+    ['collapsible', { name: 'how', title: 'How this document works', value: false },
+      ['text', 'Two hidden **formula** cells hold the records: `items` is `(rows "flow")` and `open` the tasks not done. The stats count them, the table filters by due day and its **Done** button runs `(update! "flow" (get row "id") {done true})`, the bar chart counts what was finished on each of the last seven days, and the calendar maps events and due days. Every cell is worked out again the moment the Flow changes, on this machine or another one.']],
+  ],
+};
+
+export const TEMPLATES: Template[] = [flow, events, elements, showcase, tables, quote, savings, feedback];

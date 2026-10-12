@@ -225,6 +225,26 @@ The home page lists documents and decks. Over HTTP (the MCP tools edgy_docs, edg
   DELETE /api/shares/<token>  turn a link off; GET /api/docs/<id>/shares lists those that are on
   GET   /api/docs/<id>/export  and  /api/decks/<deck>/export   one .html file that works offline (formulas, inputs, buttons; a deck plays)
 
+## Flow
+
+Beside documents, the person has a Flow: notes, tasks on a board, events on a calendar, all one timeline of posts with
+comments and reactions, where they and their agents meet. Items are records in their collections flow, flow-comments,
+flow-reactions and flow-board, so (rows "flow") reads them from any document. Over HTTP (the MCP tool edgy_flow does the same):
+
+  GET   /api/flow                      everything: items, comments, reactions, the board's columns, attached documents' titles
+  POST  /api/flow  {"text": "Call Ben tomorrow 3pm-4pm #sales !!"}   quick-add: a time makes an event, a day a task due then,
+        "todo …" a task, else a note; #tags, ! high, !! urgent; more lines are the body. Fields beside the text win:
+        kind, body, tags, due (2026-10-20), start/end (2026-10-20T15:00), priority 0-2, pinned, doc (a document to attach), status
+  PATCH /api/flow/<id>  {fields}       the same fields; status moves the card (the last column means done); done true|false
+  DELETE /api/flow/<id>                the item, its comments and reactions
+  POST  /api/flow/<id>/comments  {"text"}      a comment;  DELETE /api/flow/comments/<id>
+  POST  /api/flow/<id>/react  {"kind": "like"|"dislike"|"love"|"party"|"idea"}   toggles yours
+  POST  /api/flow/<id>/clock  {"running": true|false}   one clock at a time; stopping keeps the minutes and comments
+  PUT   /api/flow/board  {"columns": ["Inbox", "Doing", "Done"]}
+  GET   /api/flow/events               a stream: which collection changed
+
+What an agent posts, comments or reacts shows in the timeline as the agent's, with the person's name beside.
+
 ## Working well
 
 1. Read the document first (outline). Refer to cells by name when they have one.

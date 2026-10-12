@@ -41,6 +41,7 @@ import { shapeOf } from '../core/library';
 import { type Access, type Deck, type DocSummary, type Role, type Share, type Store, type User, StoreError, isDeckId, shortId } from './store';
 import type { Cloud } from './cloud';
 import { Sync } from './sync';
+import { flowRoutes } from './flow';
 
 const ASSET_TYPES: Record<string, string> = {
   'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif', 'image/svg+xml': 'svg',
@@ -72,7 +73,7 @@ export interface AppOptions {
 
 /** What node's server hands each request, and what in-process requests carry instead. */
 type Bindings = { incoming?: IncomingMessage; internal?: { doc: string } };
-type AppEnv = Env & { Bindings: Bindings };
+export type AppEnv = Env & { Bindings: Bindings };
 type C = Context<AppEnv>;
 
 /** One open event stream: whose it is and what they are doing. */
@@ -196,6 +197,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   /** Tell the documents of this owner that are open (and only those) that a collection changed. */
   function dataChanged(owner: string | null, collection: string) {
     for (const id of hub.roomIds()) if ((store.docOwner(id) ?? null) === owner) hub.publish(id, { type: 'data', collection });
+    flow.notify(owner, collection);
   }
 
   const runner = new Runner({
@@ -368,6 +370,10 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   /** What someone may see of a person. */
   const publicUser = (u: User) => ({ id: u.id, name: u.name, color: u.color, initials: initials(u.name) });
   const profile = (u: User) => ({ ...publicUser(u), email: u.email, theme: u.theme, local: u.local, hasPassword: u.hasPassword, createdAt: u.createdAt });
+
+  // ── Flow: the account's notes, tasks, events, comments and reactions (see flow.ts) ──
+
+  const flow = flowRoutes(app, { store, need, me, actorOf, changed: dataChanged });
 
   // ── live streams: who has a document open, and access that changes under them ──
 

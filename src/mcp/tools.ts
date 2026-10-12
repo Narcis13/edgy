@@ -291,6 +291,85 @@ tool('edgy_data', {
   return text(JSON.stringify(await api('DELETE', path + through)));
 }));
 
+/** One line per Flow item, the way an agent reads it. */
+function flowLine(i: any, comments: any[], reactions: any[]): string {
+  const when = i.start ? `at ${i.start}${i.end ? `–${i.end}` : ''}` : i.due ? `due ${i.due}` : '';
+  const marks = [i.kind === 'task' ? (i.done ? 'done' : i.status) : i.kind, when, i.priority === 2 ? 'urgent' : i.priority === 1 ? 'high' : '', i.pinned ? 'pinned' : '', i.clock ? 'clock running' : '', i.spent ? `${i.spent} min` : '', i.doc ? `doc ${i.doc}` : ''].filter(Boolean);
+  const tags = i.tags.map((t: string) => '#' + t).join(' ');
+  const n = comments.filter((k) => k.item === i.id).length;
+  const r = reactions.filter((k) => k.item === i.id);
+  const tail = [n ? `${n} comment${n === 1 ? '' : 's'}` : '', r.length ? r.map((k) => k.kind).join(',') : ''].filter(Boolean).join(', ');
+  return `${i.id}  [${marks.join(' · ')}]  ${i.text}${tags ? '  ' + tags : ''}  by ${i.by.name}${tail ? `  (${tail})` : ''}`;
+}
+
+tool('edgy_flow', {
+  description: 'The person\'s Flow: notes, tasks on a board, events on a calendar, all one timeline with comments and reactions, where they and their agents meet. action: "list" (the items; filter: all, notes, tasks, events, done, today, overdue; or query words), "post" (text in quick-add syntax: "Call Ben tomorrow 3pm-4pm #sales !!" makes an event; "todo …" a task; a day alone a task due then; else a note; fields given beside the text win), "edit" (fields of the item with id: text, body, kind, tags, due, start, end, priority 0-2, pinned, doc), "move" (the item with id to column), "done" (done true or false), "comment" (text on the item with id), "react" (toggle kind: like, dislike, love, party or idea), "clock" (running true or false: one clock at a time, the minutes are kept), "delete", "board" (set columns; the last column means done). What you post shows in the timeline as yours, with the person\'s name beside.',
+  inputSchema: {
+    action: z.enum(['list', 'post', 'edit', 'move', 'done', 'comment', 'react', 'clock', 'delete', 'board']),
+    id: z.string().optional().describe('The item (edit, move, done, comment, react, clock, delete)'),
+    text: z.string().optional().describe('post: the item, in quick-add syntax (more lines are the body); comment: the comment'),
+    fields: z.record(z.string(), z.any()).optional().describe('post, edit: text, body, kind, tags, due (2026-10-20), start/end (2026-10-20T15:00), priority, pinned, doc'),
+    column: z.string().optional().describe('move: the column'),
+    done: z.boolean().optional().describe('done: true or false'),
+    kind: z.enum(['like', 'dislike', 'love', 'party', 'idea']).optional().describe('react: the reaction'),
+    running: z.boolean().optional().describe('clock: start (true) or stop (false)'),
+    columns: z.array(z.string()).optional().describe('board: the columns in order, two to eight'),
+    filter: z.enum(['all', 'notes', 'tasks', 'events', 'done', 'today', 'overdue']).optional().describe('list: which items (default all, not done)'),
+    query: z.string().optional().describe('list: words that must appear'),
+  },
+}, safely(async ({ action, id, text: said, fields, column, done, kind, running, columns, filter, query }) => {
+  const need = (v: unknown, what: string) => {
+    if (v === undefined || v === null || v === '') throw new Error(`${action} needs ${what}`);
+  };
+  if (action === 'list') {
+    const all = await api('GET', '/api/flow');
+    const today = new Date();
+    const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const f = filter ?? 'all';
+    const q = (query ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+    const items = (all.items as any[]).filter((i) => {
+      if (f === 'done') return i.done;
+      if (i.done) return false;
+      if (f === 'notes') return i.kind === 'note';
+      if (f === 'tasks') return i.kind === 'task';
+      if (f === 'events') return i.kind === 'event';
+      const day = i.start ? String(i.start).slice(0, 10) : i.due;
+      if (f === 'today') return day === iso;
+      if (f === 'overdue') return i.kind === 'task' && day && day < iso;
+      return true;
+    }).filter((i) => q.every((w) => `${i.text}\n${i.body}\n${i.tags.map((t: string) => '#' + t).join(' ')}`.toLowerCase().includes(w)));
+    if (!items.length) return text(`Nothing in the Flow${f !== 'all' ? ` under ${f}` : ''}${query ? ` matching "${query}"` : ''}. Board columns: ${all.board.columns.join(', ')}.`);
+    items.sort((a, b) => b.updated - a.updated);
+    return text([`Board columns: ${all.board.columns.join(', ')}. ${items.length} item${items.length === 1 ? '' : 's'}, latest activity first:`, ...items.map((i) => flowLine(i, all.comments, all.reactions))].join('\n'));
+  }
+  if (action === 'board') {
+    need(columns, 'columns');
+    return text(JSON.stringify(await api('PUT', '/api/flow/board', { columns })));
+  }
+  if (action === 'post') {
+    need(said ?? fields?.text, 'text');
+    return text(JSON.stringify(await api('POST', '/api/flow', { text: said, ...(fields ?? {}), actor })));
+  }
+  need(id, 'the item id');
+  const at = `/api/flow/${encodeURIComponent(id!)}`;
+  if (action === 'edit') return text(JSON.stringify(await api('PATCH', at, fields ?? {})));
+  if (action === 'move') {
+    need(column, 'the column');
+    return text(JSON.stringify(await api('PATCH', at, { status: column })));
+  }
+  if (action === 'done') return text(JSON.stringify(await api('PATCH', at, { done: done ?? true })));
+  if (action === 'comment') {
+    need(said, 'text');
+    return text(JSON.stringify(await api('POST', `${at}/comments`, { text: said, actor })));
+  }
+  if (action === 'react') {
+    need(kind, 'kind');
+    return text(JSON.stringify(await api('POST', `${at}/react`, { kind, actor })));
+  }
+  if (action === 'clock') return text(JSON.stringify(await api('POST', `${at}/clock`, { running: running ?? true, actor })));
+  return text(JSON.stringify(await api('DELETE', at)));
+}));
+
 tool('edgy_say', {
   description: 'Leave a short message in a document\'s Activity panel for the person working there, e.g. what you changed or a question.',
   inputSchema: {

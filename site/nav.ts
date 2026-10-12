@@ -64,6 +64,7 @@ export const NAV: Path[] = [
         pages: ['events/', 'events/reference/', 'events/timers/', 'events/fetch/', 'events/custom/', 'events/loops-and-undo/', 'events/who-runs-what/'],
       },
       { title: 'Data', pages: ['data/collections/', 'data/data-page/'] },
+      { title: 'Flow', pages: ['flow/', 'flow/timeline/', 'flow/board/', 'flow/tasks-and-calendar/', 'flow/notes/', 'flow/in-documents/', 'flow/agents/'] },
       { title: 'Styling', pages: ['styling/style-keys/', 'styling/theme/'] },
       { title: 'Library', pages: ['library/', 'library/templates/', 'library/decks/', 'library/share-links/', 'library/export/'] },
       { title: 'People', pages: ['people/accounts/', 'people/sharing/', 'people/presence/', 'people/api-keys/', 'people/sync/'] },

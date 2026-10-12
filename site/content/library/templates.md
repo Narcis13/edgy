@@ -50,6 +50,10 @@ A small shop's order desk. A flowchart whose labels show live numbers from the o
 The [Wizard](/tutorials/wizard/) and [Flowchart](/tutorials/flowchart/) tutorials build the two parts you can try on their own.
 :::
 
+::: template flow
+A document that reads your [Flow](/flow/): two hidden [formula](kind:formula) cells hold `(rows "flow")` and the open tasks; [stats](kind:stat) count open, overdue, done this week and the minutes on the clock; a [table](kind:table) lists what is due in the next seven days with a **Done** button that runs [update!](fn:update!) (the board agrees); a bar [chart](kind:chart) counts what was finished on each of the last seven days and a donut the open tasks by column; a [calendar](kind:calendar) maps events and due days. When your Flow is still empty it brings seven sample items. See [Flow in documents](/flow/in-documents/).
+:::
+
 ::: template events
 A Saturday market stall that reacts. The document counts its visits when it opens, a [fetch](kind:fetch) cell keeps an exchange rate fresh, a [table](kind:table) handles click and double-click, custom actions fill a basket, **Place the order** saves a record and sends a custom event two cells listen to, a checklist shows a note when every item is ticked, and two [timers](kind:timer) turn an offer and show a tip. Switch to Edit and open a cell's **Events** to see each handler. See [Events and actions](/events/).
 :::

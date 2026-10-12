@@ -391,6 +391,50 @@ Deletes one record. The answer is `{"ok": true}`, or `{"ok": false}` when there 
 Empties a collection. The answer is `{"removed": 3}`: how many records went.
 :::
 
+## Flow
+
+Flow is the account's notes, tasks, events, comments and reactions, kept as records in its own collections (`flow`, `flow-comments`, `flow-reactions`, `flow-board`), with the rules the views share added here: who wrote what, the quick-add syntax, done and columns, the clock, reactions that toggle. Every route works on the asker's own Flow; an agent with the person's key writes as the agent, with the person's name beside. See [Flow](/flow/).
+
+::: route GET /api/flow
+Everything at once: `{"items": [...], "comments": [...], "reactions": [...], "board": {"columns": [...]}, "docs": {id: title}, "me": {...}}`. Each item has every field, whoever saved the record (a bare `(insert! "flow" …)` from a document reads as the owner's note). `me` is who the server would write as the author of what you post.
+:::
+
+::: route POST /api/flow
+Posts an item. `text` is read as [quick-add](/flow/#quick-add): `{"text": "Call Ben tomorrow 3pm-4pm #sales !!"}` makes an event tomorrow 15:00–16:00, tagged `sales`, urgent; a day alone makes a task due then; `todo …` a task; anything else a note. Lines after the first are the body. Fields beside the text win over what was read: `kind`, `body`, `tags`, `status`, `due` (`2026-10-20`), `start` and `end` (`2026-10-20T15:00`), `priority` (0–2), `pinned`, `doc` (a document of yours to attach), `order`. With `"plain": true` the text is kept as typed. The answer is `201` and the item.
+:::
+
+::: route PATCH /api/flow/:id
+Changes an item's fields (the same fields as posting). A `status` that is the board's last column makes the item done; `done` true moves it to the last column, false out of it. The answer is the item; an unknown column, a malformed day or a document you can't open answer `400`.
+:::
+
+::: route DELETE /api/flow/:id
+Deletes the item with its comments and reactions. The answer is `{"ok": true}`.
+:::
+
+::: route POST /api/flow/:id/comments
+Adds a comment: `{"text": "Bring the numbers"}`. The answer is `201` and the comment, with `by` set from who asked. The item moves up the timeline.
+:::
+
+::: route DELETE /api/flow/comments/:id
+Deletes a comment. The answer is `{"ok": true}`.
+:::
+
+::: route POST /api/flow/:id/react
+Toggles your reaction: `{"kind": "like"}` (or `dislike`, `love`, `party`, `idea`). One per person (or agent) and kind. The answer is `{"on": true|false, "reactions": [...]}`, the item's reactions after the change.
+:::
+
+::: route POST /api/flow/:id/clock
+Starts or stops the clock on an item: `{"running": true}` or `{"running": false}`. One clock runs at a time: starting one stops another. Stopping adds the minutes to the item's `spent` and comments *Worked 25 min on this* when a minute or more passed. The answer is the item.
+:::
+
+::: route PUT /api/flow/board
+Sets the board's columns: `{"columns": ["Backlog", "Doing", "Review", "Shipped"]}`, two to eight. Cards of a column that went start again in the first; the last column means done. The answer is the board.
+:::
+
+::: route GET /api/flow/events
+An event stream for the account: `hello` once, then `data` with `{"collection": "flow"}` each time one of the Flow collections changes here, whoever changed it (a page, an agent, a document's `insert!`, another machine through sync), and `ping` every ten seconds.
+:::
+
 ## Fetch cells and demo fixtures
 
 A [fetch](kind:fetch) cell gets JSON from an address; the server does the fetching, for everyone who has the document open in **Live**. See [Fetch cells](/events/fetch/).
