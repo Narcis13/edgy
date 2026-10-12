@@ -179,8 +179,9 @@ export function normalizeBoard(raw: Raw | null | undefined): FlowBoard {
   return { ...(raw && typeof raw.id === 'string' ? { id: raw.id } : {}), columns: columns.length ? [...new Set(columns)] : [...DEFAULT_COLUMNS] };
 }
 
-/** The same person or agent: by account id when both have one, else by name. */
-export const sameWho = (a: Who, b: Who): boolean => a.kind === b.kind && (a.id && b.id ? a.id === b.id && a.name === b.name : a.name === b.name);
+/** The same person (by account id when both have one, whatever they are called now) or the same agent (by name: every agent of a person shares their id). */
+export const sameWho = (a: Who, b: Who): boolean =>
+  a.kind === b.kind && (a.kind === 'human' && a.id && b.id ? a.id === b.id : a.name === b.name && (!a.id || !b.id || a.id === b.id));
 
 // ───────────────────────────── days and times ─────────────────────────────
 
@@ -450,6 +451,10 @@ DAY_NAMES.thurs = 4;
 const MONTH_RE = '(?:january|february|march|april|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sept|sep|oct|nov|dec)';
 const DAY_RE = '(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues|tue|wed|thurs|thur|thu|fri|sat|sun)';
 const HOUR = '(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)?';
+/** Short names that are also words: taken as a day or a month only with a capital or a prefix (on, next, this). */
+const AMBIGUOUS = new Set(['sat', 'sun', 'mon', 'wed', 'mar', 'may', 'dec']);
+/** What may follow a bare "at 3" for it to be a time: nothing, punctuation, a tag, or a day. */
+const AFTER_TIME = new RegExp(`^\\s*(?:$|[,.;!?#]|(?:on|tomorrow|tmrw|today|tonight|next|in|this|${DAY_RE}|${MONTH_RE})\\b)`, 'i');
 
 /** A time of day from a match: hours, minutes, am/pm. "3" alone means 15:00 when it is 1–6 and nothing says am. */
 function clock(h: string, m: string | undefined, ampm: string | undefined, bare: boolean): string | null {
@@ -502,16 +507,18 @@ export function parseQuick(input: string, now: Date = new Date()): Quick {
   let minutes: number | null = null;
   let dayNamed = false;
 
-  const take = (re: RegExp, fn: (m: RegExpMatchArray) => void): void => {
+  // A match is taken out of the text only when it was understood (fn returns false to leave it: "at 30 people").
+  const take = (re: RegExp, fn: (m: RegExpMatchArray) => void | false): void => {
     const m = re.exec(text);
-    if (!m) return;
-    fn(m);
+    if (!m || fn(m) === false) return;
     text = text.slice(0, m.index) + ' ' + text.slice(m.index + m[0].length);
   };
+  /** A three-letter name that is also a word (sat, may…) counts only with a capital, or after on, next or this. */
+  const meant = (word: string, prefixed: boolean): boolean => !AMBIGUOUS.has(word.toLowerCase()) || prefixed || word[0] !== word[0].toLowerCase();
 
-  // The kind, said first.
-  take(/^\s*(?:\/|)(todo|task|note|event)\b:?\s*/i, (m) => {
-    const k = m[1].toLowerCase();
+  // The kind, said first: "todo …", "task: …", "/event …" ("Task force meeting" is words).
+  take(/^\s*(?:\/(task|note|event)\b|(todo)\b|(task|note|event):)\s*/i, (m) => {
+    const k = (m[1] ?? m[2] ?? m[3]).toLowerCase();
     kind = k === 'todo' || k === 'task' ? 'task' : k === 'note' ? 'note' : 'event';
   });
   // Tags, anywhere.
@@ -526,41 +533,50 @@ export function parseQuick(input: string, now: Date = new Date()): Quick {
   });
   // A full date first, so its digits never read as a time.
   take(/\b(\d{4})-(\d{2})-(\d{2})\b/, (m) => {
-    day = monthDay(today, Number(m[2]) - 1, Number(m[3]), Number(m[1]));
-    dayNamed = !!day;
+    const d = monthDay(today, Number(m[2]) - 1, Number(m[3]), Number(m[1]));
+    if (!d) return false;
+    day = d;
+    dayNamed = true;
   });
   // Duration: "for 45m", "for 1h", "for 1.5 hours", "for 90 min".
   take(/\bfor\s+(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes)\b/i, (m) => {
     const n = Number(m[1]);
     minutes = Math.round(/^h/.test(m[2].toLowerCase()) ? n * 60 : n);
   });
-  // A range of times: 3-4pm, 3pm-4pm, 15:00-16:30, from 3 to 4pm.
+  // A range of times: 3-4pm, 3pm-4pm, 15:00-16:30, from 3 to 4pm. One side says it is a time (am, pm or minutes): "chapters 3-4" are words.
   take(new RegExp(`(?:\\b(?:at|from)\\s+)?(?<![\\d:-])\\b${HOUR}\\s*(?:-|–|to)\\s*${HOUR}\\b(?![\\d:-])`, 'i'), (m) => {
+    if (!m[2] && !m[3] && !m[5] && !m[6]) return false;
     const ampm2 = m[6]?.toLowerCase();
-    const ampm1 = m[3]?.toLowerCase() ?? ampm2;
-    const a = clock(m[1], m[2], ampm1, !m[2]);
     const b = clock(m[4], m[5], ampm2, !m[5]);
-    if (a && b) {
-      from = a;
-      to = b;
-      if (to <= from && !ampm2 && !m[5]) to = timeOfMinutes(minutesOf(b) + 12 * 60);
-    }
+    // "11-1pm": the pm reaches the first hour only when that keeps it before the second.
+    let a = clock(m[1], m[2], m[3]?.toLowerCase() ?? ampm2, !m[2]);
+    if (a && b && !m[3] && ampm2 && a > b) a = clock(m[1], m[2], undefined, false);
+    if (!a || !b) return false;
+    from = a;
+    to = b;
+    if (to <= from && !ampm2 && !m[5]) to = timeOfMinutes(minutesOf(b) + 12 * 60);
   });
   if (!from) {
-    take(/\b(noon|midday|midnight|tonight)\b/i, (m) => {
-      const w = m[1].toLowerCase();
-      from = w === 'midnight' ? '00:00' : w === 'tonight' ? '20:00' : '12:00';
-      if (w === 'tonight') day ??= today;
-    });
-  }
-  if (!from) {
-    // One time: 3pm, 3:30pm, 15:00, at 3, @3pm.
+    // One time: 3pm, 3:30pm, 15:00, @3pm; "at 3" when nothing but a day follows ("at 5 options" are words).
     take(new RegExp(`(?:\\b(?:at)\\s+|@\\s*)${HOUR}\\b|(?<![\\d:-])\\b(\\d{1,2}):(\\d{2})\\s*(am|pm)?\\b(?![\\d:-])|(?<![\\d:-])\\b(\\d{1,2})\\s*(am|pm)\\b`, 'i'), (m) => {
-      if (m[1]) from = clock(m[1], m[2], m[3]?.toLowerCase(), !m[2]);
-      else if (m[4]) from = clock(m[4], m[5], m[6]?.toLowerCase(), false);
-      else from = clock(m[7], undefined, m[8]?.toLowerCase(), false);
+      let t: string | null;
+      if (m[1]) {
+        if (!m[2] && !m[3] && !AFTER_TIME.test(text.slice(m.index! + m[0].length))) return false;
+        t = clock(m[1], m[2], m[3]?.toLowerCase(), !m[2]);
+      } else if (m[4]) t = clock(m[4], m[5], m[6]?.toLowerCase(), false);
+      else t = clock(m[7], undefined, m[8]?.toLowerCase(), false);
+      if (!t) return false;
+      from = t;
     });
   }
+  take(/\b(?:12\s*)?(noon|midday|midnight|tonight)\b/i, (m) => {
+    const w = m[1].toLowerCase();
+    if (w === 'tonight') {
+      from ??= '20:00';
+      day ??= today;
+      dayNamed = true;
+    } else if (!from) from = w === 'midnight' ? '00:00' : '12:00';
+  });
   // The day.
   take(/\b(today|tomorrow|tmrw|yesterday)\b/i, (m) => {
     const w = m[1].toLowerCase();
@@ -577,22 +593,25 @@ export function parseQuick(input: string, now: Date = new Date()): Quick {
     day = addDays(today, u.startsWith('day') ? n : u.startsWith('week') ? n * 7 : n * 30);
     dayNamed = true;
   });
-  if (!dayNamed) take(new RegExp(`\\b(?:on\\s+)?(${MONTH_RE})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b`, 'i'), (m) => {
-    const mo = MONTH_NAMES[m[1].toLowerCase()] ?? MONTH_NAMES[m[1].toLowerCase().slice(0, 3)];
-    if (mo !== undefined) day = monthDay(today, mo, Number(m[2]), m[3] ? Number(m[3]) : undefined);
-    dayNamed = !!day;
-  });
-  if (!dayNamed) take(new RegExp(`\\b(?:on\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MONTH_RE})\\.?(?:,?\\s+(\\d{4}))?\\b`, 'i'), (m) => {
+  if (!dayNamed) take(new RegExp(`\\b(?:(on)\\s+)?(${MONTH_RE})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b`, 'i'), (m) => {
     const mo = MONTH_NAMES[m[2].toLowerCase()] ?? MONTH_NAMES[m[2].toLowerCase().slice(0, 3)];
-    if (mo !== undefined) day = monthDay(today, mo, Number(m[1]), m[3] ? Number(m[3]) : undefined);
-    dayNamed = !!day;
+    const d = mo === undefined || !meant(m[2], !!m[1]) ? null : monthDay(today, mo, Number(m[3]), m[4] ? Number(m[4]) : undefined);
+    if (!d) return false;
+    day = d;
+    dayNamed = true;
   });
-  if (!dayNamed) take(new RegExp(`\\b(?:(?:on|next|this)\\s+)?(${DAY_RE})\\b`, 'i'), (m) => {
-    const wd = DAY_NAMES[m[1].toLowerCase()] ?? DAY_NAMES[m[1].toLowerCase().slice(0, 3)];
-    if (wd !== undefined) {
-      day = nextWeekday(today, wd);
-      dayNamed = true;
-    }
+  if (!dayNamed) take(new RegExp(`\\b(?:(on)\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MONTH_RE})\\.?(?:,?\\s+(\\d{4}))?\\b`, 'i'), (m) => {
+    const mo = MONTH_NAMES[m[3].toLowerCase()] ?? MONTH_NAMES[m[3].toLowerCase().slice(0, 3)];
+    const d = mo === undefined || !meant(m[3], !!m[1]) ? null : monthDay(today, mo, Number(m[2]), m[4] ? Number(m[4]) : undefined);
+    if (!d) return false;
+    day = d;
+    dayNamed = true;
+  });
+  if (!dayNamed) take(new RegExp(`\\b(?:(on|next|this)\\s+)?(${DAY_RE})\\b`, 'i'), (m) => {
+    const wd = DAY_NAMES[m[2].toLowerCase()] ?? DAY_NAMES[m[2].toLowerCase().slice(0, 3)];
+    if (wd === undefined || !meant(m[2], !!m[1])) return false;
+    day = nextWeekday(today, wd);
+    dayNamed = true;
   });
 
   // What is left is the text: stray "at", "on", commas and doubled spaces go.

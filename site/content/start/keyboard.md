@@ -311,3 +311,11 @@ In a comment box under a post, Enter sends the comment; Shift+Enter starts a new
 ::: key flow-move
 On the board, Tab to a card and press Shift+← or Shift+→ to move it one column to the left or the right. Into the last column marks it done; out of it marks it not done. The card's **⋯** menu has **Move to …** as well.
 :::
+
+::: key flow-card
+On the board, Tab to a card and press Enter to open it in the editor. While a card is being dragged, Esc puts it back where it was.
+:::
+
+::: key flow-note
+In the Notes view, Ctrl+Enter (⌘Enter on a Mac) saves the note being written or edited. Esc saves an edit in place; in the New note box it drops what was typed.
+:::

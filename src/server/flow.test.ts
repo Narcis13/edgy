@@ -131,6 +131,49 @@ test('Flow: columns and done agree; the board is editable; an attached document 
   assert.equal((await s.call('GET', '/api/flow', undefined, ben)).json.items.length, 0);
 });
 
+test('Flow: the rules the review asked for: a card under the last column, done stops the clock, notes are never done, events have a day, limits, titles', async () => {
+  const s = server();
+  const { ana, ben } = await people(s);
+  // A card added under the last column is done; under a middle one it is there.
+  let r = await s.call('POST', '/api/flow', { text: 'Ship it', kind: 'task', status: 'Done' }, ana);
+  assert.deepEqual([r.json.status, r.json.done], ['Done', true]);
+  r = await s.call('POST', '/api/flow', { text: 'Ship it', kind: 'task', status: 'Doing' }, ana);
+  assert.deepEqual([r.json.status, r.json.done], ['Doing', false]);
+  // Done stops a running clock and keeps its minutes.
+  const t = r.json;
+  await s.call('POST', `/api/flow/${t.id}/clock`, { running: true }, ana);
+  s.store.update(t.by.id, 'flow', t.id, { clock: Date.now() - 5 * 60_000 });
+  r = await s.call('PATCH', `/api/flow/${t.id}`, { done: true }, ana);
+  assert.deepEqual([r.json.done, r.json.clock, r.json.spent], [true, null, 5]);
+  assert.deepEqual((await s.call('GET', '/api/flow', undefined, ana)).json.comments.map((k: any) => k.text), ['Worked 5 min on this']);
+  // A note is never done or in a column; an event without a day is today, with a due day it is on that day.
+  const n = (await s.call('POST', '/api/flow', { text: 'A thought' }, ana)).json;
+  r = await s.call('PATCH', `/api/flow/${n.id}`, { done: true }, ana);
+  assert.deepEqual([r.json.done, r.json.status], [false, '']);
+  const e = (await s.call('POST', '/api/flow', { text: 'Lunch', kind: 'event' }, ana)).json;
+  assert.ok(e.start && e.start === e.end && e.due === null, JSON.stringify(e));
+  const e2 = (await s.call('POST', '/api/flow', { text: 'Lunch friday', kind: 'event' }, ana)).json;
+  assert.ok(e2.start && e2.start.length === 10 && e2.due === null, JSON.stringify(e2));
+  // Limits and dates that exist.
+  r = await s.call('POST', '/api/flow', { text: 'x'.repeat(5000) + '\n' + 'y'.repeat(30_000), tags: Array.from({ length: 50 }, (_, i) => 't' + i) }, ana);
+  assert.deepEqual([r.json.text.length, r.json.body.length, r.json.tags.length], [2000, 20_000, 20]);
+  assert.equal((await s.call('POST', '/api/flow', { text: 'x', due: '2026-02-31' }, ana)).status, 400);
+  assert.equal((await s.call('POST', '/api/flow', { text: 'x', start: '2026-10-20T25:99' }, ana)).status, 400);
+  assert.equal((await s.call('POST', '/api/flow', { text: 'tomorrow' }, ana)).json.text, 'tomorrow', 'a day alone keeps its words as the text');
+  assert.ok((await s.call('POST', '/api/flow', { text: 'old', posted: -5 }, ana)).json.posted > Date.now() - 60_000, 'a posted time before 2000 is now');
+  assert.equal((await s.call('PUT', '/api/flow/board', null, ana)).status, 400);
+  assert.equal((await s.call('POST', `/api/flow/${t.id}/clock`, { running: 'false' }, ana)).json.clock, null, 'only true starts the clock');
+  // The title of a document you can't open is never named, whatever a record says.
+  const his = (await s.call('POST', '/api/docs', { title: 'Secret' }, ben)).json.id;
+  await s.call('POST', '/api/data/flow', { record: { kind: 'note', text: 'peek', doc: his } }, ana);
+  assert.equal((await s.call('GET', '/api/flow', undefined, ana)).json.docs[his], '');
+  // A reaction is still yours after a rename.
+  await s.call('POST', `/api/flow/${n.id}/react`, { kind: 'like' }, ana);
+  await s.call('PATCH', '/api/me', { name: 'Ana Popescu' }, ana);
+  r = await s.call('POST', `/api/flow/${n.id}/react`, { kind: 'like' }, ana);
+  assert.deepEqual([r.json.on, r.json.reactions.length], [false, 0]);
+});
+
 test('Flow: comments and reactions, by people and agents; deleting an item takes them along', async () => {
   const s = server();
   const { ana, claude } = await people(s);

@@ -79,6 +79,8 @@ export function ItemDialog({ item, preset, data, acts, confirm, navigate, onClos
   const id = useId();
   const cols = data.board.columns;
   const [d, setD] = useState<Draft>(() => draftOf(item, preset, cols[0]));
+  // What the item was when the dialog opened: only the fields changed here are sent, so a change made elsewhere meanwhile is kept.
+  const [opened] = useState(item);
   const [docs, setDocs] = useState<{ id: string; title: string }[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,7 +101,7 @@ export function ItemDialog({ item, preset, data, acts, confirm, navigate, onClos
       if (item) {
         const changed: Fields = {};
         for (const [k, v] of Object.entries(f) as [keyof Fields, unknown][]) {
-          if (JSON.stringify(v) !== JSON.stringify((item as unknown as Record<string, unknown>)[k])) (changed as Record<string, unknown>)[k] = v;
+          if (JSON.stringify(v) !== JSON.stringify(((opened ?? item) as unknown as Record<string, unknown>)[k])) (changed as Record<string, unknown>)[k] = v;
         }
         if (Object.keys(changed).length) await acts.patch(item.id, changed);
       } else {
@@ -115,7 +117,7 @@ export function ItemDialog({ item, preset, data, acts, confirm, navigate, onClos
   const remove = () => {
     if (!item) return;
     onClose();
-    confirm({ title: `Delete "${item.text || KIND_LABEL[item.kind].toLowerCase()}"?`, body: 'Its comments and reactions go with it. This can’t be undone.', action: 'Delete', run: () => acts.remove(item.id) });
+    confirm({ title: `Delete "${item.text || KIND_LABEL[item.kind].toLowerCase()}"?`, body: 'Its comments and reactions go with it. This can’t be undone.', action: 'Delete', run: () => acts.remove(item.id).catch(() => undefined) });
   };
 
   return (

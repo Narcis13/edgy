@@ -8,7 +8,7 @@ import { Avatar } from '../../account/Avatar';
 import { type MenuItem, Menu } from '../library/Menu';
 import { cx } from '../library/text';
 import type { Confirm } from '../library/Dialogs';
-import type { FlowActions } from './state';
+import { type FlowActions, quiet } from './state';
 
 export const KIND_ICON: Record<ItemKind, ReactNode> = {
   note: <StickyNote size={13} aria-hidden="true" />,
@@ -112,19 +112,19 @@ export interface ItemMenuDeps {
 
 /** The ⋯ menu every item has, the same in every view. */
 export function itemMenu(item: FlowItem, { acts, openItem, confirm, first = [] }: ItemMenuDeps): MenuItem[] {
-  const make = (kind: ItemKind): MenuItem => ({ label: `Make it ${kind === 'event' ? 'an event' : `a ${kind}`}`, icon: KIND_ICON[kind], run: () => void acts.patch(item.id, { kind }) });
+  const make = (kind: ItemKind): MenuItem => ({ label: `Make it ${kind === 'event' ? 'an event' : `a ${kind}`}`, icon: KIND_ICON[kind], run: () => quiet(acts.patch(item.id, { kind })) });
   const items: MenuItem[] = [
     ...first,
     { label: 'Edit', icon: <Pencil size={15} />, run: () => openItem(item.id) },
     ...(['task', 'note', 'event'] as ItemKind[]).filter((k) => k !== item.kind).map(make),
     item.kind === 'task'
-      ? { label: item.done ? 'Not done' : 'Done', icon: item.done ? <Undo2 size={15} /> : <CircleDashed size={15} />, run: () => void acts.patch(item.id, { done: !item.done }) }
+      ? { label: item.done ? 'Not done' : 'Done', icon: item.done ? <Undo2 size={15} /> : <CircleDashed size={15} />, run: () => quiet(acts.patch(item.id, { done: !item.done })) }
       : null,
-    { label: item.pinned ? 'Unpin' : 'Pin', icon: item.pinned ? <PinOff size={15} /> : <Pin size={15} />, run: () => void acts.patch(item.id, { pinned: !item.pinned }) },
-    { label: item.clock ? 'Stop the clock' : 'Start the clock', icon: item.clock ? <Pause size={15} /> : <Play size={15} />, run: () => void acts.clock(item.id, !item.clock) },
+    { label: item.pinned ? 'Unpin' : 'Pin', icon: item.pinned ? <PinOff size={15} /> : <Pin size={15} />, run: () => quiet(acts.patch(item.id, { pinned: !item.pinned })) },
+    { label: item.clock ? 'Stop the clock' : 'Start the clock', icon: item.clock ? <Pause size={15} /> : <Play size={15} />, run: () => quiet(acts.clock(item.id, !item.clock)) },
     {
       label: 'Delete', icon: <Trash2 size={15} />, danger: true,
-      run: () => confirm({ title: `Delete "${item.text || KIND_LABEL[item.kind].toLowerCase()}"?`, body: 'Its comments and reactions go with it. This can’t be undone.', action: 'Delete', run: () => acts.remove(item.id) }),
+      run: () => confirm({ title: `Delete "${item.text || KIND_LABEL[item.kind].toLowerCase()}"?`, body: 'Its comments and reactions go with it. This can’t be undone.', action: 'Delete', run: () => acts.remove(item.id).catch(() => undefined) }),
     },
   ].filter((x): x is MenuItem => !!x);
   return items;

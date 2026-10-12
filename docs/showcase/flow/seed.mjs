@@ -64,7 +64,7 @@ export async function seedFlow(base, ana, now = Date.now(), key = null) {
   await call(ana, 'PATCH', `/api/flow/${turso.id}`, { done: true });
   // Finished eleven days ago: the time of that is a plain field, set the way a document could.
   await call(ana, 'PATCH', `/api/data/flow/${turso.id}`, { fields: { doneAt: ago(11, 15, 20), updated: ago(11, 15, 20) } });
-  await post(ana, `event Team offsite planning ${day(-10)} 14:00-15:30 #team`, { posted: ago(11, 16, 40) });
+  await post(ana, `event: Team offsite planning ${day(-10)} 14:00-15:30 #team`, { posted: ago(11, 16, 40) });
   const reading = await post(ana, 'Reading list #reading\n- Designing Data-Intensive Applications, ch. 5\n- The Pragmatic Programmer, again\n- Hono docs: streaming', { posted: ago(9, 21, 15), pinned: true });
 
   // ── Last week ──
@@ -101,7 +101,7 @@ export async function seedFlow(base, ana, now = Date.now(), key = null) {
   const works = await post(ana, 'Flow works: notes, tasks and events in one timeline, and Claude is in it. #flow #launch', { posted: ago(0, 9, 5) });
   await react(claude, works.id, 'party');
   await post(ana, `todo Prepare the demo ${day(1)} #launch`, { posted: ago(0, 9, 20) });
-  await post(ana, `event Offsite ${day(3)} #team`, { posted: ago(0, 9, 22) });
+  await post(ana, `event: Offsite ${day(3)} #team`, { posted: ago(0, 9, 22) });
   await post(ana, `todo Pay the invoice ${day(10)} #finance`, { posted: ago(0, 9, 24) });
   // The dashboard, from the template: made now that the Flow has items, so the template brings no samples of its own.
   const dash = (await call(ana, 'POST', '/api/docs', { template: 'flow' })).json.id;

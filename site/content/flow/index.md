@@ -34,9 +34,9 @@ Wherever you type a new item, the first line is read for a kind, a day, a time, 
 
 | Write | Gets |
 | --- | --- |
-| `todo …`, `task …` | a task |
-| `note …` | a note |
-| `event …` | an event |
+| `todo …`, `task: …`, `/task …` | a task |
+| `note: …`, `/note …` | a note |
+| `event: …`, `/event …` | an event |
 | `#sales` | the tag `sales` (letters, digits, `-` and `_`) |
 | `!` or `!!` | high or urgent |
 | `today`, `tomorrow`, `friday`, `next week`, `in 3 days`, `oct 20`, `20 oct`, `2026-10-20` | a day |
@@ -44,7 +44,7 @@ Wherever you type a new item, the first line is read for a kind, a day, a time, 
 | `3-4pm`, `15:00-16:30`, `from 3 to 4pm` | a start and an end |
 | `for 45m`, `for 2h` | an end, that long after the start |
 
-Without a kind in front, a **time** makes an event, a **day** alone makes a task due that day, and anything else is a note. `at 3` and the hours 1 to 6 with no `am` or `pm` are taken as the afternoon. A weekday names the next one, not today. An event with a start and no end lasts an hour.
+Without a kind in front, a **time** makes an event, a **day** alone makes a task due that day, and anything else is a note. `at 3` and the hours 1 to 6 with no `am` or `pm` are taken as the afternoon; a range needs `am`, `pm` or minutes on one side (`chapters 3-4` stays words), and `at 5` counts as a time only when nothing but a day follows it. A weekday names the next one, not today. Short names that are also words (`sat`, `sun`, `mon`, `wed`, `mar`, `may`, `dec`) count only with a capital or after `on`, `next` or `this`: *We sat down* stays a sentence, *Lunch Sat* is due Saturday. An event with a start and no end lasts an hour; an event with no day is today.
 
 | You type | You get |
 | --- | --- |

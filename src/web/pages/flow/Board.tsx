@@ -284,10 +284,11 @@ export function Board(props: ViewProps) {
             onRenameCancel={() => setRenaming(null)}
             menu={(): MenuItem[] => [
               { label: 'Rename', icon: <Pencil size={15} />, run: () => setRenaming(name) },
-              { label: 'Add a column after', icon: <Plus size={15} />, disabled: columns.length >= MAX_COLUMNS, run: () => addAfter(i) },
-              { label: 'Move left', icon: <ArrowLeft size={15} />, disabled: i === 0, run: () => saveColumns(movedColumn(columns, i, -1)) },
-              { label: 'Move right', icon: <ArrowRight size={15} />, disabled: i === columns.length - 1, run: () => saveColumns(movedColumn(columns, i, 1)) },
-              { label: 'Remove', icon: <Trash2 size={15} />, danger: true, disabled: columns.length <= MIN_COLUMNS, run: () => remove(i) },
+              // The last column means done, so nothing may put another column after it or take it away.
+              { label: 'Add a column after', icon: <Plus size={15} />, disabled: columns.length >= MAX_COLUMNS || i === columns.length - 1, run: () => addAfter(i) },
+              { label: 'Move left', icon: <ArrowLeft size={15} />, disabled: i === 0 || i === columns.length - 1, run: () => saveColumns(movedColumn(columns, i, -1)) },
+              { label: 'Move right', icon: <ArrowRight size={15} />, disabled: i >= columns.length - 2, run: () => saveColumns(movedColumn(columns, i, 1)) },
+              { label: 'Remove', icon: <Trash2 size={15} />, danger: true, disabled: columns.length <= MIN_COLUMNS || i === columns.length - 1, run: () => remove(i) },
             ]}
           />
         ))}

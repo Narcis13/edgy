@@ -14,9 +14,10 @@ interface DocChoice {
   title: string;
 }
 
-/** Your documents, for attaching one; read once, when first asked for. */
+/** Your documents, for attaching one; read when asked for, and kept until the next picker opens (`fresh`). */
 let docsOnce: Promise<DocChoice[]> | null = null;
-export function myDocs(): Promise<DocChoice[]> {
+export function myDocs(fresh = false): Promise<DocChoice[]> {
+  if (fresh) docsOnce = null;
   docsOnce ??= api<{ id: string; title: string; archivedAt?: number | null }[]>('GET', '/api/docs')
     .then((d) => d.filter((x) => x.archivedAt == null).map((x) => ({ id: x.id, title: x.title || 'Untitled' })))
     .catch(() => {
@@ -36,7 +37,7 @@ export function Composer({ acts, today, inputRef }: { acts: FlowActions; today: 
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (picking && !docs) void myDocs().then(setDocs);
+    if (picking && !docs) void myDocs(true).then(setDocs);
   }, [picking, docs]);
 
   const quick = text.trim() ? parseQuick(text, new Date()) : null;
@@ -73,7 +74,7 @@ export function Composer({ acts, today, inputRef }: { acts: FlowActions; today: 
         onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void post(); } }}
       />
       <div className="flow-composer-row">
-        <p className={cx('flow-preview', !preview && 'is-empty')} aria-live="polite">{preview || 'A day, a time, #tags and ! are read from the first line. Ctrl+Enter posts.'}</p>
+        <p className={cx('flow-preview', !preview && 'is-empty')} aria-live="polite">{preview || 'A day, a time, #tags and ! are read from the first line. Ctrl+Enter (⌘Enter on a Mac) posts.'}</p>
         <div className="seg flow-kinds" role="group" aria-label="Kind">
           <button type="button" className={cx(!kind && 'is-on')} onClick={() => setKind(null)} aria-pressed={!kind}>Auto</button>
           {(['note', 'task', 'event'] as ItemKind[]).map((k) => (

@@ -3,12 +3,12 @@
 
 import { type KeyboardEvent, type MouseEvent, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Pin, Plus, Search, X } from 'lucide-react';
-import { type FlowItem, tagsOf } from '../../../core/flow';
+import { type FlowItem, tagOf, tagsOf } from '../../../core/flow';
 import { timeAgo } from '../../lib/api';
 import { cx, plural } from '../library/text';
 import { DocLink, ItemMenu, Tags, When } from './bits';
 import type { ViewProps } from './FlowPage';
-import type { FlowActions } from './state';
+import { type FlowActions, quiet } from './state';
 import { editFields, newNoteText, notesOf, oneLine } from './notecards';
 import './notes.css';
 
@@ -102,7 +102,10 @@ function NewNote({ acts }: { acts: FlowActions }) {
     setBusy(true);
     setError(null);
     try {
-      await acts.post({ text, kind: 'note' });
+      // The title is kept as typed (a day in it is just words); only its #tags are read.
+      const tags = [...title.matchAll(/(?:^|\s)#([\p{L}\p{N}_-]+)/gu)].map((m) => tagOf(m[1])).filter(Boolean);
+      const bare = title.replace(/(?:^|\s)#[\p{L}\p{N}_-]+/gu, ' ').replace(/\s{2,}/g, ' ').trim();
+      await acts.post({ text: bare + (body.trim() ? '\n' + body.trim() : ''), kind: 'note', plain: true, tags });
       close();
     } catch {
       setError('The note could not be saved. Try again.');
@@ -174,7 +177,7 @@ function NoteCard({ item, props, tag, pickTag }: { item: FlowItem; props: ViewPr
     if (done.current) return;
     done.current = true;
     const fields = editFields(item, title, body);
-    if (fields) void acts.patch(item.id, fields).catch(() => undefined);
+    if (fields) quiet(acts.patch(item.id, fields));
     if (refocus) card.current?.focus();
     setEditing(false);
   };

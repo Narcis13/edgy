@@ -154,7 +154,10 @@ button.flow-prio:hover { outline: 1px solid var(--line-strong); }
   .flow-head { gap: 8px; margin-bottom: 12px; }
   .flow-head h1 { font-size: 22px; }
   .flow-views { order: 3; width: 100%; overflow-x: auto; scrollbar-width: none; }
-  .flow-view { height: 38px; padding: 0 12px; flex: 1 0 auto; justify-content: center; }
+  .flow-view { height: 40px; padding: 0 12px; flex: 1 0 auto; justify-content: center; }
+  .flow-done { width: 40px; height: 40px; }
+  .flow-tags button.flow-tag { min-height: 40px; padding: 0 10px; }
+  .seg.flow-kinds button, .flow-form .seg button { min-height: 40px; }
   .flow-new { min-height: 40px; }
   .flow-composer { padding: 10px; border-radius: 12px; }
   .flow-composer-row { gap: 6px; }
@@ -165,8 +168,8 @@ button.flow-prio:hover { outline: 1px solid var(--line-strong); }
   .flow-today-item, .flow-today-btn { min-height: 40px; }
   .flow-today-time { min-width: 72px; }
   .flow-tools { gap: 8px; }
-  .lib-chip.flow-chip, .flow-filters .lib-chip { height: 36px; }
-  .flow-tagrow .flow-tag { min-height: 32px; padding: 0 10px; }
+  .lib-chip.flow-chip, .flow-filters .lib-chip { height: 40px; }
+  .flow-tagrow .flow-tag { min-height: 40px; padding: 0 10px; }
   .post { padding: 12px 12px 8px; border-radius: 12px; }
   .post-text { font-size: 15px; }
   .post-reaction { height: 40px; min-width: 40px; }

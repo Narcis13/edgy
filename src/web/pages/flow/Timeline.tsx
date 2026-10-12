@@ -12,6 +12,7 @@ import { cx, plural } from '../library/text';
 import { Composer } from './Composer';
 import { ClockBadge, DocLink, DoneBox, ItemMenu, KindBadge, PriorityMark, Tags, When, WhoLine, colorOf } from './bits';
 import type { ViewProps } from './FlowPage';
+import { quiet } from './state';
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -46,7 +47,7 @@ export function Timeline(props: ViewProps & { composer: RefObject<HTMLTextAreaEl
       <Composer acts={acts} today={today} inputRef={composer} />
 
       <section className="flow-today" aria-label="Today">
-        <h2>Today <span className="lib-n">{dayLabel(today, today, true) === 'Today' ? new Date(now).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) : ''}</span></h2>
+        <h2>Today <span className="lib-n">{new Date(now).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}</span></h2>
         {!t.events.length && !t.due.length && !t.overdue.length && !t.running && !t.doneToday ? (
           <p className="flow-today-quiet">A quiet day so far. Post what is on your mind, or give a task a day.</p>
         ) : (
@@ -56,7 +57,7 @@ export function Timeline(props: ViewProps & { composer: RefObject<HTMLTextAreaEl
                 <button type="button" className="flow-today-btn" onClick={() => openItem(t.running!.id)}>
                   <Play size={13} aria-hidden="true" /><span className="flow-today-text">{t.running.text}</span><span className="flow-today-side">{durationLabel(minutesOn(t.running, now))} on the clock</span>
                 </button>
-                <button type="button" className="btn small ghost" onClick={() => void acts.clock(t.running!.id, false)}>Stop</button>
+                <button type="button" className="btn small ghost" onClick={() => quiet(acts.clock(t.running!.id, false))}>Stop</button>
               </li>
             )}
             {t.events.map((e) => (
@@ -68,7 +69,7 @@ export function Timeline(props: ViewProps & { composer: RefObject<HTMLTextAreaEl
             ))}
             {t.due.map((e) => (
               <li key={e.id} className="flow-today-item">
-                <DoneBox item={e} onChange={(done) => void acts.patch(e.id, { done })} />
+                <DoneBox item={e} onChange={(done) => quiet(acts.patch(e.id, { done }))} />
                 <button type="button" className="flow-today-btn" onClick={() => openItem(e.id)}><span className="flow-today-text">{e.text}</span><span className="flow-today-side">due today</span></button>
               </li>
             ))}
@@ -109,7 +110,7 @@ export function Timeline(props: ViewProps & { composer: RefObject<HTMLTextAreaEl
         </div>
       )}
 
-      <div className="flow-feed" aria-live="polite" aria-label="Posts">
+      <div className="flow-feed" aria-label="Posts">
         {!data.items.length ? (
           <div className="lib-empty">
             <b>Nothing here yet.</b>
@@ -148,7 +149,7 @@ function Post({ post, props, pickTag, tag }: { post: PostData; props: ViewProps;
         </div>
       </header>
       <div className="post-body">
-        {item.kind === 'task' && <DoneBox item={item} onChange={(done) => void acts.patch(item.id, { done })} />}
+        {item.kind === 'task' && <DoneBox item={item} onChange={(done) => quiet(acts.patch(item.id, { done }))} />}
         <div className="post-words">
           <button type="button" className="post-text" onClick={() => openItem(item.id)}>{item.text || <span className="faint">(no title)</span>}</button>
           {item.body && <p className="post-more">{item.body}</p>}
@@ -168,7 +169,7 @@ function Post({ post, props, pickTag, tag }: { post: PostData; props: ViewProps;
           return (
             <button key={r.kind} type="button" className={cx('post-reaction', c?.mine && 'is-mine', c && 'has-count')} aria-pressed={!!c?.mine}
               aria-label={`${r.label}${c ? `, ${c.count}` : ''}`} title={c ? `${r.label}: ${c.names.join(', ')}` : r.label}
-              onClick={() => void acts.react(item.id, r.kind)}>
+              onClick={() => quiet(acts.react(item.id, r.kind))}>
               {REACTION_ICON[r.kind]}{c && <span className="post-reaction-n">{c.count}</span>}
             </button>
           );
@@ -198,7 +199,7 @@ function Comment({ comment, props }: { comment: FlowComment; props: ViewProps })
         <span className="post-comment-text">{comment.text}</span>
       </div>
       <button type="button" className="icon-btn post-comment-x" aria-label="Delete this comment"
-        onClick={() => confirm({ title: 'Delete this comment?', body: comment.text.slice(0, 120), action: 'Delete', run: () => acts.uncomment(comment.id) })}><X size={13} /></button>
+        onClick={() => confirm({ title: 'Delete this comment?', body: comment.text.slice(0, 120), action: 'Delete', run: () => acts.uncomment(comment.id).catch(() => undefined) })}><X size={13} /></button>
     </li>
   );
 }

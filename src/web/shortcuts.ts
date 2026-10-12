@@ -104,5 +104,7 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'flow-search', keys: ['/'], where: 'flow', does: 'Jump to the search box; Esc clears it.' },
   { id: 'flow-comment', keys: ['Enter', 'Shift+Enter'], where: 'flow', does: 'In a comment box, send the comment; with Shift, start a new line.' },
   { id: 'flow-move', keys: ['Shift+Arrow'], where: 'flow', does: 'On the board, with a card focused, move it one column left or right.' },
+  { id: 'flow-card', keys: ['Enter', 'Esc'], where: 'flow', does: 'On the board, Enter opens the focused card; Esc drops a card being dragged where it was.' },
+  { id: 'flow-note', keys: ['Mod+Enter', 'Esc'], where: 'flow', does: 'In a note being written or edited, save it; Esc saves an edit and drops a new note.' },
   { id: 'library-describe', keys: ['Enter', 'Esc'], where: 'library', does: 'While writing a card’s description: Enter keeps it (Shift+Enter starts a new line), Esc drops the change.' },
 ];

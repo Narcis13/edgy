@@ -68,6 +68,11 @@ export interface FlowActions {
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+/** An action whose failure the actions already answer by loading again: nothing left unhandled. */
+export const quiet = (p: Promise<unknown>): void => {
+  p.catch(() => undefined);
+};
+
 export function useFlow(): { data: Loaded | null; error: string | null; reload: () => Promise<void>; acts: FlowActions } {
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +104,8 @@ export function useFlow(): { data: Loaded | null; error: string | null; reload: 
       timer = setTimeout(() => void reload(), 150);
     };
     es.addEventListener('data', soon);
+    // Connected (again, after the server came back): what was missed meanwhile.
+    es.addEventListener('hello', soon);
     const onFocus = () => void reload();
     const onVisible = () => { if (document.visibilityState === 'visible') void reload(); };
     window.addEventListener('focus', onFocus);
@@ -144,7 +151,8 @@ export function useFlow(): { data: Loaded | null; error: string | null; reload: 
       async comment(id, text) {
         try {
           const c = await api<FlowComment>('POST', `/api/flow/${encodeURIComponent(id)}/comments`, { text });
-          update((d) => ({ ...d, comments: [...d.comments, c], items: d.items.map((i) => (i.id === id ? { ...i, updated: Math.max(i.updated, c.posted) } : i)) }));
+          // The stream may have brought it already.
+          update((d) => ({ ...d, comments: d.comments.some((x) => x.id === c.id) ? d.comments : [...d.comments, c], items: d.items.map((i) => (i.id === id ? { ...i, updated: Math.max(i.updated, c.posted) } : i)) }));
           return c;
         } catch (e) { return failed(e); }
       },

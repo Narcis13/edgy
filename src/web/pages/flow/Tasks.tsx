@@ -8,6 +8,7 @@ import { type FlowItem, columnOf, dayLabel, describeQuick, parseQuick, timePart 
 import { cx } from '../library/text';
 import { ClockBadge, DocLink, DoneBox, ItemMenu, PriorityMark, Tags } from './bits';
 import type { ViewProps } from './FlowPage';
+import { quiet } from './state';
 import { countTasks, dayOfTask, dayValue, groupTasks } from './task-list';
 import './tasks.css';
 
@@ -107,7 +108,7 @@ function Row({ item, props }: { item: FlowItem; props: ViewProps }) {
 
   return (
     <li className={cx('tasks-row', item.done && 'is-done', menu && 'is-menu')} data-id={item.id}>
-      <DoneBox item={item} onChange={(done) => void acts.patch(item.id, { done })} />
+      <DoneBox item={item} onChange={(done) => quiet(acts.patch(item.id, { done }))} />
       <div className="tasks-main">
         <button type="button" className="tasks-text" onClick={() => openItem(item.id)}>{item.text || <span className="faint">(no title)</span>}</button>
         <Tags tags={item.tags} />
@@ -115,13 +116,13 @@ function Row({ item, props }: { item: FlowItem; props: ViewProps }) {
       </div>
       <div className="tasks-meta">
         {editing ? (
-          <DueInput value={day ?? ''} onSave={(v) => { if (v !== day) void acts.patch(item.id, { due: v }); }} onClose={() => setEditing(false)} />
+          <DueInput value={day ?? ''} onSave={(v) => { if (v !== day) quiet(acts.patch(item.id, { due: v })); }} onClose={() => setEditing(false)} />
         ) : (
           <button type="button" className={cx('tasks-due', late && 'is-late', !day && 'is-none')} title="Change the due day" aria-label={`Due day: ${day ? dayLabel(day, today) : 'none'}. Click to change`} onClick={() => setEditing(true)}>
             <CalendarDays size={12} aria-hidden="true" />{day ? `${dayLabel(day, today)}${time ? ' ' + time : ''}` : 'No date'}
           </button>
         )}
-        <PriorityMark priority={item.priority} onCycle={() => void acts.patch(item.id, { priority: ((item.priority + 1) % 3) as 0 | 1 | 2 })} />
+        <PriorityMark priority={item.priority} onCycle={() => quiet(acts.patch(item.id, { priority: ((item.priority + 1) % 3) as 0 | 1 | 2 }))} />
         <span className="badge tasks-column" title="Board column">{column}</span>
         <ClockBadge item={item} now={now} />
         <ItemMenu item={item} deps={{ acts, openItem, confirm }} onOpenChange={setMenu} />
@@ -149,12 +150,7 @@ function DueInput({ value, onSave, onClose }: { value: string; onSave: (v: strin
 
   return (
     <input ref={ref} type="date" className="text-field tasks-due-input" defaultValue={value} aria-label="Due day"
-      onChange={(e) => {
-        if (dayValue(e.target.value) === undefined) return;
-        skip.current = true;
-        finish(e.target.value);
-        onClose();
-      }}
+      // Typing a day segment by segment fires change with half a date: the day is kept on Enter or on leaving, never mid-way.
       onBlur={(e) => {
         if (!skip.current) finish(e.target.value);
         onClose();

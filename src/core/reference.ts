@@ -233,7 +233,7 @@ flow-reactions and flow-board, so (rows "flow") reads them from any document. Ov
 
   GET   /api/flow                      everything: items, comments, reactions, the board's columns, attached documents' titles
   POST  /api/flow  {"text": "Call Ben tomorrow 3pm-4pm #sales !!"}   quick-add: a time makes an event, a day a task due then,
-        "todo …" a task, else a note; #tags, ! high, !! urgent; more lines are the body. Fields beside the text win:
+        "todo …" or "task: …" a task, "note: …" a note, "event: …" an event, else a note; #tags, ! high, !! urgent; more lines are the body. Fields beside the text win:
         kind, body, tags, due (2026-10-20), start/end (2026-10-20T15:00), priority 0-2, pinned, doc (a document to attach), status
   PATCH /api/flow/<id>  {fields}       the same fields; status moves the card (the last column means done); done true|false
   DELETE /api/flow/<id>                the item, its comments and reactions

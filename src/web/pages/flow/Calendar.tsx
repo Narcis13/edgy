@@ -9,7 +9,7 @@ import { cx, plural } from '../library/text';
 import { DoneBox } from './bits';
 import { type AgendaDay, agendaDays, hourAt, hourSlot, isLate, itemsOn, longDate, monthDays, monthTitle, timeOn, weekCells, weekTitle } from './calendar-days';
 import type { ViewProps } from './FlowPage';
-import { hourRange, layoutBlocks } from './state';
+import { hourRange, layoutBlocks, quiet } from './state';
 import './calendar.css';
 
 type Mode = 'month' | 'week';
@@ -293,7 +293,7 @@ function AgendaBlock({ entry, today, acts, openItem, onAdd, onClose }: ViewProps
           {items.map((item) => (
             <li key={item.id} data-id={item.id} className={cx('cal-item', item.kind, item.done && 'is-done', isLate(item, today) && 'is-late')}>
               <span className="cal-item-time">{timeOn(item, day) ? timeLabel(item.start, item.end) : 'all day'}</span>
-              {item.kind === 'task' && <DoneBox item={item} onChange={(done) => void acts.patch(item.id, { done })} />}
+              {item.kind === 'task' && <DoneBox item={item} onChange={(done) => quiet(acts.patch(item.id, { done }))} />}
               <button type="button" className="cal-item-text" onClick={() => openItem(item.id)}>{item.text || 'Untitled'}</button>
             </li>
           ))}
