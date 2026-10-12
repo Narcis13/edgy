@@ -105,7 +105,8 @@ say "F4 tasks: ticking 'Prepare the demo' finishes it (Done grows); the due day 
 shot "$URL/flow?view=tasks" $OUT/tasks-tick.png --size 1440x900 --js "$SETV
   const row = [...document.querySelectorAll('.tasks-row')].find((r) => r.textContent.includes('Prepare the demo')); row.querySelector('.flow-done input').click(); await wait(700);
   const hono = [...document.querySelectorAll('.tasks-row')].find((r) => r.textContent.includes('Read the Hono docs')); hono.querySelector('.tasks-due').click(); await wait(200);
-  setv(hono.querySelector('input[type=date]'), '$(date -d '+8 days' +%F 2>/dev/null || date -v+8d +%F)'); await wait(700);
+  const inp = hono.querySelector('input[type=date]'); setv(inp, '$(date -d '+8 days' +%F 2>/dev/null || date -v+8d +%F)');
+  inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await wait(700);
   const r = await flow(); [r.items.find((i) => i.text === 'Prepare the demo').done, r.items.find((i) => i.text.startsWith('Read the Hono')).due, document.querySelector('.tasks-group[data-bucket=done] summary')?.textContent.trim()]"
 
 say "F5 calendar: clicking a day opens the editor for a new event on that day"

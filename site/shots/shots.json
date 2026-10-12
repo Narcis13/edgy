@@ -254,17 +254,17 @@
     "marks": [
       {
         "x": 3.3,
-        "y": 15.9,
+        "y": 16,
         "label": "The five views"
       },
       {
         "x": 3.3,
-        "y": 32.9,
+        "y": 33.4,
         "label": "The composer"
       },
       {
         "x": 3.3,
-        "y": 65.4,
+        "y": 66.1,
         "label": "Today"
       }
     ]
