@@ -80,6 +80,217 @@
       }
     ]
   },
+  "flow-timeline": {
+    "w": 1280,
+    "h": 800,
+    "alt": "The Flow timeline: a composer at the top, a Today strip with the running clock, filter chips, and posts under one heading per day, each with reactions and comments.",
+    "marks": [
+      {
+        "x": 4.8,
+        "y": 21.5,
+        "label": "Write anything: a day, a time, #tags and ! are read"
+      },
+      {
+        "x": 3.6,
+        "y": 50.5,
+        "label": "Today: events, due tasks, the clock"
+      },
+      {
+        "x": 3.6,
+        "y": 71.2,
+        "label": "Notes, tasks, events or done"
+      },
+      {
+        "x": 3.6,
+        "y": 76.2,
+        "label": "The tags in use"
+      },
+      {
+        "x": 3.6,
+        "y": 96.3,
+        "label": "A post, with its reactions and comments under it"
+      }
+    ]
+  },
+  "flow-board": {
+    "w": 1280,
+    "h": 800,
+    "alt": "The Flow board: three columns of task cards, Inbox, Doing and Done, each card with its tags, due day and marks, and an Add a card line under each column.",
+    "marks": [
+      {
+        "x": 2.9,
+        "y": 19.6,
+        "label": "A column and its menu"
+      },
+      {
+        "x": 2.9,
+        "y": 27.5,
+        "label": "A card: drag it, or Shift+arrows"
+      },
+      {
+        "x": 54.8,
+        "y": 19.6,
+        "label": "The last column means done"
+      },
+      {
+        "x": 2.9,
+        "y": 88.7,
+        "label": "Add a card"
+      }
+    ]
+  },
+  "flow-tasks": {
+    "w": 1280,
+    "h": 800,
+    "alt": "The Flow task list: tasks grouped under Overdue, Today, Tomorrow, This week, Later and No date, each row with a tick box, tags, the due day, the priority mark and the column.",
+    "marks": [
+      {
+        "x": 4.6,
+        "y": 19.6,
+        "label": "Add a task"
+      },
+      {
+        "x": 3.6,
+        "y": 32.5,
+        "label": "Grouped by due day"
+      },
+      {
+        "x": 4.3,
+        "y": 37.4,
+        "label": "Tick to finish"
+      },
+      {
+        "x": 57.2,
+        "y": 37.4,
+        "label": "Click the day to change it"
+      },
+      {
+        "x": 65.8,
+        "y": 37.4,
+        "label": "The priority, click to change"
+      }
+    ]
+  },
+  "flow-calendar": {
+    "w": 1280,
+    "h": 800,
+    "alt": "The Flow calendar in Month: a grid of the month with event chips showing their time and task chips with a small box, today marked with a circle.",
+    "marks": [
+      {
+        "x": 85.3,
+        "y": 17.9,
+        "label": "Month or week"
+      },
+      {
+        "x": 42.4,
+        "y": 61,
+        "label": "Today"
+      },
+      {
+        "x": 4,
+        "y": 44.4,
+        "label": "An event, with its time"
+      },
+      {
+        "x": 55.4,
+        "y": 75.7,
+        "label": "Click an empty day to add an event"
+      }
+    ]
+  },
+  "flow-week": {
+    "w": 1280,
+    "h": 800,
+    "alt": "The Flow calendar in Week: seven columns with the hours down the side, time blocks for events, an all-day row above and a red line at the current time.",
+    "marks": [
+      {
+        "x": 3.7,
+        "y": 31.3,
+        "label": "Whole-day events and due tasks"
+      },
+      {
+        "x": 44.8,
+        "y": 51.9,
+        "label": "A time block"
+      },
+      {
+        "x": 44.8,
+        "y": 51.2,
+        "label": "Now"
+      }
+    ]
+  },
+  "flow-notes": {
+    "w": 1280,
+    "h": 800,
+    "alt": "The Flow notes: a grid of note cards, the pinned one first, each with a title, the first lines of its body and its tags; a New note line and a search box above.",
+    "marks": [
+      {
+        "x": 3.6,
+        "y": 18.5,
+        "label": "New note"
+      },
+      {
+        "x": 3.6,
+        "y": 45.6,
+        "label": "Pinned first"
+      },
+      {
+        "x": 4.8,
+        "y": 51.6,
+        "label": "Click a tag to filter"
+      },
+      {
+        "x": 3.6,
+        "y": 25,
+        "label": "Search"
+      }
+    ]
+  },
+  "flow-phone": {
+    "w": 390,
+    "h": 844,
+    "alt": "Flow on a phone: the five view tabs in a row, the composer, and the Today strip, everything stacked in one column.",
+    "marks": [
+      {
+        "x": 3.3,
+        "y": 15.9,
+        "label": "The five views"
+      },
+      {
+        "x": 3.3,
+        "y": 32.9,
+        "label": "The composer"
+      },
+      {
+        "x": 3.3,
+        "y": 65.4,
+        "label": "Today"
+      }
+    ]
+  },
+  "flow-editor": {
+    "w": 1280,
+    "h": 800,
+    "alt": "The item editor dialog: kind, what, more, tags, column and due, start and end, priority, pinned and an attached document.",
+    "marks": [
+      {
+        "x": 28.7,
+        "y": 16.7,
+        "label": "Note, task or event"
+      },
+      {
+        "x": 28.7,
+        "y": 64.3,
+        "label": "A day, and a time"
+      },
+      {
+        "x": 28.7,
+        "y": 55.4,
+        "label": "The board column"
+      }
+    ]
+  },
   "profile": {
     "w": 760,
     "h": 1506,

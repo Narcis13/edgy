@@ -35,6 +35,7 @@ Other scripts:
 | `npm run dev:sync` | `npm run dev` with `.env` loaded, so the local file syncs with the Turso database named there |
 | `docs/showcase/accounts/shoot.sh` | rebuilds the accounts evidence (sign-in, profile, people, two people in one document, local mode) from a fresh server |
 | `docs/showcase/accounts/sync.sh` | two servers, one account, the Turso database in `.env`, the cloud cut off and brought back; checks the op logs match |
+| `docs/showcase/flow/shoot.sh` | rebuilds the Flow evidence (timeline, board, tasks, calendar, notes, reactions, comments, a drag, the clock, an agent's live post, the dashboard) from a fresh server seeded by `seed.mjs` |
 
 Requires Node 22.13 or newer (it uses `node:sqlite`).
 
@@ -154,6 +155,17 @@ The sheet is as wide as the document asks or as the screen allows. On a narrow s
 
 **Page** view shows the document as printed pages: A4, A5, Letter or Legal, portrait or landscape, with margins and a footer. The document is laid out once at the page's width and cut into pages between cells, never through one; a `break` cell starts a new page. ⌘P prints exactly those pages. Open a document with `?view=page` to land on them.
 
+## Flow: notes, tasks and days in one timeline
+
+**Flow** (in the top bar, at `/flow`) is where your own work lives beside the documents: one kind of thing, the *item*, which is a note, a task or an event, shown in five views. The **Timeline** is a feed of every item as a post, by its last activity, under one heading per day, with five reactions (like, dislike, love, celebrate, idea) and comments; the **Board** shows tasks as cards in columns you drag between (the last column means done); **Tasks** groups them by due day with a tick box; the **Calendar** lays events and due days on a month and time blocks on a week; **Notes** is a grid of what you want to keep. A note becomes a task with one click, a task given a time appears in the week, finishing it shows in the timeline.
+
+- **Quick-add.** The first line of anything you write is read for a kind, a day, a time, tags and a priority: `Call Ben tomorrow 3pm-4pm #sales !!` is an event tomorrow 15:00–16:00 tagged *sales*, urgent; `Buy milk friday` a task due Friday; `todo Write the report` a task on the board; anything else a note. What was understood shows before you post.
+- **Today** sits under the composer: the day's events, what is due, what is overdue, what you finished, and the **clock**: start it on any item, one runs at a time, stopping keeps the minutes and comments *Worked 25 min on this*.
+- **Items are records** in your collections `flow`, `flow-comments`, `flow-reactions` and `flow-board`, so they sync like everything else, show on the Data page, and any document reads them with `(rows "flow")`. The **Flow dashboard** template is a document that does: open and overdue tasks, due this week with a Done button, finished day by day, the month's events.
+- **Agents take part.** With your API key an agent posts, comments, reacts, moves cards and starts the clock through `edgy_flow` (or `/api/flow`), and everything it does shows in the timeline as the agent's, with your name beside. An open Flow page follows every change as it happens, whoever made it.
+
+`docs/showcase/flow/seed.mjs <url>` fills a server with a fortnight of it; `docs/showcase/flow/shoot.sh` regenerates the evidence.
+
 ## Working with an agent
 
 The project ships an MCP server (`src/mcp/server.ts`) and a `.mcp.json`, so Claude Code opened in this folder gets these tools once the dev server is running:
@@ -169,6 +181,7 @@ The project ships an MCP server (`src/mcp/server.ts`) and a `.mcp.json`, so Clau
 | `edgy_apply` | change a document with ops, atomically; returns the new outline |
 | `edgy_eval` | try an expression against a document without changing it |
 | `edgy_data` | the collections documents save records into |
+| `edgy_flow` | the person's Flow: list, post (quick-add syntax), edit, move, done, comment, react, clock, delete, the board's columns |
 | `edgy_say`, `edgy_listen` | leave a message in the document's Activity panel, or wait for one (and for code requests from Ask AI) |
 | `edgy_answer` | answer a code request from Ask AI; the answer is checked before the person sees it |
 
@@ -197,7 +210,9 @@ src/core      the model, shared by everything, no dependencies
   outline.ts    the compact text view an agent reads
   events.ts     which events each kind raises, and react(): running the handlers a change or an event sets off
   templates.ts  the starting points, in notation
+  flow.ts       Flow: items, comments, reactions and the board as records; quick-add; columns, buckets, the feed
 src/server    Hono on Node: the API, SQLite storage, live events over SSE, compose (sentence → code)
+  flow.ts       /api/flow: the author from who asks, done and columns, the clock, one event stream per account
   runner.ts     timers, fetch cells and the handlers they set off, run once per document while someone is in Live
   access.ts     who may do what: every request resolved to a person, an agent with a key, a link's guest or nobody;
                 every route declares what it needs
@@ -205,7 +220,8 @@ src/server    Hono on Node: the API, SQLite storage, live events over SSE, compo
   sync.ts       the local file and the cloud log: push, pull, and replaying ops in the cloud's order
   cloud.ts      Turso over HTTP (one JSON request per batch), and a local stand-in for tests
 src/mcp       the MCP server; each tool calls the HTTP API with the person's API key
-src/web       React + Vite: the editor, the home page, the data browser
+src/web       React + Vite: the editor, the home page, the data browser, Flow
+  pages/flow/   Flow: the timeline, board, tasks, calendar and notes, one item editor, the account's event stream
   code/         the code editor, code studio, Blocks and Ask AI
   kinds/        list, calendar, canvas, stat, break and table cells
   editor/inspector/  the panel on the right: a designer per kind, text, spacing and box
@@ -262,3 +278,5 @@ Style tokens that follow the theme: `ink`, `muted`, `faint`, `paper`, `sunken`, 
 While a formula is being edited, clicking another cell inserts its name.
 
 Playing a deck: → ← next and previous slide, ↓ ↑ Space PgDn PgUp scroll a long slide, Home and End the first and last, F full screen, Esc leave.
+
+In Flow: 1 to 5 open the timeline, board, tasks, calendar and notes; N writes (the composer, or a new item); / searches, Esc clears; ⌘Enter posts; Enter sends a comment (Shift+Enter a new line); on the board, Shift+← and Shift+→ move the focused card between columns.

@@ -605,7 +605,7 @@ const flow: Template = {
     ['formula', { name: 'open', hidden: true }, ['filter', openTask, '$items']],
     ['row', { size: 'hug', style: { gap: 8 } },
       ['stat', { name: 'open-n', label: 'Open tasks', icon: 'circle-dashed', better: 'down' }, ['len', '$open']],
-      ['stat', { name: 'overdue-n', label: 'Overdue', icon: 'alarm-clock', better: 'down', compare: 0 },
+      ['stat', { name: 'overdue-n', label: 'Overdue', icon: 'alarm-clock', better: 'down' },
         ['count-if', ['and', ['get', '$it', 'due'], ['<', ['get', '$it', 'due'], ['today']]], '$open']],
       ['stat', { name: 'done-n', label: 'Done this week', icon: 'circle-check' },
         ['count-if', ['and', ['get', '$it', 'done'], ['get', '$it', 'doneAt'], ['>=', ['get', '$it', 'doneAt'], ['-', ['now'], 604800000]]], '$items']],

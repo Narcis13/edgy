@@ -11,11 +11,17 @@ Tasks are grouped by their due day: **Overdue**, **Today**, **Tomorrow**, **This
 
 The box at the top adds a task: it reads [quick-add](/flow/#quick-add) syntax but always makes a task, so `Call Ben friday` is due Friday and `Call Ben 3pm` is a task with a time, which also shows on the week.
 
+::shot flow-tasks "The task list, grouped by when things are due."
+
 ## The calendar
 
 **Month** shows every day of the month with its events (with their time) and the tasks due that day (with a small box, ticked when done), today marked. Click a day to add an item for it: the editor opens with that day set. **Week** shows seven days side by side with the hours down the side; timed events and timed tasks are blocks placed by their start and end, and whole-day events and due tasks sit in a row above the hours. The arrows move a month or a week; **Today** comes back.
 
 On a phone, the month becomes an agenda: the days of the month that hold something, one after the other, each with its items.
+
+::shot flow-calendar "The month: events with their time, tasks with a box, today in a circle."
+
+::shot flow-week "The week: time blocks by the hour, the all-day row above, the line at now."
 
 Events come from quick-add (a time makes one) or from the editor, where **Start** and **End** take a day or a day and time. An event with a start and no end lasts an hour. An event that spans days shows on each of them.
 

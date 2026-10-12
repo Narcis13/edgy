@@ -13,6 +13,8 @@ A card shows the task's text, its tags, when it is due (overdue in red), a mark 
 
 Under each column, **Add a card** takes a line in [quick-add](/flow/#quick-add) syntax and makes a task in that column.
 
+::shot flow-board "The board: Inbox, Doing and Done, with the cards of a fortnight."
+
 ## Moving cards
 
 Drag a card with the mouse or a finger to another column, or up and down inside one, and drop it where it should go. From the keyboard, focus a card (Tab) and press Shift+← or Shift+→ to move it one column over, or open its **⋯** menu and choose **Move to …**. The order within a column is kept.

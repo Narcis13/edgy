@@ -184,3 +184,14 @@ The example is [merge](op:merge).
 - [core.test.ts](src:src/core/core.test.ts): the test that *every op can be undone*.
 - [reference.ts](src:src/core/reference.ts): the guide's *Ops*.
 - The docs: a `::: op merge` entry in [Ops](/agents/ops/).
+
+## A change to Flow
+
+Flow is one kind of thing, the item, in five views; the example to search for is `kind === 'task'`.
+
+- [flow.ts](src:src/core/flow.ts): the shape of an item, a comment, a reaction and the board, `normalizeItem` (a record missing fields still reads as a whole item: a document's `insert!` or the Data page may have written it), the quick-add parser, and the rules every view shares (`columnOf`, `moveTo`, `bucketOf`, `feedOf`, `todayOf`). A new field goes here first, with its default in `normalizeItem` and a case in [flow.test.ts](src:src/core/flow.test.ts).
+- [server/flow.ts](src:src/server/flow.ts): `cleanFields` says which fields a request may set and how they are checked; `settle` keeps `done` and the column agreeing; every route is scoped to the asking account and ends with `changed(owner, …)`, which tells open documents and the Flow streams. [flow.test.ts](src:src/server/flow.test.ts) covers the routes, [sync.test.ts](src:src/server/sync.test.ts) that Flow records travel.
+- The web: `src/web/pages/flow/`: `state.ts` (the data, the optimistic actions, the stream), `bits.tsx` (what every view shares: who, tags, when, the priority mark, the clock, the item's ⋯ menu), one file per view and its CSS, `ItemDialog.tsx` (every field, for all views). A field shown in one view usually belongs in `bits.tsx` so the others show it the same way.
+- [tools.ts](src:src/mcp/tools.ts): `edgy_flow`, and the *Flow* section of the guide in [reference.ts](src:src/core/reference.ts).
+- The docs: the pages under [Flow](/flow/), the route entries in [the HTTP API](/agents/http/#flow), the tool entry in [MCP](/agents/mcp/), the shortcuts under *In Flow* in [Keyboard](/start/keyboard/), the [Flow dashboard](template:flow) template; the pictures come from `site/scripts/shoot.mjs` (`flow-*`), whose server is seeded by `docs/showcase/flow/seed.mjs`.
+- Evidence: `docs/showcase/flow/shoot.sh` regenerates every screenshot and check; `.claude/goal-loop/screens` lists the Flow screens the sweep opens.

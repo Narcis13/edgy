@@ -294,7 +294,7 @@ tool('edgy_data', {
 /** One line per Flow item, the way an agent reads it. */
 function flowLine(i: any, comments: any[], reactions: any[]): string {
   const when = i.start ? `at ${i.start}${i.end ? `–${i.end}` : ''}` : i.due ? `due ${i.due}` : '';
-  const marks = [i.kind === 'task' ? (i.done ? 'done' : i.status) : i.kind, when, i.priority === 2 ? 'urgent' : i.priority === 1 ? 'high' : '', i.pinned ? 'pinned' : '', i.clock ? 'clock running' : '', i.spent ? `${i.spent} min` : '', i.doc ? `doc ${i.doc}` : ''].filter(Boolean);
+  const marks = [i.kind === 'task' ? (i.done ? 'done' : i.status || 'task') : i.kind, when, i.priority === 2 ? 'urgent' : i.priority === 1 ? 'high' : '', i.pinned ? 'pinned' : '', i.clock ? 'clock running' : '', i.spent ? `${i.spent} min` : '', i.doc ? `doc ${i.doc}` : ''].filter(Boolean);
   const tags = i.tags.map((t: string) => '#' + t).join(' ');
   const n = comments.filter((k) => k.item === i.id).length;
   const r = reactions.filter((k) => k.item === i.id);

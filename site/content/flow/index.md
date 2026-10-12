@@ -6,6 +6,8 @@ Flow is the page beside your documents where notes, tasks, events and the time y
 
 Open it with **Flow** in the top bar. The address is `/flow`.
 
+::shot flow-timeline "Flow, on the timeline: the composer, what today holds, and the posts."
+
 ## One thing, five views
 
 Flow has one kind of thing, the **item**. An item is a **note**, a **task** or an **event**, and may carry tags, a due day, a start and an end, a priority, a pin, an attached document and the minutes you worked on it. The five views show the same items in different ways:

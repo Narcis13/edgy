@@ -11,7 +11,7 @@ Started 2026-10-12 on branch `main` at `be830c2`. Brief: inline (`/goal-loop Fea
 and time management in a timeline with posts, comments, reactions … seamlessly integrated with edgy, same patterns,
 same cloud sync … tested functionally and visually in a headless chrome without errors in console`).
 
-**Next:** M1: `src/core/flow.ts` (types, quick-add parser, buckets, feed) with `src/core/flow.test.ts`.
+**Next:** M7: run docs/showcase/flow/shoot.sh from a fresh server, read every picture, then the review (M8) and the final audit (M9).
 
 ## Contract (Done means)
 
@@ -40,12 +40,12 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 
 ## Milestones
 
-1. [ ] **Core**: `src/core/flow.ts` types, `normalizeItem`, `parseQuick`, day/time helpers, buckets, feed grouping, column rules, ranks; tests (F7 part, G1)
-2. [ ] **Server**: `src/server/flow.ts` routes mounted from `app.ts`, validation, author from the principal, the clock, deletions cascade, `GET /api/flow/events` SSE fed from `dataChanged`; `flow.test.ts`; sync test; MCP tool; guide mention (F10, F11, F12 server side)
-3. [ ] **Web: page, timeline, composer, comments, reactions, item editor, today strip, clock** (F1, F2, F7, F8, F12, F14)
-4. [ ] **Web: board, tasks, calendar, notes** (F3, F4, F5, F6)
-5. [ ] **Phone, dark, keyboard pass** over every view; screens added to `.claude/goal-loop/screens`; sweep clean (F13, F14, G2)
-6. [ ] **Template and docs**: Flow dashboard template with sample records; docs section, entries, shots, README, checklists (F9, F15)
+1. [x] **Core**: `src/core/flow.ts` types, `normalizeItem`, `parseQuick`, day/time helpers, buckets, feed grouping, column rules, ranks; tests (F7 part, G1)
+2. [x] **Server**: `src/server/flow.ts` routes mounted from `app.ts`, validation, author from the principal, the clock, deletions cascade, `GET /api/flow/events` SSE fed from `dataChanged`; `flow.test.ts`; sync test; MCP tool; guide mention (F10, F11, F12 server side)
+3. [x] **Web: page, timeline, composer, comments, reactions, item editor, today strip, clock** (F1, F2, F7, F8, F12, F14)
+4. [x] **Web: board, tasks, calendar, notes** (F3, F4, F5, F6)
+5. [x] **Phone, dark, keyboard pass** over every view; screens added to `.claude/goal-loop/screens`; sweep clean (F13, F14, G2)
+6. [x] **Template and docs**: Flow dashboard template with sample records; docs section, entries, shots, README, checklists (F9, F15)
 7. [ ] **Showcase**: seed, shoot, INDEX (G3)
 8. [ ] **Review**: a fresh reviewer over the whole diff; fixes
 9. [ ] **Final audit**: clean build, empty data, all gates, full sweep, every contract item checked
@@ -88,9 +88,13 @@ Status: `open` → `pass` (with evidence) or `blocked` (see Blocked).
 - Record `at` is creation time and never changes; the item carries its own `updated` (last activity) which the routes set.
 - A route's `need` must be exactly one; `/api/flow/board` is registered before `/api/flow/:id`.
 - `package.json` `test` globs: `src/web/pages/flow/*.test.ts` added for the view helpers' tests.
+- `posted` (ms) is the time an item or comment was written, settable on POST only when in the past (for things brought in from elsewhere; the seed uses it). The timeline groups by `updated` (last activity) and shows `posted` in the header.
+- On Windows a helper file `board.ts` beside `Board.tsx` breaks tsc (case-insensitive paths): helpers are `board-rules.ts`, `task-list.ts`, `calendar-days.ts`, `notecards.ts`.
+- The docs' screenshot server lives on 12 March 2026; `seedFlow(base, ana, now, key)` takes that clock so the Flow pictures line up. Running the Flow template before the items exist seeds the template's sample items: the seed makes the dashboard last.
 - Headless Windows: `CHROME="C:/Program Files/Google/Chrome/Application/chrome.exe"`; no swift, so no PDF→PNG.
 
 ## Log
 
 - 2026-10-12: baseline at `be830c2`: typecheck pass, 258 tests pass, build pass (no chunk warning). The previous PROGRESS.md
   (docs site, finished) moved to `docs/progress/2026-10-11-docs-site.md`.
+- 2026-10-12: M1 core (commit 5c96731, 7 tests), M2 server + tool + template + docs section (50c9b11, 271 tests), M3+M4 the page in five views (4192600, 302 tests). Interaction checks on the seeded isolated server (scratchpad interact.sh): reactions toggle, comment on Enter bumps the post, drag shows ghost and lands in Doing, Shift+arrows move, rename carries cards, tick finishes, due set by date field, day click opens a new event, note edited in place, agent post arrives live (SSE), composer preview and post, clock stop logs 29 min and comments, dashboard values open 8 / overdue 1 / done 2 / minutes 69, Data page lists the four collections. Sweep of every screen (existing + 12 Flow screens, desktop/phone/dark): 0 problems. Docs pictures made by site/scripts/shoot.mjs (8 Flow shots, light and dark). Gates after M3: typecheck, 302 tests, build, no chunk warning.

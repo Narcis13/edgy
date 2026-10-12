@@ -27,3 +27,16 @@ phone-docs        /docs/cells/table/    phone --cookie none
 {id}-phone        /d/{id}?view=live     phone --scroll
 {id}-phone-page   /d/{id}?view=page     phone
 {id}              /d/{id}?view=page     pdf
+# Flow (/flow): five views of the account's notes, tasks and events, seeded by docs/showcase/flow/seed.mjs.
+flow              /flow                 desktop --full
+flow-board        /flow?view=board      desktop
+flow-tasks        /flow?view=tasks      desktop --full
+flow-calendar     /flow?view=calendar   desktop --full
+flow-notes        /flow?view=notes      desktop --full
+flow-dark         /flow                 desktop --dark
+flow-board-dark   /flow?view=board      desktop --dark
+phone-flow        /flow                 phone --scroll
+phone-flow-board  /flow?view=board      phone
+phone-flow-tasks  /flow?view=tasks      phone --scroll
+phone-flow-cal    /flow?view=calendar   phone --scroll
+phone-flow-notes  /flow?view=notes      phone --scroll

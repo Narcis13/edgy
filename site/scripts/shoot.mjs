@@ -26,6 +26,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CLIPS, KIND_DESIGNERS, SHOTS, TUTORIALS } from './shots.mjs';
+import { seedFlow } from '../../docs/showcase/flow/seed.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const SHOTS_DIR = join(ROOT, 'site/shots');
@@ -192,6 +193,8 @@ async function seed() {
   await ben.call('POST', `/api/docs/${ids.quote}/ops`, { actor: { kind: 'human', name: 'Ben' }, ops: [['set', 'c31', 'value', 3]] });
   await ana.call('POST', `/api/docs/${ids.quote}/ops`, { actor: { kind: 'agent', name: 'Claude' }, ops: [['set', 'c20', 'value', 'Brand identity and guidelines']] }, { key });
   await ana.call('POST', `/api/docs/${ids.quote}/messages`, { actor: human, text: 'Claude, can you make the photography line two days again?' });
+  // Ana's Flow: the fortnight the showcase seeds, dated from the server's day, Claude with the same key.
+  ids.flow = await seedFlow(BASE, { cookie: ana.cookie }, pageNow() - 5 * 60_000, key);
   return { ana, ben, ids };
 }
 
@@ -618,6 +621,42 @@ async function madeDoc(key, title, root) {
 
 const SPECS = {};
 const spec = (name, s) => { SPECS[name] = s; };
+
+// ── Flow ──
+spec('flow-timeline', {
+  url: '/flow',
+  marks: [['.flow-composer-text', 'Write anything: a day, a time, #tags and ! are read'], ['.flow-today', 'Today: events, due tasks, the clock'], ['.flow-filters', 'Notes, tasks, events or done'], ['.flow-tagrow', 'The tags in use'], ['.flow-day .post', 'A post, with its reactions and comments under it']],
+});
+spec('flow-board', {
+  url: '/flow?view=board',
+  marks: [['.board-col-head', 'A column and its menu'], ['.board-card', 'A card: drag it, or Shift+arrows'], ['.board-col.is-done .board-col-head', 'The last column means done'], ['.board-add', 'Add a card']],
+});
+spec('flow-tasks', {
+  url: '/flow?view=tasks',
+  marks: [['.tasks-add input', 'Add a task'], ['.tasks-group[data-bucket="overdue"] h2', 'Grouped by due day'], ['.tasks-row .flow-done', 'Tick to finish'], ['.tasks-row .tasks-due', 'Click the day to change it'], ['.tasks-row .flow-prio', 'The priority, click to change']],
+});
+spec('flow-calendar', {
+  url: '/flow?view=calendar',
+  marks: [['.cal-toolbar .seg', 'Month or week'], ['.cal-day.is-today', 'Today'], ['.cal-chip', 'An event, with its time'], ['.cal-day[data-day$="-20"]', 'Click an empty day to add an event']],
+});
+spec('flow-week', {
+  url: '/flow?view=calendar',
+  setup: async ({ p }) => { await p.click('.cal-toolbar .seg button:last-child'); await p.until(`document.querySelector('.cal-week')`); },
+  marks: [['.cal-allday', 'Whole-day events and due tasks'], ['.cal-block', 'A time block'], ['.cal-now', 'Now']],
+});
+spec('flow-notes', {
+  url: '/flow?view=notes',
+  marks: [['.notes-new', 'New note'], ['.note-card.is-pinned', 'Pinned first'], ['.note-card .flow-tag', 'Click a tag to filter'], ['.notes-search', 'Search']],
+});
+spec('flow-phone', {
+  url: '/flow', size: PHONE, mobile: true,
+  marks: [['.flow-views', 'The five views'], ['.flow-composer', 'The composer'], ['.flow-today', 'Today']],
+});
+spec('flow-editor', {
+  url: '/flow',
+  setup: async ({ p }) => { await p.click('.post .post-text'); await p.until(`document.querySelector('dialog.flow-dialog')?.open`); },
+  marks: [['.flow-dialog .flow-kinds', 'Note, task or event'], ['.flow-dialog .flow-form-when', 'A day, and a time'], ['.flow-dialog select', 'The board column']],
+});
 
 // ── pages outside the editor ──
 spec('library', {

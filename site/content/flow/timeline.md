@@ -11,6 +11,8 @@ The box at the top takes anything: a thought, a task, an appointment. The first 
 
 Press `n` anywhere on the page to jump to the composer.
 
+::shot flow-editor "The item editor, opened from a post: every field of the item."
+
 ## Today
 
 Under the composer, **Today** says what the day holds: the events, in order, with their times; the tasks due today; how many are overdue; how many you finished today; and the clock, if one is running, with the time on it. Each entry opens its item. On a quiet day the strip says so.
