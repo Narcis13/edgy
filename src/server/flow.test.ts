@@ -257,3 +257,18 @@ test('Flow: the event stream says which collection changed, whoever changed it',
   assert.equal(all.items.length, 2);
   assert.equal(all.items[1].by.name, 'Ana', 'a bare record reads as the owner’s');
 });
+
+test('Flow: a JSON body that is not an object counts as an empty one: each route answers as it would to {}, never a 500', async () => {
+  const s = server();
+  const { ana } = await people(s);
+  const item = (await s.call('POST', '/api/flow', { text: 'Write the report' }, ana)).json;
+  const raw = async (method: string, path: string, body: string) =>
+    (await s.app.request(path, { method, headers: { ...ana, 'content-type': 'application/json' }, body })).status;
+  assert.equal(await raw('PATCH', `/api/flow/${item.id}`, '5'), 200, 'nothing to change');
+  assert.equal(await raw('PATCH', `/api/flow/${item.id}`, '"done"'), 200);
+  assert.equal(await raw('POST', '/api/flow', '"hello"'), 400);
+  assert.equal(await raw('PUT', '/api/flow/board', '[1, 2]'), 400);
+  assert.equal(await raw('POST', `/api/flow/${item.id}/react`, 'true'), 400);
+  assert.equal(await raw('POST', `/api/flow/${item.id}/comments`, '7'), 400);
+  assert.equal((await s.call('GET', '/api/flow', undefined, ana)).json.items[0].text, 'Write the report', 'and the item is as it was');
+});

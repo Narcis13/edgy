@@ -4,6 +4,7 @@ import { isPublicPath, nextOf, safeNext, signInAddress } from './account/paths';
 import { useProfileTheme } from './account/profileTheme';
 import { onSignedOut } from './lib/api';
 import { Home } from './pages/Home';
+import { Boundary, PageError } from './Boundary';
 
 // The editor and the data browser load when first visited, so the document list opens fast.
 const Editor = lazy(() => import('./editor/Editor').then((m) => ({ default: m.Editor })));
@@ -61,13 +62,17 @@ export function App() {
   } else if (doc) page = <Editor key={doc[1]} id={doc[1]} navigate={navigate} />;
   else if (deck?.[2]) {
     // Play goes back to where it was started from, never to itself.
-    const from = new URLSearchParams(search ?? '').get('from');
-    const back = from && from.startsWith('/') && !from.startsWith('//') ? from : `/deck/${deck[1]}`;
+    const back = safeNext(new URLSearchParams(search ?? '').get('from')) ?? `/deck/${deck[1]}`;
     page = <Play key={deck[1]} id={deck[1]} onLeave={() => navigate(back, { replace: true })} />;
   } else if (deck) page = <DeckPage key={deck[1]} id={deck[1]} navigate={navigate} />;
   else if (pathname === '/data') page = <DataPage navigate={navigate} />;
   else if (pathname === '/flow') page = <FlowPage navigate={navigate} />;
   else if (pathname === '/profile') page = <Profile navigate={navigate} />;
   else page = <Home navigate={navigate} />;
-  return <Suspense fallback={<div className="screen-note">Opening…</div>}>{page ?? <div className="screen-note">Opening…</div>}</Suspense>;
+  // A page that throws while drawing (or whose code is gone after an update) says so; going elsewhere tries again.
+  return (
+    <Boundary resetKeys={[pathname]} fallback={(e) => <PageError error={e} />}>
+      <Suspense fallback={<div className="screen-note">Opening…</div>}>{page ?? <div className="screen-note">Opening…</div>}</Suspense>
+    </Boundary>
+  );
 }

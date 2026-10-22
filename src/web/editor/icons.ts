@@ -34,3 +34,7 @@ export const CELL_ICONS: Record<string, LucideIcon> = {
 };
 
 export const ICON_NAMES = Object.keys(CELL_ICONS);
+
+/** The icon a document names, if it is one of these: a name such as "constructor" is not, whatever objects inherit. */
+export const iconFor = (name: unknown): LucideIcon | undefined =>
+  typeof name === 'string' && Object.hasOwn(CELL_ICONS, name) ? CELL_ICONS[name] : undefined;

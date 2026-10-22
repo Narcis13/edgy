@@ -4,13 +4,16 @@
   "private": true,
   "type": "module",
   "description": "Edgy — active agentic documents grown from a single cell",
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:sync": "node --env-file=.env scripts/dev.mjs",
     "server": "tsx --disable-warning=ExperimentalWarning src/server/index.ts",
     "web": "vite",
     "build": "vite build && vite build -c vite.offline.config.ts && npm run --silent docs:build",
-    "start": "NODE_ENV=production tsx --disable-warning=ExperimentalWarning src/server/index.ts",
+    "start": "node scripts/start.mjs",
     "mcp": "tsx src/mcp/server.ts",
     "test": "tsx --disable-warning=ExperimentalWarning --test src/core/*.test.ts src/server/*.test.ts src/web/print/*.test.ts src/web/kinds/*.test.ts src/web/code/*.test.ts src/web/editor/*.test.ts src/web/editor/inspector/*.test.ts src/web/play/*.test.ts src/web/pages/library/*.test.ts src/web/pages/flow/*.test.ts src/web/account/*.test.ts site/tests/*.test.ts",
     "typecheck": "tsc --noEmit",

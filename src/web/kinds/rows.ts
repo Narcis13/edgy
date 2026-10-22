@@ -309,8 +309,9 @@ const NEUTRAL = { bg: 'var(--sunken)', fg: 'var(--muted)' };
 export function badgeColors(colors: Record<string, string> | undefined, value: unknown): { bg: string; fg: string } {
   const text = groupValue(value);
   if (!colors || !text) return NEUTRAL;
-  const token = colors[text] ?? Object.entries(colors).find(([k]) => k.toLowerCase() === text.toLowerCase())?.[1];
-  if (!token) return NEUTRAL;
+  // The document's own keys only: a value such as "constructor" names nothing here.
+  const token = (Object.hasOwn(colors, text) ? colors[text] : undefined) ?? Object.entries(colors).find(([k]) => k.toLowerCase() === text.toLowerCase())?.[1];
+  if (typeof token !== 'string' || !token) return NEUTRAL;
   const base = token.endsWith('-soft') ? token.slice(0, -5) : token;
   if (SOFT.has(base)) return { bg: `var(--${base}-soft)`, fg: `var(--${base})` };
   return NEUTRAL;
@@ -412,9 +413,9 @@ const ICON_WORDS: Record<string, string> = {
 
 /** What an action is called, also when it shows only an icon. */
 export function actionName(a: Pick<RowAction, 'label' | 'icon'>): string {
-  if (a.label) return a.label;
-  if (!a.icon) return 'Run';
-  const words = ICON_WORDS[a.icon] ?? a.icon.replace(/-\d+$/, '').replace(/-/g, ' ');
+  if (a.label) return String(a.label);
+  if (!a.icon || typeof a.icon !== 'string') return 'Run';
+  const words = (Object.hasOwn(ICON_WORDS, a.icon) ? ICON_WORDS[a.icon] : undefined) ?? a.icon.replace(/-\d+$/, '').replace(/-/g, ' ');
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 

@@ -130,7 +130,8 @@ tool('edgy_organize', {
     description: z.string().optional().describe('For describe: one or two sentences; empty removes it'),
   },
 }, safely(async ({ action, docs, description }) => {
-  const ids = await Promise.all(docs.map((d) => (d.startsWith('deck-') ? d : docId(d))));
+  // A deck id goes into a path as it is: only one that looks like one (see isDeckId), never a path of its own.
+  const ids = await Promise.all(docs.map((d) => (/^deck-[\w-]+$/.test(d) ? d : docId(d))));
   if (action === 'describe') {
     const r = await api('PATCH', `/api/docs/${ids[0]}`, { description: description ?? '', actor });
     return text(`"${r.title}" now reads: ${r.description || '(no description)'}`);
@@ -214,6 +215,8 @@ tool('edgy_export', {
   if (!doc === !deck) throw new Error('give either doc or deck');
   const path = doc ? `/api/docs/${await docId(doc)}/export` : `/api/decks/${await deckId(deck!)}/export`;
   if (!file) return text(`Download it from ${BASE}${path}`);
+  // Only an .html file: the request may come from words in someone else's document, and no other kind of file is overwritten.
+  if (!/\.html?$/i.test(file)) throw new Error('file must end in .html');
   const res = await call('GET', path);
   if (!res.ok) throw refused(res.status, ((await res.json().catch(() => null)) as any)?.error ?? `export failed (${res.status})`);
   const bytes = Buffer.from(await res.arrayBuffer());

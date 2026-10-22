@@ -20,7 +20,7 @@ export default defineConfig({
       input: 'src/web/offline/main.tsx',
       output: {
         format: 'es',
-        inlineDynamicImports: true,
+        codeSplitting: false,
         entryFileNames: 'offline.js',
         assetFileNames: (a) => (a.names?.[0]?.endsWith('.css') ? 'offline.css' : 'fonts/[name]-[hash][extname]'),
       },

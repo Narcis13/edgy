@@ -41,7 +41,9 @@ Open `/signup` (the sign-in page has **Create an account**).
 - **Email**. Stored lower-cased and trimmed.
 - **Password**, at least 8 characters.
 
-You are signed in at once and start with a short tour document. Anyone who can reach the server can sign up; on a server open to the world, put your own sign-up policy in front of it. The first account made on an installation that already had documents owns all of them.
+You are signed in at once and start with a short tour document. Anyone who can reach the server can sign up, a few accounts at a time from one address: after ten in a quarter of an hour, the next waits (**Too many new accounts from here. Wait 2 seconds and try again.**, doubling like [throttled sign-ins](#throttled-sign-ins)). The first account made on an installation that already had documents owns all of them, and it is the server's **owner**: the server's secrets and its Claude key are spent for its documents only.
+
+On a server open to the world, start it with `EDGY_SIGNUPS=off` once you have made your own account: sign-up then answers **This server does not take new accounts. Sign in with the one you have, or ask the server's owner.**, and the sign-in page no longer offers **Create an account**. While the server has no account yet, sign-up stays open, so its owner can make the first.
 
 An email can belong to one account: *An account with this email already exists. Sign in instead.* With [sync](/people/sync/), that includes accounts made on your other machines.
 
@@ -86,6 +88,8 @@ edgy counts failures three ways, over 15 minutes:
 | This address, any email | 30 | Same doubling. |
 
 The strict limit is on the email and the address together, so someone guessing at your account from elsewhere can't lock you out of it quickly. A right password clears the count for that email and address. The counts live in memory; restarting the server clears them.
+
+Behind a proxy on the same machine (how edgy is put online, see [Install and run](/start/install/#put-it-online)), every request arrives from the proxy, so the address is the one the proxy adds last to `X-Forwarded-For`: each person is counted on their own, and one guesser doesn't make everyone wait. From anywhere else that header is ignored, since a client can send any value in it.
 
 ## Sessions
 

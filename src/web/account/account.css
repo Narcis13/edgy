@@ -50,6 +50,7 @@
 .auth-field .text-field { height: 44px; padding: 0 12px; font-size: 16px; font-weight: 400; border-color: var(--line-strong); }
 .auth-error { margin: 0; color: var(--bad); font-size: 13px; line-height: 1.4; }
 .auth-error:empty { display: none; }
+.auth-closed { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
 .auth-submit { width: 100%; min-height: 44px; font-size: 15px; }
 .auth-submit:disabled { opacity: 0.6; cursor: default; }
 .auth-switch { margin: 0; text-align: center; color: var(--muted); font-size: 13.5px; }

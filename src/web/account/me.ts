@@ -24,9 +24,11 @@ export interface MeState {
   via: 'session' | 'local' | 'key' | null;
   /** The server's mode: local (this machine needs no sign-in) or accounts. */
   auth: 'local' | 'accounts';
+  /** Whether the server takes new accounts (EDGY_SIGNUPS=off closes them once it has its owner). */
+  signups: boolean;
 }
 
-let state: MeState = { status: 'loading', me: null, via: null, auth: 'accounts' };
+let state: MeState = { status: 'loading', me: null, via: null, auth: 'accounts', signups: true };
 const listeners = new Set<(s: MeState) => void>();
 let asking: Promise<void> | null = null;
 
@@ -40,17 +42,18 @@ export function refreshMe(): Promise<void> {
   asking = (async () => {
     try {
       // Health says whether this browser is signed in, so a signed-out page never asks for what it would be refused.
-      const health = await api<{ auth?: MeState['auth']; signedIn?: boolean }>('GET', '/api/health');
+      const health = await api<{ auth?: MeState['auth']; signedIn?: boolean; signups?: boolean }>('GET', '/api/health');
+      const signups = health.signups !== false;
       if (health.signedIn === false) {
-        set({ status: 'out', me: null, via: null, auth: health.auth ?? 'accounts' });
+        set({ status: 'out', me: null, via: null, auth: health.auth ?? 'accounts', signups });
         return;
       }
       const r = await api<{ user: Me; via: MeState['via']; auth: MeState['auth'] }>('GET', '/api/me');
-      set({ status: 'in', me: r.user, via: r.via, auth: r.auth });
+      set({ status: 'in', me: r.user, via: r.via, auth: r.auth, signups });
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        const health = await api<{ auth?: MeState['auth'] }>('GET', '/api/health').catch(() => ({ auth: undefined }));
-        set({ status: 'out', me: null, via: null, auth: health.auth ?? 'accounts' });
+        const health = await api<{ auth?: MeState['auth']; signups?: boolean }>('GET', '/api/health').catch(() => ({ auth: undefined, signups: undefined }));
+        set({ status: 'out', me: null, via: null, auth: health.auth ?? 'accounts', signups: health.signups !== false });
       } else set({ ...state, status: state.me ? 'in' : 'out' });
     }
   })();
@@ -80,5 +83,5 @@ export function useMe(): MeState {
 
 // A request answered "sign in first": the session ended (signed out elsewhere, a new password).
 onSignedOut(() => {
-  if (state.status !== 'out') set({ status: 'out', me: null, via: null, auth: state.auth });
+  if (state.status !== 'out') set({ status: 'out', me: null, via: null, auth: state.auth, signups: state.signups });
 });

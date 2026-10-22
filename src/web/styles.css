@@ -228,6 +228,7 @@ select.text-field { appearance: auto; }
 .home-head p { color: var(--muted); margin: 0 0 28px; font-size: 15px; max-width: 60ch; }
 .home-error { color: var(--bad); }
 .home-empty { color: var(--faint); margin-top: 24px; }
+.data-problem { color: var(--bad); font-size: 13px; margin: 8px 0 0; }
 
 .starts { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; margin-bottom: 40px; }
 .start {
@@ -346,6 +347,11 @@ select.text-field { appearance: auto; }
 .sheet > .cell { flex: 1 1 auto; }
 .desk.edit .sheet > .cell { outline: 1px dashed var(--guide); outline-offset: -1px; }
 .screen-note { display: grid; place-items: center; height: 100%; color: var(--muted); }
+.page-error { min-height: 100dvh; padding: 24px 16px; text-align: center; }
+.page-error p { margin: 0 0 10px; }
+.page-error-title { color: var(--ink); font-size: 17px; font-weight: 600; }
+.page-error-detail { max-width: 60ch; font-size: 13px; overflow-wrap: anywhere; }
+.page-error-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 
 .toast {
   position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 10px;

@@ -101,6 +101,8 @@ interface Pending {
   ops: Op[];
   state: 'queued' | 'sent' | 'done';
   v?: number;
+  /** Sent before and waiting to be sent again: later changes go in a batch of their own, so a refusal takes only it. */
+  tried?: boolean;
 }
 
 interface UndoEntry {
@@ -313,6 +315,8 @@ export class Session {
   }
 
   private connect(): void {
+    // A save's late check, or the watchdog, may come after the editor closed or a slide was paused: no new stream then.
+    if (this.closed || this.paused) return;
     this.es?.close();
     // Who this is and whether it is in Live: the server runs timers and fetches while anyone is.
     const es = listen(`/api/docs/${this.id}/events?client=${this.client}&mode=${this.s.mode}`);
@@ -405,8 +409,12 @@ export class Session {
       const missed = log.filter((e) => !seen.has(e.v)).map((e) => ({ ...e, mine: isYou(e.actor, this.you) }));
       this.patch({ doc: this.rebase(), unsaved: this.pending.length, log: [...this.s.log, ...missed].slice(-200) });
       for (const name of Object.keys(this.s.collections)) void this.loadCollection(name);
-    } catch {
-      this.patch({ online: false });
+    } catch (e) {
+      // A link turned off, or the document gone, while the stream was down: say so, as the stream would have.
+      if (e instanceof ApiError && (e.reason === 'revoked' || e.status === 404)) {
+        this.patch({ status: e.reason === 'revoked' ? 'unshared' : 'missing' });
+        this.pause();
+      } else this.patch({ online: false });
     }
   }
 
@@ -522,7 +530,7 @@ export class Session {
       this.redoStack = [];
     }
     const last = this.pending.at(-1);
-    if (last?.state === 'queued') last.ops = coalesce([...last.ops, ...sent]);
+    if (last?.state === 'queued' && !last.tried) last.ops = coalesce([...last.ops, ...sent]);
     else this.pending.push({ batch: uid(), ops: sent, state: 'queued' });
     const live = indexTree(r.doc.root).byId;
     this.patch(
@@ -586,18 +594,24 @@ export class Session {
       if (!this.s.online || this.s.unsaved !== this.pending.length) this.patch({ online: true, unsaved: this.pending.length });
       // The stream normally confirms it within milliseconds; if it hasn't, it missed something.
       setTimeout(() => {
-        if (this.confirmed && this.confirmed.v < r.v) {
+        if (!this.closed && !this.paused && this.confirmed && this.confirmed.v < r.v) {
           this.connect();
           void this.resync();
         }
       }, 1000);
     } catch (e) {
-      if (e instanceof ApiError && e.status < 500) {
+      if (e instanceof ApiError && e.status === 422 && next.ops.length > 1) {
+        // Several changes, and one no longer applies (someone else's change got there first): each is sent on its
+        // own, so only the one that conflicts is lost, not everything done since the last save.
+        const at = this.pending.indexOf(next);
+        this.pending.splice(at, 1, ...next.ops.map((op): Pending => ({ batch: uid(), ops: [op], state: 'queued', tried: true })));
+      } else if (e instanceof ApiError && e.status < 500) {
         this.pending = this.pending.filter((p) => p !== next);
         this.toast(`That change was not saved. ${sentence(e.message)}`);
         this.patch({ doc: this.rebase(), unsaved: this.pending.length });
       } else {
         next.state = 'queued';
+        next.tried = true;
         retry = true;
         this.patch({ online: false });
       }

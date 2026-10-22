@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cssOf, docCss, fontCss } from './look';
+import { color, cssOf, docCss, fontCss } from './look';
 
 test('the new style keys become CSS', () => {
   const css = cssOf({ tracking: 0.05, case: 'upper', decor: 'strike', para: 14, shadow: 'md', border: 'l', bcolor: 'accent', bwidth: 3, pad: '4 0 4 16', line: 1.6 }) as Record<string, unknown>;
@@ -36,4 +36,10 @@ test('a document sets its text font, size and heading font', () => {
   assert.equal(css.fontSize, '17px');
   assert.match(String(css['--head-font']), /Space Grotesk/);
   assert.deepEqual(docCss({ title: 'x', fontSize: 400 }), {});
+});
+
+test('a colour is a colour: nothing that loads from elsewhere', () => {
+  for (const ok of ['#fff', 'rgb(1, 2, 3)', 'hsl(200 50% 40% / 0.5)', 'red', 'linear-gradient(90deg, red, blue)']) assert.equal(color(ok), ok, ok);
+  assert.equal(color('accent'), 'var(--accent)');
+  for (const bad of ['url(//evil.example/p.gif)', 'URL (https://evil.example/x)', 'image-set(x 1x)', 'cross-fade(a, b)', 'element(#x)', 'red; background: blue']) assert.equal(color(bad), undefined, bad);
 });

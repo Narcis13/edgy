@@ -6,7 +6,7 @@ import { isContainer, isGroup } from './types';
 import { containerValue } from './containers';
 import { elementsOf } from './diagram';
 import { type Index, indexTree, walk } from './tree';
-import { type Effect, type FetchState, type Host, Interp, SxError, deepEqual, formatValue, hasTemplate, parseTemplate, truthy, unknownCalls } from './sx';
+import { Budget, type Effect, type FetchState, type Host, Interp, SxError, deepEqual, formatValue, hasTemplate, parseTemplate, truthy, unknownCalls } from './sx';
 import { pickRows } from './table';
 
 export interface CellState {
@@ -95,6 +95,8 @@ class Evaluator {
   readonly collections = new Set<string>();
   usesNow = false;
   effects: Effect[] | null = null;
+  /** One budget for every expression of this evaluation: a cell may do a formula's worth of work, but not every cell. */
+  readonly budget = new Budget();
   private host: Host;
 
   constructor(private doc: Doc, private world: World) {
@@ -181,7 +183,7 @@ class Evaluator {
   evalIn(cell: Cell, x: Sx, vars?: Record<string, unknown>): unknown {
     this.context.push(cell);
     try {
-      const I = new Interp(this.effects ? this.host : { ...this.host, effect: undefined, place: undefined });
+      const I = new Interp(this.effects ? this.host : { ...this.host, effect: undefined, place: undefined }, this.budget);
       return I.run(x, vars);
     } finally {
       this.context.pop();

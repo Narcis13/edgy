@@ -21,7 +21,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Actor, Doc, Json, Op } from '../core/types';
 import { applyOps } from '../core/ops';
-import { type Cloud, CloudDown, type Stmt, type Value } from './cloud';
+import { type Cloud, CloudDown, CloudRefused, type Stmt, type Value } from './cloud';
 import type { Role, Store } from './store';
 
 export interface SyncHooks {
@@ -56,6 +56,20 @@ export interface SyncStatus {
   conflicts: number;
   /** Rows from the cloud that could not be applied here (skipped, and why the last one was). */
   skipped: number;
+  /** Changes the cloud refused (too large, say): they stay here, are tried again now and then, and `error` says why. */
+  refused: number;
+}
+
+/** What goes to the cloud whole, in one transaction: a document with its history, an op, one changed thing. */
+interface Unit {
+  /** Its first row's oid: a unit that changes again is another unit. */
+  id: string;
+  space: string;
+  /** What it is, for the log. */
+  what: string;
+  stmts: Stmt[];
+  /** Once the cloud has it. */
+  went?: () => void;
 }
 
 interface LogRow {
@@ -71,6 +85,8 @@ interface LogRow {
 const PAGE = 500;
 const HISTORY_CHUNK = 100;
 const STMTS_PER_REQUEST = 100;
+/** How long a unit the cloud refused waits before it is tried again (unless it changes first). */
+const REFUSED_RETRY = 10 * 60_000;
 
 export const CLOUD_SCHEMA: Stmt[] = [
   { sql: 'CREATE TABLE IF NOT EXISTS edgy_log (seq INTEGER PRIMARY KEY AUTOINCREMENT, space TEXT NOT NULL, oid TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, key TEXT NOT NULL, origin TEXT NOT NULL, ts INTEGER NOT NULL, body TEXT NOT NULL)' },
@@ -106,6 +122,8 @@ export class Sync {
   private conflicts = 0;
   private pushing = false;
   private skipped = 0;
+  /** Units the cloud refused, by id: when, and why. Kept in memory: after a restart each is tried once more. */
+  private refused = new Map<string, { space: string; at: number; error: string }>();
 
   constructor(
     private store: Store,
@@ -117,10 +135,15 @@ export class Sync {
     if (!origin) store.setSyncMeta('origin', (origin = randomBytes(6).toString('base64url')));
     this.origin = origin;
     // Pictures uploaded before sync was on go up once.
-    if (!store.syncMeta('assets-queued') && opts.assetsDir && existsSync(opts.assetsDir)) {
-      for (const file of readdirSync(opts.assetsDir)) if (/^[a-f0-9]{20}\.\w+$/.test(file)) store.assetToSend(file);
-      store.setSyncMeta('assets-queued', '1');
-    }
+    if (!store.syncMeta('assets-queued')) this.queueAssets();
+  }
+
+  /** Every picture here is to send. */
+  private queueAssets(): void {
+    const dir = this.opts.assetsDir;
+    if (!dir || !existsSync(dir)) return;
+    for (const file of readdirSync(dir)) if (/^[a-f0-9]{20}\.\w+$/.test(file)) this.store.assetToSend(file);
+    this.store.setSyncMeta('assets-queued', '1');
   }
 
   // ── when ──
@@ -139,7 +162,8 @@ export class Sync {
 
   /** Something changed here: send it soon. */
   kick(): void {
-    if (this.stopped || this.kicked) return;
+    // After a failed round the back-off says when to try again: each change sending the whole backlog would undo it.
+    if (this.stopped || this.kicked || this.lastError) return;
     this.kicked = setTimeout(() => {
       this.kicked = null;
       void this.round();
@@ -183,14 +207,18 @@ export class Sync {
   status(space?: string): SyncStatus {
     const pending = this.store.pendingCount(space);
     const down = this.lastError instanceof CloudDown;
+    // One account's refused change is its own to hear about, not everyone's on the server.
+    const refused = [...this.refused.values()].filter((r) => space === undefined || r.space === space);
+    const error = this.lastError ? (this.lastError instanceof Error ? this.lastError.message : String(this.lastError)) : refused.at(-1)?.error ?? null;
     return {
-      state: down ? 'offline' : this.lastError ? 'error' : this.pushing || pending > 0 ? 'syncing' : 'synced',
+      state: down ? 'offline' : error ? 'error' : this.pushing || pending > 0 ? 'syncing' : 'synced',
       pending,
       lastSyncAt: this.lastSyncAt,
-      error: this.lastError ? (this.lastError instanceof Error ? this.lastError.message : String(this.lastError)) : null,
+      error,
       stats: { ...this.cloud.stats },
       conflicts: this.conflicts,
       skipped: this.skipped,
+      refused: refused.length,
     };
   }
 
@@ -208,10 +236,19 @@ export class Sync {
       ...CLOUD_SCHEMA,
       { sql: "INSERT INTO edgy_meta (key, value) VALUES ('id', ?) ON CONFLICT (key) DO NOTHING", args: [randomBytes(9).toString('base64url')] },
       { sql: "SELECT value FROM edgy_meta WHERE key = 'id'" },
+      { sql: 'SELECT MAX(seq) AS seq FROM edgy_log' },
     ]);
-    const id = String(results[results.length - 1].rows[0]?.value ?? '');
+    const id = String(results[results.length - 2].rows[0]?.value ?? '');
+    const last = Number(results[results.length - 1].rows[0]?.seq ?? 0);
     const known = this.store.syncMeta('cloud-id');
-    if (known && known !== id) this.store.resetSync();
+    // The same database, restored from a backup: it lost rows this file already pulled (and the changes in them).
+    // (Noticed by the first machine to connect, before new rows take the cloud past where it was.)
+    const restored = known === id && this.store.spaces().some((s) => s.cursor > last);
+    if ((known && known !== id) || restored) {
+      this.store.resetSync();
+      // Its pictures too: the cloud may not have them.
+      this.queueAssets();
+    }
     if (known !== id) this.store.setSyncMeta('cloud-id', id);
     this.schemaReady = true;
   }
@@ -258,13 +295,7 @@ export class Sync {
   /** Send what changed here. Returns whether anything went. */
   private async push(): Promise<boolean> {
     // Units go whole into one request: a document's state and its history are never split.
-    const units: Stmt[][] = [];
-    let stmts: Stmt[] = [];
-    const unit = () => {
-      if (stmts.length) units.push(stmts);
-      stmts = [];
-    };
-    const after: (() => void)[] = [];
+    const units: Unit[] = [];
     const accounts: { id: string; body: { email: string | null } }[] = [];
     const store = this.store;
 
@@ -273,60 +304,91 @@ export class Sync {
       const doc = store.getDoc(id);
       if (!doc) continue;
       const created = store.summary(id);
-      stmts.push(insert(owner, `create:${id}:${doc.v}`, 'create', id, this.origin, { doc, createdAt: created?.createdAt ?? Date.now(), updatedAt: created?.updatedAt ?? Date.now() }));
+      const stmts = [insert(owner, `create:${id}:${doc.v}`, 'create', id, this.origin, { doc, createdAt: created?.createdAt ?? Date.now(), updatedAt: created?.updatedAt ?? Date.now() })];
       const hist = store.history(id, doc.v);
       for (let i = 0; i < hist.length; i += HISTORY_CHUNK) {
         stmts.push(insert(owner, `hist:${id}:${doc.v}:${i / HISTORY_CHUNK}`, 'hist', id, this.origin, { base: doc.v, entries: hist.slice(i, i + HISTORY_CHUNK) }));
       }
-      unit();
+      units.push({ id: `create:${id}:${doc.v}`, space: owner, what: `the document ${id}`, stmts });
     }
     // Ops after what the cloud confirmed, in order.
     for (const p of store.pendingOps()) {
-      stmts.push(insert(p.space, p.oid, 'op', p.doc, this.origin, { v: p.v, ts: p.ts, actor: p.actor, ops: p.ops }));
-      unit();
+      units.push({ id: p.oid, space: p.space, what: `a change to the document ${p.doc} (v${p.v})`, stmts: [insert(p.space, p.oid, 'op', p.doc, this.origin, { v: p.v, ts: p.ts, actor: p.actor, ops: p.ops })] });
     }
     // The latest state of everything else that changed.
     for (const d of store.dirtyItems()) {
       const body = this.describe(d.kind, d.key, d.fields);
-      if (body !== undefined) {
-        stmts.push(insert(d.space, `${this.origin}:${d.n}`, d.kind, d.key, this.origin, body));
-        if (d.kind === 'account' && body && typeof body === 'object' && 'email' in body) accounts.push({ id: d.key, body: body as { email: string | null } });
+      const sent = () => store.clearDirty(d.kind, d.key, d.n);
+      // Nothing to say about it (gone, say): it is done with.
+      if (body === undefined) {
+        sent();
+        continue;
       }
-      after.push(() => store.clearDirty(d.kind, d.key, d.n));
-      unit();
+      const oid = `${this.origin}:${d.n}`;
+      const account = d.kind === 'account' && body && typeof body === 'object' && 'email' in body ? { id: d.key, body: body as { email: string | null } } : null;
+      units.push({
+        id: oid, space: d.space, what: `the ${d.kind} ${d.key}`, stmts: [insert(d.space, oid, d.kind, d.key, this.origin, body)],
+        went: () => {
+          sent();
+          if (account) accounts.push(account);
+        },
+      });
     }
-    if (!units.length && !store.unsentAssets().length) {
-      for (const fn of after) fn();
-      return false;
-    }
+
+    // A refusal is forgotten once its unit went or changed (it is another unit then); until it is due again, it waits.
+    const now = Date.now();
+    const ids = new Set(units.map((u) => u.id));
+    for (const id of this.refused.keys()) if (!ids.has(id)) this.refused.delete(id);
+    const ready = units.filter((u) => now - (this.refused.get(u.id)?.at ?? -Infinity) >= REFUSED_RETRY);
+    if (!ready.length && !store.unsentAssets().length) return false;
+
+    let went = 0;
+    // One request, one transaction: a request that breaks off, or that the cloud refuses, leaves nothing half sent.
+    // A refused one is split in halves until the unit it refuses is alone: that one waits, the rest go.
+    const send = async (group: Unit[]): Promise<void> => {
+      try {
+        await this.cloud.atomic(group.flatMap((u) => u.stmts));
+      } catch (e) {
+        if (!(e instanceof CloudRefused)) throw e;
+        if (group.length === 1) return this.refuse(group[0], e);
+        const half = Math.ceil(group.length / 2);
+        await send(group.slice(0, half));
+        return send(group.slice(half));
+      }
+      for (const u of group) {
+        this.refused.delete(u.id);
+        u.went?.();
+      }
+      went += group.length;
+    };
     this.pushing = true;
     try {
-      // Requests of whole units, each a transaction: a request that breaks off leaves nothing half sent.
-      let batch: Stmt[] = [];
-      const send = async () => {
-        if (batch.length) await this.cloud.run([{ sql: 'BEGIN' }, ...batch, { sql: 'COMMIT' }]);
-        batch = [];
-      };
-      for (const u of units) {
-        if (batch.length && batch.length + u.length > STMTS_PER_REQUEST) await send();
-        batch.push(...u);
+      let batch: Unit[] = [];
+      let size = 0;
+      for (const u of ready) {
+        if (batch.length && size + u.stmts.length > STMTS_PER_REQUEST) {
+          await send(batch);
+          batch = [];
+          size = 0;
+        }
+        batch.push(u);
+        size += u.stmts.length;
       }
-      await send();
+      if (batch.length) await send(batch);
     } finally {
       this.pushing = false;
     }
-    for (const fn of after) fn();
     // How another machine finds the account by email. Each on its own: an email another account has there is refused
-    // alone (the profile still travels in the log), and is reported.
+    // alone (the profile still travels in the log), and is reported. An account deleted there meanwhile stays deleted.
     for (const a of accounts) {
       try {
         await this.cloud.run([{
-          sql: 'INSERT INTO edgy_accounts (id, email, body, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET email = excluded.email, body = excluded.body, updated_at = excluded.updated_at',
+          sql: 'INSERT INTO edgy_accounts (id, email, body, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET email = excluded.email, body = excluded.body, updated_at = excluded.updated_at WHERE edgy_accounts.deleted_at IS NULL',
           args: [a.id, a.body.email, JSON.stringify(a.body), Date.now()],
         }]);
       } catch (e) {
-        if (e instanceof CloudDown) throw e;
-        console.error(`sync: the account ${a.id} could not be listed by its email: ${e instanceof Error ? e.message : e}`);
+        if (!(e instanceof CloudRefused)) throw e;
+        console.error(`sync: the account ${a.id} could not be listed by its email: ${e.message}`);
       }
     }
     // Pictures, one request each (they can be large).
@@ -337,14 +399,20 @@ export class Sync {
         try {
           await this.cloud.run([{ sql: 'INSERT INTO edgy_assets (file, type, bytes) VALUES (?, ?, ?) ON CONFLICT (file) DO NOTHING', args: [file, type, new Uint8Array(readFileSync(path))] }]);
         } catch (e) {
-          if (e instanceof CloudDown) throw e;
+          if (!(e instanceof CloudRefused)) throw e;
           // One picture the cloud won't take (too large, say) doesn't hold up the rest.
-          console.error(`sync: the picture ${file} was not sent: ${e instanceof Error ? e.message : e}`);
+          console.error(`sync: the picture ${file} was not sent: ${e.message}`);
         }
       }
       store.assetSent(file);
     }
-    return true;
+    return went > 0;
+  }
+
+  /** A unit the cloud refused on its own: it stays here, and is tried again later (or as soon as it changes). */
+  private refuse(u: Unit, e: CloudRefused): void {
+    if (!this.refused.has(u.id)) console.error(`sync: the cloud refused ${u.what}; it stays here and is tried again later: ${e.message}`);
+    this.refused.set(u.id, { space: u.space, at: Date.now(), error: e.message });
   }
 
   /** What to send about one changed thing: its whole state, the fields that changed, or that it is gone. */
@@ -445,7 +513,8 @@ export class Sync {
   /**
    * One row, applied only to what belongs to its space (the account whose log
    * it is in): a row naming another account's document, record or profile is
-   * ignored, whoever wrote it to the cloud.
+   * ignored, whoever wrote it to the cloud. Ownership is checked on the row's
+   * key, so a body that names something else than its key is ignored too.
    */
   private applyOne(space: string, row: LogRow): void {
     const s = this.store;
@@ -457,6 +526,7 @@ export class Sync {
         if (s.isGone('doc', key) || s.syncDoc(key)) return;
         if (s.docOwner(key) !== undefined && !ownDoc(key)) return;
         const doc = body.doc as Doc;
+        if (doc?.id !== key) return;
         // Ours, coming back: the cloud has it now, as of the version we sent.
         if (!s.getDoc(key)) s.receiveDoc(doc, space, Number(body.createdAt), Number(body.updatedAt));
         s.setSyncDoc(key, space, doc.v, doc);
@@ -495,18 +565,18 @@ export class Sync {
         if (s.dirtyFields('deck', key)) return;
         if (s.deck(key) && s.ownerOf(key) !== space) return;
         if (body.deleted) s.receiveDeck(space, null, key);
-        else if (!s.isGone('deck', key)) s.receiveDeck(space, body as never, key);
+        else if (body.id === key && !s.isGone('deck', key)) s.receiveDeck(space, body as never, key);
         return;
       }
       case 'share': {
         const known = s.share(key);
-        if (s.dirtyFields('share', key) || !ownDoc(String(body.doc)) || (known && known.doc !== String(body.doc))) return;
+        if (body.token !== key || s.dirtyFields('share', key) || !ownDoc(String(body.doc)) || (known && known.doc !== String(body.doc))) return;
         s.receiveShare(body as never);
         if (body.revokedAt != null && !known?.revokedAt) this.hooks.unshared(String(body.doc), key);
         return;
       }
       case 'access': {
-        if (s.dirtyFields('access', key) || !ownDoc(String(body.doc))) return;
+        if (key !== `${body.doc} ${body.user}` || s.dirtyFields('access', key) || !ownDoc(String(body.doc))) return;
         s.receiveAccess(String(body.doc), String(body.user), (body.role as Role | null) ?? null);
         this.hooks.access(String(body.doc));
         return;
@@ -575,8 +645,11 @@ export class Sync {
         if (a.conflict !== pending[i].conflict) same = false;
       });
       if (same) {
-        s.setSyncDoc(docId, sd.space, sd.baseV + rows.length, base);
-        s.confirmOps(docId, rows.map((r) => ({ oid: r.oid, seq: Number(r.seq) })));
+        // Together: a confirmed base without its ops confirmed (or the other way round) would send them again, or never.
+        s.transaction(() => {
+          s.setSyncDoc(docId, sd.space, sd.baseV + rows.length, base);
+          s.confirmOps(docId, rows.map((r) => ({ oid: r.oid, seq: Number(r.seq) })));
+        });
         return;
       }
     }
@@ -601,8 +674,12 @@ export class Sync {
       if (a.conflict && !p.conflict) this.conflicts++;
       entries.push({ v: cur.v, ts: p.ts, actor: p.actor, ops: p.ops, oid: p.oid, ...(a.conflict ? { conflict: true } : {}) });
     }
-    s.rewriteHistory(cur, sd.baseV, entries);
-    s.setSyncDoc(docId, sd.space, base.v, base);
+    // Together: the history in cloud order and the base it starts from. One without the other (a crash between them)
+    // leaves the cloud's ops counted as this machine's own still to send, and the two machines apart for good.
+    s.transaction(() => {
+      s.rewriteHistory(cur, sd.baseV, entries);
+      s.setSyncDoc(docId, sd.space, base.v, base);
+    });
     this.hooks.reset(docId, cur.v);
   }
 }

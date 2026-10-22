@@ -8,7 +8,7 @@ import { walk } from '../../../../core/tree';
 import { type Rec, actionName } from '../../../kinds/rows';
 import { SxField, TextField } from '../../fields';
 import { cx, useS } from '../../ctx';
-import { CELL_ICONS } from '../../icons';
+import { iconFor } from '../../icons';
 import { Chips, Hint, IconChoice, Prop, Sub, stop } from '../controls';
 import type { Edit } from '../edit';
 import { changeFieldDo, copyDo, deleteDo, moved } from '../tableOps';
@@ -53,7 +53,7 @@ export function TableActions({ e, rows, keys, collection }: { e: Edit; rows: Rec
       {list.length ? (
         <ul className="ins-actions" aria-label="Row buttons">
           {list.map((a, i) => {
-            const I = typeof a.icon === 'string' ? CELL_ICONS[a.icon] : undefined;
+            const I = iconFor(a.icon);
             const expanded = open === i;
             return (
               <li key={i} className={cx('ins-action', expanded && 'is-open')}>

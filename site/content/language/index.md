@@ -191,7 +191,7 @@ A cell that reads itself, directly or through others, has no order. It shows `ci
 
 ## Limits
 
-A single expression stops with an error if it takes more than 400,000 steps (`this takes too long to compute`), nests more than 300 calls deep (`this nests too deeply`), or builds a list of more than 20,000 items with [range](fn:range) (`range is too long`).
+A single expression stops with an error if it takes more than 400,000 steps (`this takes too long to compute`), nests more than 300 calls deep (`this nests too deeply`), or builds a list of more than 20,000 items with [range](fn:range) (`range is too long`). A step is also each item a function such as [map](fn:map) or [sum](fn:sum) goes through. Other lists stop at 100,000 items, text at 2,000,000 characters, and a whole document's formulas together at 4,000,000 steps. See [Errors](/language/errors/#too-much-work).
 
 ## Where to next
 

@@ -38,7 +38,7 @@ const key = JSON.stringify([c.every ?? null, c.after ?? null, c.value ?? null]);
 
 A timer is skipped if its `value` is `false` (stopped) or it has neither `every` nor `after`. If the same cell already runs with the same key, nothing changes. If the key moved (it was edited, or `(start! t)` set its `value` to the time it started), the old schedule is cleared and a new one begins, which is why starting a running timer starts it over.
 
-A timer with `every` becomes a `setInterval`, never faster than `MIN_TICK`, one second. One with `after` becomes a single `setTimeout`. When it fires, the runner raises the cell's `tick` event with `{ count, at }`:
+A timer with `every` becomes a `setInterval`, never faster than `MIN_TICK`, one second. One with `after` becomes a single `setTimeout` of at least `MIN_TICK` too. Whatever a tick's handler throws (a record too large to save, say) is caught there and shown in the trace: a timer never ends the server. When it fires, the runner raises the cell's `tick` event with `{ count, at }`:
 
 ```ts
 this.apply(docId, { events: [{ cell: c.id, name: 'tick', data: { count: t.count, at: this.clock.now() } }] });
@@ -68,7 +68,9 @@ For each [fetch](kind:fetch) cell, `sync` takes its address from the evaluated p
 3. Store `ready` with the data, or `failed` with the message (keeping the last good data), and publish a `fetch` event.
 4. If handlers are wanted *and someone is still in Live*, run `load` or `fail` through `apply()`, with the value change for `change` handlers worked out by comparing the answer to the one before.
 
-A fetch's state is not in the document. It is held in a `Map` in the runner, so a restart forgets it and the next time someone goes Live it is fetched again. The engine sees it through `World.fetched`, and [GET /api/docs/:id/fetched](<route:GET /api/docs/:id/fetched>) gives it to browsers and agents. If the address changes while a request is in flight, `recheck` fetches the new one when the old finishes.
+A fetch's state is not in the document. It is held in a `Map` in the runner, so a restart forgets it and the next time someone goes Live it is fetched again. The answers of the 200 documents nobody is in Live on that were fetched most recently are kept for readers; older ones are forgotten. The engine sees it through `World.fetched`, and [GET /api/docs/:id/fetched](<route:GET /api/docs/:id/fetched>) gives it to browsers and agents. If the address changes while a request is in flight, `recheck` fetches the new one when the old finishes, but no sooner than `MIN_REFETCH` (a second) after the last request started: a `load` handler that changes a value the address reads would otherwise fetch again as fast as the network answers, or, for a path on this server, without ever letting a timer run.
+
+Requests that go out to the network wait their turn: at most 32 are on their way at once, from all documents together. At the time limit the request is ended, socket and all, so a server that sends a byte now and then holds nothing open. A fetch that fails in the background (a poll, a handler's `refresh!`) is logged and shown on the cell; it never ends the server.
 
 ```notation title="A fetch cell with a load handler (fetch cells have no network in the docs' examples)"
 ["col",

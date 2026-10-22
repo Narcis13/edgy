@@ -5,9 +5,18 @@ export function isPublicPath(pathname: string): boolean {
   return pathname === '/signin' || pathname === '/signup' || /^\/s\/[\w-]+$/.test(pathname);
 }
 
-/** A `next` is a path in this app: it starts with one slash, never `//` (another site) or a backslash. */
+/**
+ * A `next` is a path in this app: it starts with one slash, never `//` (another site) or a backslash, and has no
+ * control characters at all (a browser drops a tab or newline, so "/\t/evil.example" is "//evil.example").
+ */
 export function safeNext(next: string | null | undefined): string | null {
-  if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\') || /[\r\n]/.test(next)) return null;
+  if (!next || !next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\') || /[\u0000-\u001f\u007f]/.test(next)) return null;
+  // Whatever else a browser makes of it, it must stay on this site.
+  try {
+    if (new URL(next, 'https://edgy.invalid').origin !== 'https://edgy.invalid') return null;
+  } catch {
+    return null;
+  }
   // Coming back to the sign-in page would loop.
   if (/^\/(signin|signup)(\/|\?|$)/.test(next)) return null;
   return next;

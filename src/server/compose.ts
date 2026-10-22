@@ -2820,6 +2820,8 @@ export async function composeClaude(ctx: Ctx, prompt: string, cfg: ClaudeConfig)
 
 interface Pending {
   doc: string;
+  /** The account that asked: only an agent acting for it (its key, or local mode) hears the request and may answer it. */
+  by: string | null;
   request: AgentRequest;
   delivered: boolean;
   settle: (a: Answer | null) => void;
@@ -2830,7 +2832,7 @@ export class Requests {
   private pending = new Map<string, Pending>();
   private n = 0;
 
-  open(doc: string, req: Omit<AgentRequest, 'id' | 'ts'>, ms: number, signal?: AbortSignal): { request: AgentRequest; answer: Promise<Answer | null> } {
+  open(doc: string, by: string | null, req: Omit<AgentRequest, 'id' | 'ts'>, ms: number, signal?: AbortSignal): { request: AgentRequest; answer: Promise<Answer | null> } {
     const request: AgentRequest = { id: 'r' + ++this.n, ...req, ts: Date.now() };
     const answer = new Promise<Answer | null>((resolve) => {
       const settle = (a: Answer | null) => {
@@ -2840,25 +2842,28 @@ export class Requests {
       };
       const timer = setTimeout(() => settle(null), ms);
       signal?.addEventListener('abort', () => settle(null), { once: true });
-      this.pending.set(request.id, { doc, request, delivered: false, settle });
+      this.pending.set(request.id, { doc, by, request, delivered: false, settle });
     });
     return { request, answer };
   }
 
-  /** The requests on a document no listener has seen yet; they are marked as seen. */
-  take(doc: string): AgentRequest[] {
+  /**
+   * The requests on a document that this account asked and no listener has seen yet; they are marked as seen.
+   * Someone else who can edit the document, listening on it, neither sees nor answers them.
+   */
+  take(doc: string, by: string | null): AgentRequest[] {
     const out: AgentRequest[] = [];
     for (const p of this.pending.values()) {
-      if (p.doc !== doc || p.delivered) continue;
+      if (p.doc !== doc || p.by !== by || p.delivered) continue;
       p.delivered = true;
       out.push(p.request);
     }
     return out;
   }
 
-  get(doc: string, id: string): AgentRequest | undefined {
+  get(doc: string, id: string, by: string | null): AgentRequest | undefined {
     const p = this.pending.get(id);
-    return p && p.doc === doc ? p.request : undefined;
+    return p && p.doc === doc && p.by === by ? p.request : undefined;
   }
 
   answer(id: string, a: Answer): boolean {
@@ -2886,7 +2891,7 @@ export async function compose(ctx: Ctx, prompt: string, p: Providers): Promise<C
   for (const provider of [...new Set(order)]) {
     if (provider === 'claude') {
       if (!p.claude) {
-        if (p.provider === 'claude') notes.push('Claude is not set up on this server (no ANTHROPIC_API_KEY), so the built-in composer answered.');
+        if (p.provider === 'claude') notes.push('Claude is not set up for this document on this server (no ANTHROPIC_API_KEY, or the document is not the server owner\'s), so the built-in composer answered.');
         continue;
       }
       try {

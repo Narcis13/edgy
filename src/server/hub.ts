@@ -56,12 +56,20 @@ export class Hub {
     room.add(fn);
     return () => {
       room!.delete(fn);
-      if (!room!.size) this.rooms.delete(docId);
+      // Called twice (a wait that ended and was then aborted), it must not take away a newer room for the same document.
+      if (!room!.size && this.rooms.get(docId) === room) this.rooms.delete(docId);
     };
   }
 
   publish(docId: string, e: DocEvent): void {
-    for (const fn of [...(this.rooms.get(docId) ?? [])]) fn(e);
+    for (const fn of [...(this.rooms.get(docId) ?? [])]) {
+      // One listener that throws (a stream gone bad) must not stop the others hearing it, nor reach a timer that would end the process.
+      try {
+        fn(e);
+      } catch (err) {
+        console.error('edgy: a listener failed on', e.type, err);
+      }
+    }
   }
 
   /** The documents someone is watching now. */
@@ -69,26 +77,32 @@ export class Hub {
     return [...this.rooms.keys()];
   }
 
-  /** An agent is waiting on this document; call the returned function when it stops. */
-  listen(docId: string): () => void {
-    const e = this.ears.get(docId) ?? { waiting: 0, at: 0 };
-    this.ears.set(docId, e);
+  /** An agent acting for this account is waiting on this document; call the returned function when it stops. */
+  listen(docId: string, account: string | null): () => void {
+    const key = `${docId}\n${account ?? ''}`;
+    const e = this.ears.get(key) ?? { waiting: 0, at: 0 };
+    this.ears.set(key, e);
     e.waiting++;
     e.at = Date.now();
     return () => {
       e.waiting--;
       e.at = Date.now();
+      // Documents no agent has listened on for a while are forgotten, so the list doesn't grow with every document ever listened on.
+      for (const [id, x] of this.ears) if (x.waiting <= 0 && e.at - x.at > LISTEN_GRACE) this.ears.delete(id);
     };
   }
 
-  /** Whether an agent is listening on this document (or on any) now or did in the last half minute (an agent loops on edgy_listen). */
-  listening(docId?: string): boolean {
+  /**
+   * Whether an agent acting for this account is listening on this document (or on any) now or did in the last half
+   * minute (an agent loops on edgy_listen). Someone else's agent on the same document doesn't count: it won't be asked.
+   */
+  listening(docId: string | undefined, account: string | null): boolean {
     const near = (e: { waiting: number; at: number }) => e.waiting > 0 || Date.now() - e.at < LISTEN_GRACE;
     if (docId) {
-      const e = this.ears.get(docId);
+      const e = this.ears.get(`${docId}\n${account ?? ''}`);
       return !!e && near(e);
     }
-    return [...this.ears.values()].some(near);
+    return [...this.ears].some(([k, e]) => k.endsWith(`\n${account ?? ''}`) && near(e));
   }
 
   /** Resolve with the first matching event, or null after the timeout. */

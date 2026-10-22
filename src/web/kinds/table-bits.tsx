@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Loader2, Star } from 'lucide-react';
 import type { Cell } from '../../core/types';
-import { CELL_ICONS } from '../editor/icons';
+import { iconFor } from '../editor/icons';
 import { cx } from '../editor/ctx';
 import {
   type At, type Column, type Group, type Rec, type Row, type RowAction,
@@ -155,7 +155,7 @@ export function RowActions({ actions, name, run }: { actions: RowAction[]; name:
       {/* While asking, the buttons keep their room so the columns don't move. */}
       <div className={cx('ktable-btns', a && 'is-hidden')} aria-hidden={a ? true : undefined}>
         {actions.map((act, k) => {
-          const Icon = act.icon ? CELL_ICONS[act.icon] : undefined;
+          const Icon = iconFor(act.icon);
           const label = actionName(act);
           return (
             <button

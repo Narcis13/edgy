@@ -4,7 +4,7 @@
 // development the site is built once, on the first visit.
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { extname, join, normalize, resolve } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import type { Hono } from 'hono';
 
 const TYPES: Record<string, string> = {
@@ -22,7 +22,14 @@ export function serveDocs(app: Hono<any>, dir: string, build?: () => Promise<voi
   const file = (path: string, status = 200) => {
     const type = TYPES[extname(path)] ?? 'application/octet-stream';
     const body = type.startsWith('text/html') ? inApp(readFileSync(path, 'utf8'), status === 404) : readFileSync(path);
-    return new Response(body, { status, headers: { 'content-type': type, 'cache-control': /[\\/]_[\\/]/.test(path) && !path.endsWith('.json') ? 'public, max-age=31536000, immutable' : 'no-cache' } });
+    return new Response(body, {
+      status,
+      headers: {
+        'content-type': type,
+        'cache-control': /[\\/]_[\\/]/.test(path) && !path.endsWith('.json') ? 'public, max-age=31536000, immutable' : 'no-cache',
+        'x-content-type-options': 'nosniff',
+      },
+    });
   };
 
   app.get('/docs', (c) => c.redirect('/docs/', 301));
@@ -37,9 +44,15 @@ export function serveDocs(app: Hono<any>, dir: string, build?: () => Promise<voi
       return c.text(`The docs could not be built: ${e instanceof Error ? e.message : e}`, 500);
     }
     if (!existsSync(join(root, 'index.html'))) return c.text('The docs are not built. Run npm run docs:build (npm run build does it too).', 404);
-    const path = decodeURIComponent(c.req.path.slice('/docs/'.length));
+    let path: string;
+    try {
+      path = decodeURIComponent(c.req.path.slice('/docs/'.length));
+    } catch {
+      return file(join(root, '404.html'), 404);
+    }
     const target = normalize(join(root, path));
-    if (!target.startsWith(root)) return file(join(root, '404.html'), 404);
+    // Inside the folder, not merely starting with its name: /docs/..%2Fdocs-old/ is a sibling, not a page.
+    if (target !== root && !target.startsWith(root + sep)) return file(join(root, '404.html'), 404);
     if (existsSync(target) && statSync(target).isDirectory()) {
       if (!c.req.path.endsWith('/')) return c.redirect(c.req.path + '/', 301);
       if (existsSync(join(target, 'index.html'))) return file(join(target, 'index.html'));

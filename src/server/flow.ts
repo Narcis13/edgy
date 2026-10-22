@@ -52,6 +52,8 @@ const postedOf = (v: unknown, now: number): number =>
 const MAX_TEXT = 2000;
 const MAX_BODY = 20_000;
 const MAX_TAGS = 20;
+/** A request's JSON body when it is an object; anything else (5, "text", a list) is an empty one, which each route then refuses or ignores. */
+const objectOf = (v: unknown) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {}) as Raw;
 
 export function flowRoutes(app: Hono<AppEnv>, deps: FlowDeps) {
   const { store, need } = deps;
@@ -230,21 +232,24 @@ export function flowRoutes(app: Hono<AppEnv>, deps: FlowDeps) {
 
   app.put('/api/flow/board', need('user'), async (c) => {
     const { owner } = ownerOf(c);
-    const body = ((await c.req.json()) ?? {}) as { columns?: unknown; rename?: { from?: unknown; to?: unknown } };
+    const body = objectOf(await c.req.json()) as { columns?: unknown; rename?: { from?: unknown; to?: unknown } };
     const cols = Array.isArray(body.columns) ? [...new Set(body.columns.map((x) => String(x ?? '').trim().slice(0, 40)).filter(Boolean))] : [];
     if (cols.length < 2 || cols.length > 8) return c.json({ error: 'the board has two to eight columns' }, 400);
-    const cur = store.rows(owner, FLOW.board)[0];
-    if (cur) store.update(owner, FLOW.board, cur.id, { columns: cols });
-    else store.insert(owner, FLOW.board, { columns: cols });
-    // A renamed column keeps its cards; cards of a column that went start again; the last column still means done.
     const from = typeof body.rename?.from === 'string' ? body.rename.from : null;
     const to = typeof body.rename?.to === 'string' && cols.includes(body.rename.to) ? body.rename.to : null;
-    for (const r of store.rows(owner, FLOW.items)) {
-      const s = r.status as string | undefined;
-      if (r.kind !== 'task' || !s) continue;
-      if (from && to && s === from) store.update(owner, FLOW.items, r.id, { status: to });
-      else if (!r.done && !cols.includes(s)) store.update(owner, FLOW.items, r.id, { status: cols[0] });
-    }
+    // The board and every card it moves, as one change.
+    store.transaction(() => {
+      const cur = store.rows(owner, FLOW.board)[0];
+      if (cur) store.update(owner, FLOW.board, cur.id, { columns: cols });
+      else store.insert(owner, FLOW.board, { columns: cols });
+      // A renamed column keeps its cards; cards of a column that went start again; the last column still means done.
+      for (const r of store.rows(owner, FLOW.items)) {
+        const s = r.status as string | undefined;
+        if (r.kind !== 'task' || !s) continue;
+        if (from && to && s === from) store.update(owner, FLOW.items, r.id, { status: to });
+        else if (!r.done && !cols.includes(s)) store.update(owner, FLOW.items, r.id, { status: cols[0] });
+      }
+    });
     changed(owner, FLOW.board, FLOW.items);
     return c.json(board(owner));
   });
@@ -253,7 +258,7 @@ export function flowRoutes(app: Hono<AppEnv>, deps: FlowDeps) {
 
   app.post('/api/flow', need('user'), async (c) => {
     const { owner, user } = ownerOf(c);
-    const body = ((await c.req.json()) ?? {}) as Raw & { actor?: unknown; plain?: unknown };
+    const body = objectOf(await c.req.json()) as Raw & { actor?: unknown; plain?: unknown };
     const who = whoOf(c, body.actor);
     const now = Date.now();
     const cols = board(owner).columns;
@@ -291,7 +296,7 @@ export function flowRoutes(app: Hono<AppEnv>, deps: FlowDeps) {
     const id = c.req.param('id');
     const cur = itemOf(owner, user, id);
     if (!cur) return notFound(c, id);
-    const body = ((await c.req.json()) ?? {}) as Raw;
+    const body = objectOf(await c.req.json());
     const cols = board(owner).columns;
     const { fields, error } = cleanFields(body, cols);
     if (error) return c.json({ error }, 400);
@@ -308,10 +313,14 @@ export function flowRoutes(app: Hono<AppEnv>, deps: FlowDeps) {
   app.delete('/api/flow/:id', need('user'), (c) => {
     const { owner } = ownerOf(c);
     const id = c.req.param('id');
-    const ok = store.deleteRow(owner, FLOW.items, id);
+    // The item with its comments and reactions, all or none.
+    const ok = store.transaction(() => {
+      if (!store.deleteRow(owner, FLOW.items, id)) return false;
+      for (const r of store.rows(owner, FLOW.comments)) if (r.item === id) store.deleteRow(owner, FLOW.comments, r.id);
+      for (const r of store.rows(owner, FLOW.reactions)) if (r.item === id) store.deleteRow(owner, FLOW.reactions, r.id);
+      return true;
+    });
     if (!ok) return notFound(c, id);
-    for (const r of store.rows(owner, FLOW.comments)) if (r.item === id) store.deleteRow(owner, FLOW.comments, r.id);
-    for (const r of store.rows(owner, FLOW.reactions)) if (r.item === id) store.deleteRow(owner, FLOW.reactions, r.id);
     changed(owner, FLOW.items, FLOW.comments, FLOW.reactions);
     return c.json({ ok: true });
   });
@@ -323,7 +332,7 @@ export function flowRoutes(app: Hono<AppEnv>, deps: FlowDeps) {
     const id = c.req.param('id');
     const cur = itemOf(owner, user, id);
     if (!cur) return notFound(c, id);
-    const body = ((await c.req.json()) ?? {}) as { text?: unknown; actor?: unknown; posted?: unknown };
+    const body = objectOf(await c.req.json()) as { text?: unknown; actor?: unknown; posted?: unknown };
     const text = String(body.text ?? '').trim().slice(0, 5000);
     if (!text) return c.json({ error: 'send {"text": "…"}' }, 400);
     const now = Date.now();
@@ -349,7 +358,7 @@ export function flowRoutes(app: Hono<AppEnv>, deps: FlowDeps) {
     const { owner, user } = ownerOf(c);
     const id = c.req.param('id');
     if (!itemOf(owner, user, id)) return notFound(c, id);
-    const body = ((await c.req.json()) ?? {}) as { kind?: unknown; actor?: unknown };
+    const body = objectOf(await c.req.json()) as { kind?: unknown; actor?: unknown };
     const kind = REACTIONS.find((r) => r.kind === body.kind)?.kind;
     if (!kind) return c.json({ error: `kind is one of ${REACTIONS.map((r) => r.kind).join(', ')}` }, 400);
     const who = whoOf(c, body.actor);
@@ -377,7 +386,7 @@ export function flowRoutes(app: Hono<AppEnv>, deps: FlowDeps) {
     const id = c.req.param('id');
     const cur = itemOf(owner, user, id);
     if (!cur) return notFound(c, id);
-    const body = ((await c.req.json()) ?? {}) as { running?: unknown; actor?: unknown };
+    const body = objectOf(await c.req.json()) as { running?: unknown; actor?: unknown };
     const who = whoOf(c, body.actor);
     const now = Date.now();
     const me = ownerWho(user);

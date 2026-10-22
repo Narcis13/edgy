@@ -34,6 +34,8 @@ If the server will not start at all and the error mentions `node:sqlite`, your N
 | `That password is longer than 200 characters.` | Too long. | Shorten it. |
 | `That is not an email address.` | The email is not in the form `ana@example.test`. | Fix it. |
 | `An account with this email already exists. Sign in instead.` | The email is taken. | Sign in, or use another email. |
+| `This server does not take new accounts. Sign in with the one you have, or ask the server's owner.` | The server runs with `EDGY_SIGNUPS=off`. | Sign in, or ask whoever runs it. |
+| `Too many new accounts from here. Wait … seconds and try again.` | More than ten accounts were made from your address in a quarter of an hour. | Wait for it to end. |
 | `The cloud cannot be reached to check this email. Try again in a moment.` | [Sync](/people/sync/) is on and the cloud did not answer when edgy checked whether the email exists on another machine. | Wait, and try again. |
 | **Signed out**, then "You were signed out." | While you had a document open, your session ended: you signed out in another tab, or changed your password in another browser. | Choose **Sign in**. |
 | **Account deleted**, then "This account was deleted." | The account you were using no longer exists. | Make a new account. |
@@ -92,6 +94,10 @@ A short message appears at the bottom of the screen and goes away by itself.
 | `Only pictures can be dropped onto a cell.` | You dropped a file that is not an image. | Drop a picture. |
 | `pictures can be PNG, JPEG, GIF, WebP, AVIF or SVG` | The picture is in another format. | Convert it. |
 | `that picture is larger than 8 MB` | The upload is too big. | Use a smaller file. |
+| `that file is not a PNG, JPEG, GIF, WebP, AVIF or SVG picture` | The file's bytes are not one of those pictures, whatever its name says. | Open it in an image editor and save it as PNG or JPEG. |
+| `This cell can not be shown: …` | The cell holds something its kind can't draw (an icon or a label of the wrong shape, say). The rest of the document works. | Select the cell and change or delete what the message names. |
+| `Something went wrong on this page.` | The page failed while drawing. The message under it says what. | **Reload**, or go **Back to the library**. If it happens again, the terminal where edgy runs has the details. |
+| `edgy was updated while this page was open.` | The server has a newer build than the one this tab loaded. | **Reload**. |
 | `The picture could not be uploaded.` | The upload failed and the server gave no reason. | Check the server is running, then try again. |
 | `This cell holds no code yet. Press / to make it a formula.` | You pressed ⌘E on a cell that has no code, such as an empty cell. | Press `/` and choose **Formula**, or select a cell that holds code. |
 | `Nothing handles … here yet.` | You tried an event in the studio that no handler is attached to. | Write a handler for it first. See [Events](/events/). |
@@ -204,7 +210,7 @@ Every place that takes an expression is a code editor. It underlines a mistake a
 | --- | --- | --- |
 | `I could not turn that into code. Try one of these phrasings.` | The built-in composer did not understand, and no other provider answered. Examples of phrasings come with it. | Use one of them, or write the code yourself. |
 | `… The built-in composer did not understand that either.` | Claude or an agent was tried first and failed; the sentence before says why. | Read the reason, then rephrase. |
-| `Claude is not set up on this server (no ANTHROPIC_API_KEY), so the built-in composer answered.` | You asked for Claude, but the server has no `ANTHROPIC_API_KEY`. The built-in composer did the work. | Set the key and restart, or accept the built-in answer. |
+| `Claude is not set up for this document on this server (no ANTHROPIC_API_KEY, or the document is not the server owner's), so the built-in composer answered.` | You asked for Claude, but the server has no `ANTHROPIC_API_KEY`, or the document isn't its owner's (the key is theirs to spend). The built-in composer did the work. | Set the key and restart; on a server whose owner agrees, `EDGY_AI_USERS=all`; or accept the built-in answer. |
 | `Claude could not answer: ….` | The call to Claude failed. | Read the reason; the built-in composer is tried next. |
 | `No agent is listening on this document, so the built-in composer answered.` | You asked for an agent and none is waiting with `edgy_listen`. | Start your agent, or accept the built-in answer. |
 | `Fell back to the built-in composer because no agent answered.` | An agent was listening but did not reply in time. | Try again. |
@@ -307,7 +313,11 @@ What the HTTP API answers, as `{"error": "…"}`:
 | 401 `this API key is not valid; make one in your profile (Profile → API keys)`, `this API key was revoked; make a new one in your profile`, or `this API key belongs to an account that no longer exists` | As above. |
 | 403 `an API key can not do that; sign in in the browser` | The profile, the password and the keys themselves need the person, not an agent with their key. |
 | 403 `you can view this document, not change it` or `only its owner can do that` | The person's role on the document is too low. |
-| 403 `a page on another site can not change edgy` | A browser write from an address that is not edgy's own. Agents with a key are not affected. |
+| 403 `a page on another site can not change edgy` | A browser write from an address that is not edgy's own. Agents with a key are not affected. Behind a proxy, it means the proxy doesn't pass on `Host` and `X-Forwarded-Proto`: see [Put it online](/start/install/#put-it-online). |
+| 403 `This server does not take new accounts. …` (reason `closed`) | Sign-up is off (`EDGY_SIGNUPS=off`). |
+| 404 `no such route: GET /api/…` | No route has that address. Check the method and the path against [the HTTP API](/agents/http/). |
+| 413 `that request is larger than 16 MB` (or `64 KB` on `/api/auth/*`) | The body is over the limit. Send fewer ops at a time. |
+| 429 `Too many tries. …` or `Too many new accounts from here. …` | Sign-ins or sign-ups came too fast from one address; `retry-after` says how long to wait. |
 | 404 `no such document` | No document has that id, or the person has no access to it. |
 | 404 `this link does not open anything`, 410 `this document is no longer shared`, 403 `this link does not reach that` or `this link can view the document, not change it` | A [share link](term:share-link) that is unknown, turned off, or too narrow for the route. |
 | 422 with the reason, such as `no cell called "x"` | An op or an expression failed. See [Ops](/agents/ops/). |

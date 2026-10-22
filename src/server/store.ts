@@ -163,8 +163,12 @@ export class Store {
   constructor(file: string) {
     if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
     this.db = new DatabaseSync(file);
+    // With WAL, NORMAL loses at most the last commits on a power cut, never the file; FULL waits for the disk on every one.
+    // Another process (a backup, the sqlite shell) holding the file a moment is waited for, not an error.
     this.db.exec(`
       PRAGMA journal_mode = WAL;
+      PRAGMA synchronous = NORMAL;
+      PRAGMA busy_timeout = 5000;
       CREATE TABLE IF NOT EXISTS docs (
         id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL,
         v INTEGER NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
@@ -180,14 +184,42 @@ export class Store {
       CREATE INDEX IF NOT EXISTS messages_by_doc ON messages (doc_id, id);
     `);
     this.migrate();
+    this.pruneSessions();
   }
+
+  /**
+   * Run fn as one transaction: all of its writes, or (when it throws) none.
+   * Called inside another, it is a savepoint of that one, so a step can fail
+   * alone and its caller still decides about the rest.
+   */
+  transaction<T>(fn: () => T): T {
+    // Counted here rather than asked of the database (isTransaction), which Node only has from 22.16.
+    const level = this.depth++;
+    const mark = `level${level}`;
+    this.db.exec(level ? `SAVEPOINT ${mark}` : 'BEGIN');
+    try {
+      const out = fn();
+      this.db.exec(level ? `RELEASE ${mark}` : 'COMMIT');
+      return out;
+    } catch (e) {
+      // (SQLite may have ended the transaction itself, on a full disk say: then there is nothing to roll back.)
+      try {
+        this.db.exec(level ? `ROLLBACK TO ${mark}; RELEASE ${mark}` : 'ROLLBACK');
+      } catch { /* already ended */ }
+      // A document cached meanwhile may be one that is no longer stored.
+      this.cache.clear();
+      throw e;
+    } finally {
+      this.depth--;
+    }
+  }
+  private depth = 0;
 
   /** Bring a file written by an older version up to SCHEMA, in place and all at once. */
   private migrate(): void {
     const version = Number((this.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version);
     if (version >= SCHEMA) return;
-    this.db.exec('BEGIN');
-    try {
+    this.transaction(() => {
       if (version < 2) this.toLibrary();
       // 3: a link remembers the collections it may reach (a link made before reaches none until the owner next edits).
       if (!this.columns('shares').has('collections')) this.db.exec("ALTER TABLE shares ADD COLUMN collections TEXT NOT NULL DEFAULT '[]'");
@@ -195,11 +227,7 @@ export class Store {
       if (version < 5) this.toSync();
       if (version < 6) this.toTrusted();
       this.db.exec(`PRAGMA user_version = ${SCHEMA}`);
-      this.db.exec('COMMIT');
-    } catch (e) {
-      this.db.exec('ROLLBACK');
-      throw e;
-    }
+    });
   }
 
   private columns(table: string): Set<string> {
@@ -383,17 +411,12 @@ export class Store {
   /** Save the new state and the ops that produced it, together. */
   saveDoc(doc: Doc, actor: Actor, ops: Op[]): number {
     const now = Date.now();
-    this.db.exec('BEGIN');
-    try {
+    this.transaction(() => {
       this.db.prepare('UPDATE docs SET title = ?, body = ?, v = ?, updated_at = ?, description = ?, text = ?, shape = ? WHERE id = ?')
         .run(doc.meta.title, JSON.stringify(doc), doc.v, now, ...derived(doc), doc.id);
       this.db.prepare('INSERT INTO ops (doc_id, v, ts, actor, ops, oid) VALUES (?, ?, ?, ?, ?, ?)')
         .run(doc.id, doc.v, now, JSON.stringify(actor), JSON.stringify(ops), newOid());
-      this.db.exec('COMMIT');
-    } catch (e) {
-      this.db.exec('ROLLBACK');
-      throw e;
-    }
+    });
     this.cache.set(doc.id, doc);
     this.onChange?.();
     return now;
@@ -402,9 +425,7 @@ export class Store {
   /** Gone for good: the document, its history, its messages, its links and its place in a deck. Records stay with their collections. */
   deleteDoc(id: string): boolean {
     this.cache.delete(id);
-    let ok = false;
-    this.db.exec('BEGIN');
-    try {
+    return this.transaction(() => {
       this.db.prepare('DELETE FROM ops WHERE doc_id = ?').run(id);
       this.db.prepare('DELETE FROM messages WHERE doc_id = ?').run(id);
       this.db.prepare('DELETE FROM shares WHERE doc_id = ?').run(id);
@@ -413,19 +434,15 @@ export class Store {
       const owner = this.docOwner(id);
       const synced = !!this.db.prepare('SELECT 1 FROM sync_docs WHERE doc_id = ?').get(id);
       this.db.prepare('DELETE FROM sync_docs WHERE doc_id = ?').run(id);
-      ok = this.db.prepare('DELETE FROM docs WHERE id = ?').run(id).changes > 0;
+      const ok = this.db.prepare('DELETE FROM docs WHERE id = ?').run(id).changes > 0;
       // The pinned close up behind it.
       if (ok) this.renumberPins(owner ?? null);
       if (ok) this.gone('doc', id);
       // Sent or on its way (a push may be in flight): other machines must hear it went.
       if (ok) this.dirty('doc', id, owner ?? null);
       if (ok && !synced) this.db.prepare("DELETE FROM sync_dirty WHERE kind = 'doclib' AND key = ?").run(id);
-      this.db.exec('COMMIT');
-    } catch (e) {
-      this.db.exec('ROLLBACK');
-      throw e;
-    }
-    return ok;
+      return ok;
+    });
   }
 
   log(docId: string, since = 0, limit = 200): LogEntry[] {
@@ -458,11 +475,13 @@ export class Store {
   /** Archive (or bring back) a document or a deck. Archiving unpins it. False when there is no such thing. */
   setArchived(id: string, archived: boolean): boolean {
     if (!this.exists(id)) return false;
-    if (archived) {
-      this.db.prepare(`UPDATE ${this.table(id)} SET archived_at = COALESCE(archived_at, ?), pinned = NULL WHERE id = ?`).run(Date.now(), id);
-      this.renumberPins(this.ownerOf(id));
-    } else this.db.prepare(`UPDATE ${this.table(id)} SET archived_at = NULL WHERE id = ?`).run(id);
-    this.dirty(isDeckId(id) ? 'deck' : 'doclib', id, this.ownerOf(id));
+    this.transaction(() => {
+      if (archived) {
+        this.db.prepare(`UPDATE ${this.table(id)} SET archived_at = COALESCE(archived_at, ?), pinned = NULL WHERE id = ?`).run(Date.now(), id);
+        this.renumberPins(this.ownerOf(id));
+      } else this.db.prepare(`UPDATE ${this.table(id)} SET archived_at = NULL WHERE id = ?`).run(id);
+      this.dirty(isDeckId(id) ? 'deck' : 'doclib', id, this.ownerOf(id));
+    });
     return true;
   }
 
@@ -485,8 +504,10 @@ export class Store {
       if (archived != null) return false;
       pins.push(id);
     }
-    if (!pinned) this.db.prepare(`UPDATE ${this.table(id)} SET pinned = NULL WHERE id = ?`).run(id);
-    this.writePins(owner, pins);
+    this.transaction(() => {
+      if (!pinned) this.db.prepare(`UPDATE ${this.table(id)} SET pinned = NULL WHERE id = ?`).run(id);
+      this.writePins(owner, pins);
+    });
     return true;
   }
 
@@ -496,14 +517,18 @@ export class Store {
    */
   orderPins(owner: string | null, ids: string[]): string[] {
     const pins = this.pins(owner);
-    const given = ids.filter((id, i) => pins.includes(id) && ids.indexOf(id) === i);
-    this.writePins(owner, [...given, ...pins.filter((id) => !given.includes(id))]);
+    // Sets, not indexOf: the list comes from a request, and may be long.
+    const pinned = new Set(pins);
+    const given = new Set(ids.filter((id) => pinned.has(id)));
+    this.writePins(owner, [...given, ...pins.filter((id) => !given.has(id))]);
     return this.pins(owner);
   }
 
   private writePins(owner: string | null, ids: string[]): void {
-    ids.forEach((id, i) => this.db.prepare(`UPDATE ${this.table(id)} SET pinned = ? WHERE id = ?`).run(i + 1, id));
-    this.dirty('pins', owner ?? '', owner);
+    this.transaction(() => {
+      ids.forEach((id, i) => this.db.prepare(`UPDATE ${this.table(id)} SET pinned = ? WHERE id = ?`).run(i + 1, id));
+      this.dirty('pins', owner ?? '', owner);
+    });
   }
 
   private renumberPins(owner: string | null): void {
@@ -512,11 +537,11 @@ export class Store {
 
   /** Put pins as the cloud says, quietly: these ids pinned in this order, the owner's others unpinned. */
   setPinsFromCloud(owner: string, ids: string[]): void {
-    this.quietly(() => {
+    this.quietly(() => this.transaction(() => {
       for (const t of ['docs', 'decks']) this.db.prepare(`UPDATE ${t} SET pinned = NULL WHERE owner = ?`).run(owner);
       // Only this owner's things can be in this owner's pins.
       ids.filter((id) => this.exists(id) && this.ownerOf(id) === owner).forEach((id, i) => this.db.prepare(`UPDATE ${this.table(id)} SET pinned = ? WHERE id = ?`).run(i + 1, id));
-    });
+    }));
   }
 
   // ── decks ──
@@ -552,51 +577,45 @@ export class Store {
   createDeck(title: string, description: string, docs: string[], owner: string | null = null): Deck {
     const id = 'deck-' + shortId(7);
     const now = Date.now();
-    this.db.exec('BEGIN');
-    try {
+    this.transaction(() => {
       this.db.prepare('INSERT INTO decks (id, title, description, created_at, updated_at, owner) VALUES (?, ?, ?, ?, ?, ?)').run(id, title, description, now, now, owner);
       this.putDocs(id, docs);
       this.dirty('deck', id, owner);
-      this.db.exec('COMMIT');
-    } catch (e) {
-      this.db.exec('ROLLBACK');
-      throw e;
-    }
+    });
     return this.deck(id)!;
   }
 
   /** Change a deck's title or description. */
   updateDeck(id: string, fields: { title?: string; description?: string }): Deck | null {
     if (!this.exists(id)) return null;
-    if (fields.title !== undefined) this.db.prepare('UPDATE decks SET title = ? WHERE id = ?').run(fields.title, id);
-    if (fields.description !== undefined) this.db.prepare('UPDATE decks SET description = ? WHERE id = ?').run(fields.description, id);
-    this.db.prepare('UPDATE decks SET updated_at = ? WHERE id = ?').run(Date.now(), id);
-    this.dirty('deck', id, this.ownerOf(id));
+    this.transaction(() => {
+      if (fields.title !== undefined) this.db.prepare('UPDATE decks SET title = ? WHERE id = ?').run(fields.title, id);
+      if (fields.description !== undefined) this.db.prepare('UPDATE decks SET description = ? WHERE id = ?').run(fields.description, id);
+      this.db.prepare('UPDATE decks SET updated_at = ? WHERE id = ?').run(Date.now(), id);
+      this.dirty('deck', id, this.ownerOf(id));
+    });
     return this.deck(id);
   }
 
   /** The deck's documents become exactly these, in this order: reorder, add and take out in one. */
   setDeckDocs(id: string, docs: string[]): Deck | null {
     if (!this.exists(id)) return null;
-    this.db.exec('BEGIN');
-    try {
+    this.transaction(() => {
       this.db.prepare('DELETE FROM deck_docs WHERE deck_id = ?').run(id);
       this.putDocs(id, docs);
       this.db.prepare('UPDATE decks SET updated_at = ? WHERE id = ?').run(Date.now(), id);
       this.dirty('deck', id, this.ownerOf(id));
-      this.db.exec('COMMIT');
-    } catch (e) {
-      this.db.exec('ROLLBACK');
-      throw e;
-    }
+    });
     return this.deck(id);
   }
 
   private putDocs(deck: string, docs: string[]): void {
-    const unique = docs.filter((d, i) => docs.indexOf(d) === i);
+    // A Set, not indexOf: the list comes from a request, and may be long.
+    const unique = [...new Set(docs)];
     // A deck holds its owner's documents only; someone else's is "no document" here.
     const owner = this.ownerOf(deck);
-    const missing = unique.filter((d) => !this.db.prepare('SELECT 1 FROM docs WHERE id = ? AND owner IS ?').get(d, owner));
+    const mine = this.db.prepare('SELECT 1 FROM docs WHERE id = ? AND owner IS ?');
+    const missing = unique.filter((d) => !mine.get(d, owner));
     if (missing.length) throw new StoreError(`no document ${missing.join(', ')}`);
     unique.forEach((doc, i) => {
       // A document moving from another deck changes that deck too.
@@ -610,14 +629,16 @@ export class Store {
   /** Ungroup: the deck goes, its documents stay and come back to the list. */
   deleteDeck(id: string): boolean {
     const owner = this.ownerOf(id);
-    this.db.prepare('DELETE FROM deck_docs WHERE deck_id = ?').run(id);
-    const ok = this.db.prepare('DELETE FROM decks WHERE id = ?').run(id).changes > 0;
-    if (ok) this.renumberPins(owner);
-    if (ok) {
-      this.gone('deck', id);
-      this.dirty('deck', id, owner);
-    }
-    return ok;
+    return this.transaction(() => {
+      this.db.prepare('DELETE FROM deck_docs WHERE deck_id = ?').run(id);
+      const ok = this.db.prepare('DELETE FROM decks WHERE id = ?').run(id).changes > 0;
+      if (ok) this.renumberPins(owner);
+      if (ok) {
+        this.gone('deck', id);
+        this.dirty('deck', id, owner);
+      }
+      return ok;
+    });
   }
 
   // ── share links ──
@@ -636,9 +657,11 @@ export class Store {
     const on = this.shares(docId).find((s) => s.access === access && s.revokedAt == null);
     if (on) return on;
     const token = newToken();
-    this.db.prepare('INSERT INTO shares (token, doc_id, access, created_at, collections) VALUES (?, ?, ?, ?, ?)')
-      .run(token, docId, access, Date.now(), JSON.stringify(collections));
-    this.dirty('share', token, this.docOwner(docId) ?? null);
+    this.transaction(() => {
+      this.db.prepare('INSERT INTO shares (token, doc_id, access, created_at, collections) VALUES (?, ?, ?, ?, ?)')
+        .run(token, docId, access, Date.now(), JSON.stringify(collections));
+      this.dirty('share', token, this.docOwner(docId) ?? null);
+    });
     return this.share(token)!;
   }
 
@@ -653,19 +676,23 @@ export class Store {
     const json = JSON.stringify(collections);
     const before = this.db.prepare('SELECT reaches FROM docs WHERE id = ?').get(docId)?.reaches;
     if (before === json) return;
-    this.db.prepare('UPDATE docs SET reaches = ? WHERE id = ?').run(json, docId);
-    this.db.prepare('UPDATE shares SET collections = ? WHERE doc_id = ? AND revoked_at IS NULL').run(json, docId);
-    const owner = this.docOwner(docId) ?? null;
-    this.dirty('doclib', docId, owner);
-    for (const s of this.shares(docId)) if (s.revokedAt == null) this.dirty('share', s.token, owner);
+    this.transaction(() => {
+      this.db.prepare('UPDATE docs SET reaches = ? WHERE id = ?').run(json, docId);
+      this.db.prepare('UPDATE shares SET collections = ? WHERE doc_id = ? AND revoked_at IS NULL').run(json, docId);
+      const owner = this.docOwner(docId) ?? null;
+      this.dirty('doclib', docId, owner);
+      for (const s of this.shares(docId)) if (s.revokedAt == null) this.dirty('share', s.token, owner);
+    });
   }
 
   /** Turn a link off for good. The token stays known, so it can say it was turned off. */
   closeShare(token: string): Share | null {
-    this.db.prepare('UPDATE shares SET revoked_at = COALESCE(revoked_at, ?) WHERE token = ?').run(Date.now(), token);
-    const s = this.share(token);
-    if (s) this.dirty('share', token, this.docOwner(s.doc) ?? null);
-    return s;
+    return this.transaction(() => {
+      this.db.prepare('UPDATE shares SET revoked_at = COALESCE(revoked_at, ?) WHERE token = ?').run(Date.now(), token);
+      const s = this.share(token);
+      if (s) this.dirty('share', token, this.docOwner(s.doc) ?? null);
+      return s;
+    });
   }
 
   // ── collections ──
@@ -683,38 +710,47 @@ export class Store {
   }
 
   insert(owner: string | null, collection: string, data: Record<string, Json>, source?: Json): Row {
-    const id = 'r' + shortId(7);
+    // Ids are global (every account, every machine, one table in the cloud): long enough never to meet. Older, shorter ones still work.
+    const id = 'r' + shortId(16);
     const ts = Date.now();
     const { id: _i, at: _a, ...clean } = data;
-    this.db.prepare('INSERT INTO records (id, collection, data, ts, source, owner) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(id, collection, JSON.stringify(clean), ts, source == null ? null : JSON.stringify(source), owner);
-    this.dirty('record', id, owner);
+    this.transaction(() => {
+      this.db.prepare('INSERT INTO records (id, collection, data, ts, source, owner) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(id, collection, JSON.stringify(clean), ts, source == null ? null : JSON.stringify(source), owner);
+      this.dirty('record', id, owner);
+    });
     return { ...clean, id, at: ts };
   }
 
   /** Merge fields into a saved record; null when there is no such record. id and at can't be changed. */
   update(owner: string | null, collection: string, id: string, fields: Record<string, Json>): Row | null {
-    const r = this.db.prepare('SELECT data, ts FROM records WHERE owner IS ? AND collection = ? AND id = ?').get(owner, collection, id);
-    if (!r) return null;
-    const { id: _i, at: _a, ...clean } = fields;
-    const data = { ...(JSON.parse(r.data as string) as Record<string, Json>), ...clean };
-    this.db.prepare('UPDATE records SET data = ? WHERE owner IS ? AND collection = ? AND id = ?').run(JSON.stringify(data), owner, collection, id);
-    this.dirty('record', id, owner, Object.keys(clean));
-    return { ...data, id, at: r.ts as number };
+    return this.transaction(() => {
+      const r = this.db.prepare('SELECT data, ts FROM records WHERE owner IS ? AND collection = ? AND id = ?').get(owner, collection, id);
+      if (!r) return null;
+      const { id: _i, at: _a, ...clean } = fields;
+      const data = { ...(JSON.parse(r.data as string) as Record<string, Json>), ...clean };
+      this.db.prepare('UPDATE records SET data = ? WHERE owner IS ? AND collection = ? AND id = ?').run(JSON.stringify(data), owner, collection, id);
+      this.dirty('record', id, owner, Object.keys(clean));
+      return { ...data, id, at: r.ts as number };
+    });
   }
 
   deleteRow(owner: string | null, collection: string, id: string): boolean {
-    const ok = this.db.prepare('DELETE FROM records WHERE owner IS ? AND collection = ? AND id = ?').run(owner, collection, id).changes > 0;
-    if (ok) this.recordGone(id, owner);
-    return ok;
+    return this.transaction(() => {
+      const ok = this.db.prepare('DELETE FROM records WHERE owner IS ? AND collection = ? AND id = ?').run(owner, collection, id).changes > 0;
+      if (ok) this.recordGone(id, owner);
+      return ok;
+    });
   }
 
   /** Every record of the collection goes. (Synced as each of them deleted: one added elsewhere meanwhile stays.) */
   clear(owner: string | null, collection: string): number {
-    const ids = this.db.prepare('SELECT id FROM records WHERE owner IS ? AND collection = ?').all(owner, collection).map((r) => r.id as string);
-    this.db.prepare('DELETE FROM records WHERE owner IS ? AND collection = ?').run(owner, collection);
-    for (const id of ids) this.recordGone(id, owner);
-    return ids.length;
+    return this.transaction(() => {
+      const ids = this.db.prepare('SELECT id FROM records WHERE owner IS ? AND collection = ?').all(owner, collection).map((r) => r.id as string);
+      this.db.prepare('DELETE FROM records WHERE owner IS ? AND collection = ?').run(owner, collection);
+      for (const id of ids) this.recordGone(id, owner);
+      return ids.length;
+    });
   }
 
   private recordGone(id: string, owner: string | null): void {
@@ -724,8 +760,9 @@ export class Store {
 
   // ── messages ──
 
-  messages(docId: string, after = 0): Message[] {
-    const rows = this.db.prepare('SELECT id, ts, actor, text, cell FROM messages WHERE doc_id = ? AND id > ? ORDER BY id').all(docId, after);
+  /** A document's messages after `after`, oldest first: the latest `limit` of them. */
+  messages(docId: string, after = 0, limit = 500): Message[] {
+    const rows = this.db.prepare('SELECT id, ts, actor, text, cell FROM messages WHERE doc_id = ? AND id > ? ORDER BY id DESC LIMIT ?').all(docId, after, limit).reverse();
     return rows.map((r) => ({
       id: r.id as number,
       ts: r.ts as number,
@@ -779,8 +816,7 @@ export class Store {
   createUser(u: { id?: string; email: string | null; name: string; color: string; password: string | null; local?: boolean; createdAt?: number; fromCloud?: boolean }): User {
     const id = u.id ?? 'u' + shortId(9);
     const now = u.createdAt ?? Date.now();
-    this.db.exec('BEGIN');
-    try {
+    this.transaction(() => {
       // An account that comes down from the cloud has its own things there; it claims nothing here.
       const first = !u.fromCloud && !this.db.prepare('SELECT 1 FROM users LIMIT 1').get();
       this.db.prepare('INSERT INTO users (id, email, name, color, password, local, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
@@ -792,17 +828,15 @@ export class Store {
       }
       if (u.fromCloud) this.db.prepare('INSERT OR IGNORE INTO sync_spaces (space, cursor, ready) VALUES (?, 0, 1)').run(id);
       else this.dirty('account', id, id);
-      this.db.exec('COMMIT');
-    } catch (e) {
-      this.db.exec('ROLLBACK');
-      throw e;
-    }
+    });
     return this.user(id)!;
   }
 
   /** Everything without an owner becomes this account's. */
   claimOrphans(userId: string): void {
-    for (const t of ['docs', 'decks', 'records']) this.db.prepare(`UPDATE ${t} SET owner = ? WHERE owner IS NULL`).run(userId);
+    this.transaction(() => {
+      for (const t of ['docs', 'decks', 'records']) this.db.prepare(`UPDATE ${t} SET owner = ? WHERE owner IS NULL`).run(userId);
+    });
   }
 
   updateUser(id: string, fields: { email?: string | null; name?: string; color?: string; theme?: 'light' | 'dark' | null; password?: string; local?: boolean }): User | null {
@@ -815,8 +849,10 @@ export class Store {
     if (fields.local !== undefined) cols.local = fields.local ? 1 : 0;
     const keys = Object.keys(cols);
     if (keys.length) {
-      this.db.prepare(`UPDATE users SET ${keys.map((k) => `${k} = ?`).join(', ')}, updated_at = ? WHERE id = ?`).run(...keys.map((k) => cols[k]), Date.now(), id);
-      this.dirty('account', id, id);
+      this.transaction(() => {
+        this.db.prepare(`UPDATE users SET ${keys.map((k) => `${k} = ?`).join(', ')}, updated_at = ? WHERE id = ?`).run(...keys.map((k) => cols[k]), Date.now(), id);
+        this.dirty('account', id, id);
+      });
     }
     return this.user(id);
   }
@@ -830,10 +866,9 @@ export class Store {
   deleteUser(id: string): string[] {
     const docs = this.db.prepare('SELECT id FROM docs WHERE owner = ?').all(id).map((r) => r.id as string);
     // The account and all it has go together; with sync, its space in the cloud goes as one (see sync.ts).
-    this.quietly(() => { for (const doc of docs) this.deleteDoc(doc); });
-    this.forgetSpace(id);
-    this.db.exec('BEGIN');
-    try {
+    this.transaction(() => {
+      this.quietly(() => { for (const doc of docs) this.deleteDoc(doc); });
+      this.forgetSpace(id);
       for (const deck of this.db.prepare('SELECT id FROM decks WHERE owner = ?').all(id)) this.db.prepare('DELETE FROM deck_docs WHERE deck_id = ?').run(deck.id as string);
       this.db.prepare('DELETE FROM decks WHERE owner = ?').run(id);
       this.db.prepare('DELETE FROM records WHERE owner = ?').run(id);
@@ -841,18 +876,24 @@ export class Store {
       this.db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
       this.db.prepare('DELETE FROM api_keys WHERE user_id = ?').run(id);
       this.db.prepare('DELETE FROM users WHERE id = ?').run(id);
-      this.db.exec('COMMIT');
-    } catch (e) {
-      this.db.exec('ROLLBACK');
-      throw e;
-    }
+    });
     return docs;
   }
 
   // ── sessions: only the digest of the cookie is kept ──
 
+  private prunedAt = 0;
+
+  /** Sessions past their end go (at most once an hour): one that is never used again would otherwise stay for good. */
+  private pruneSessions(now = Date.now()): void {
+    if (now - this.prunedAt < 3_600_000) return;
+    this.prunedAt = now;
+    this.db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now);
+  }
+
   createSession(hash: string, userId: string, expiresAt: number, agent?: string): void {
     const now = Date.now();
+    this.pruneSessions(now);
     this.db.prepare('INSERT INTO sessions (hash, user_id, created_at, seen_at, expires_at, agent) VALUES (?, ?, ?, ?, ?, ?)')
       .run(hash, userId, now, now, expiresAt, agent?.slice(0, 200) ?? null);
   }
@@ -934,11 +975,13 @@ export class Store {
 
   /** Give access, change it, or (role null) take it away. */
   setRole(docId: string, userId: string, role: Role | null): void {
-    this.dirty('access', `${docId} ${userId}`, this.docOwner(docId) ?? null);
-    if (role) {
-      this.db.prepare('INSERT INTO doc_access (doc_id, user_id, role, granted_at) VALUES (?, ?, ?, ?) ON CONFLICT (doc_id, user_id) DO UPDATE SET role = excluded.role')
-        .run(docId, userId, role, Date.now());
-    } else this.db.prepare('DELETE FROM doc_access WHERE doc_id = ? AND user_id = ?').run(docId, userId);
+    this.transaction(() => {
+      this.dirty('access', `${docId} ${userId}`, this.docOwner(docId) ?? null);
+      if (role) {
+        this.db.prepare('INSERT INTO doc_access (doc_id, user_id, role, granted_at) VALUES (?, ?, ?, ?) ON CONFLICT (doc_id, user_id) DO UPDATE SET role = excluded.role')
+          .run(docId, userId, role, Date.now());
+      } else this.db.prepare('DELETE FROM doc_access WHERE doc_id = ? AND user_id = ?').run(docId, userId);
+    });
   }
 
   // ── sync: what the cloud has, and what is still to send (see sync.ts) ──
@@ -961,21 +1004,22 @@ export class Store {
   /** Something of `space` changed here: remember to send it (which fields, or '*' for all of it). */
   private dirty(kind: string, key: string, space: string | null, fields: string[] | '*' = '*'): void {
     if (this.quiet || !space) return;
-    const n = this.counter();
-    const prev = this.db.prepare('SELECT fields FROM sync_dirty WHERE kind = ? AND key = ?').get(kind, key)?.fields as string | undefined;
-    const merged = prev === '*' || fields === '*'
-      ? '*'
-      : JSON.stringify([...new Set([...(prev ? (JSON.parse(prev) as string[]) : []), ...fields])]);
-    this.db.prepare('INSERT INTO sync_dirty (kind, key, space, n, fields) VALUES (?, ?, ?, ?, ?) ON CONFLICT (kind, key) DO UPDATE SET n = excluded.n, fields = excluded.fields, space = excluded.space')
-      .run(kind, key, space, n, merged);
+    this.transaction(() => {
+      const n = this.counter();
+      const prev = this.db.prepare('SELECT fields FROM sync_dirty WHERE kind = ? AND key = ?').get(kind, key)?.fields as string | undefined;
+      const merged = prev === '*' || fields === '*'
+        ? '*'
+        : JSON.stringify([...new Set([...(prev ? (JSON.parse(prev) as string[]) : []), ...fields])]);
+      this.db.prepare('INSERT INTO sync_dirty (kind, key, space, n, fields) VALUES (?, ?, ?, ?, ?) ON CONFLICT (kind, key) DO UPDATE SET n = excluded.n, fields = excluded.fields, space = excluded.space')
+        .run(kind, key, space, n, merged);
+    });
     this.onChange?.();
   }
 
   /** A number that only goes up, for this file. */
   private counter(): number {
-    this.db.prepare("INSERT INTO sync_meta (key, value) VALUES ('n', '0') ON CONFLICT (key) DO NOTHING").run();
-    this.db.prepare("UPDATE sync_meta SET value = CAST(value AS INTEGER) + 1 WHERE key = 'n'").run();
-    return Number(this.syncMeta('n'));
+    const r = this.db.prepare("INSERT INTO sync_meta (key, value) VALUES ('n', '1') ON CONFLICT (key) DO UPDATE SET value = CAST(value AS INTEGER) + 1 RETURNING value").get();
+    return Number(r!.value);
   }
 
   private gone(kind: string, key: string): void {
@@ -1033,13 +1077,15 @@ export class Store {
    * to send (records, decks, pins, links, access, its library flags, the account).
    */
   markAll(space: string): void {
-    for (const r of this.db.prepare('SELECT id FROM records WHERE owner = ?').all(space)) this.dirty('record', r.id as string, space);
-    for (const r of this.db.prepare('SELECT id FROM decks WHERE owner = ?').all(space)) this.dirty('deck', r.id as string, space);
-    for (const r of this.db.prepare('SELECT id FROM docs WHERE owner = ?').all(space)) this.dirty('doclib', r.id as string, space);
-    for (const r of this.db.prepare('SELECT s.token FROM shares s JOIN docs d ON d.id = s.doc_id WHERE d.owner = ?').all(space)) this.dirty('share', r.token as string, space);
-    for (const r of this.db.prepare('SELECT a.doc_id, a.user_id FROM doc_access a JOIN docs d ON d.id = a.doc_id WHERE d.owner = ?').all(space)) this.dirty('access', `${r.doc_id} ${r.user_id}`, space);
-    this.dirty('pins', space, space);
-    this.dirty('account', space, space);
+    this.transaction(() => {
+      for (const r of this.db.prepare('SELECT id FROM records WHERE owner = ?').all(space)) this.dirty('record', r.id as string, space);
+      for (const r of this.db.prepare('SELECT id FROM decks WHERE owner = ?').all(space)) this.dirty('deck', r.id as string, space);
+      for (const r of this.db.prepare('SELECT id FROM docs WHERE owner = ?').all(space)) this.dirty('doclib', r.id as string, space);
+      for (const r of this.db.prepare('SELECT s.token FROM shares s JOIN docs d ON d.id = s.doc_id WHERE d.owner = ?').all(space)) this.dirty('share', r.token as string, space);
+      for (const r of this.db.prepare('SELECT a.doc_id, a.user_id FROM doc_access a JOIN docs d ON d.id = a.doc_id WHERE d.owner = ?').all(space)) this.dirty('access', `${r.doc_id} ${r.user_id}`, space);
+      this.dirty('pins', space, space);
+      this.dirty('account', space, space);
+    });
   }
 
   dirtyItems(): { kind: string; key: string; space: string; n: number; fields: string[] | '*' }[] {
@@ -1081,9 +1127,11 @@ export class Store {
   }
 
   setSyncDoc(id: string, space: string, baseV: number, base: Doc): void {
-    if (!this.syncMeta(`base:${id}`)) this.setSyncMeta(`base:${id}`, String(baseV));
-    this.db.prepare('INSERT INTO sync_docs (doc_id, space, base_v, base_body) VALUES (?, ?, ?, ?) ON CONFLICT (doc_id) DO UPDATE SET base_v = excluded.base_v, base_body = excluded.base_body, space = excluded.space')
-      .run(id, space, baseV, JSON.stringify(base));
+    this.transaction(() => {
+      if (!this.syncMeta(`base:${id}`)) this.setSyncMeta(`base:${id}`, String(baseV));
+      this.db.prepare('INSERT INTO sync_docs (doc_id, space, base_v, base_body) VALUES (?, ?, ?, ?) ON CONFLICT (doc_id) DO UPDATE SET base_v = excluded.base_v, base_body = excluded.base_body, space = excluded.space')
+        .run(id, space, baseV, JSON.stringify(base));
+    });
   }
 
   /** Ops made here after what the cloud confirmed, in order, per document (or for one). */
@@ -1107,16 +1155,19 @@ export class Store {
   /** A document that came down from the cloud: its state at `doc.v` and the account it belongs to. */
   receiveDoc(doc: Doc, owner: string, createdAt: number, updatedAt: number): void {
     this.quietly(() => {
-      this.db.prepare('INSERT INTO docs (id, title, body, v, created_at, updated_at, description, text, shape, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING')
-        .run(doc.id, doc.meta.title, JSON.stringify(doc), doc.v, createdAt, updatedAt, ...derived(doc), owner);
-      this.cache.set(doc.id, doc);
+      const made = this.db.prepare('INSERT INTO docs (id, title, body, v, created_at, updated_at, description, text, shape, owner) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO NOTHING')
+        .run(doc.id, doc.meta.title, JSON.stringify(doc), doc.v, createdAt, updatedAt, ...derived(doc), owner).changes > 0;
+      // Only what is now stored: a document already here stays as it is, in the cache too.
+      if (made) this.cache.set(doc.id, doc);
     });
   }
 
   /** History that came down from the cloud, entries this file doesn't have yet. */
   receiveHistory(id: string, entries: { v: number; ts: number; actor: Actor; ops: Op[]; conflict?: boolean; oid?: string | null }[]): void {
     const put = this.db.prepare('INSERT OR IGNORE INTO ops (doc_id, v, ts, actor, ops, oid, conflict) VALUES (?, ?, ?, ?, ?, ?, ?)');
-    for (const e of entries) put.run(id, e.v, e.ts, JSON.stringify(e.actor), JSON.stringify(e.ops), e.oid ?? null, e.conflict ? 1 : 0);
+    this.transaction(() => {
+      for (const e of entries) put.run(id, e.v, e.ts, JSON.stringify(e.actor), JSON.stringify(e.ops), e.oid ?? null, e.conflict ? 1 : 0);
+    });
   }
 
   /**
@@ -1125,25 +1176,23 @@ export class Store {
    * becomes `doc`, in one transaction.
    */
   rewriteHistory(doc: Doc, fromV: number, entries: { v: number; ts: number; actor: Actor; ops: Op[]; oid: string; seq?: number; conflict?: boolean }[]): void {
-    this.db.exec('BEGIN');
-    try {
+    this.transaction(() => {
       this.db.prepare('DELETE FROM ops WHERE doc_id = ? AND v > ?').run(doc.id, fromV);
       const put = this.db.prepare('INSERT INTO ops (doc_id, v, ts, actor, ops, oid, seq, conflict) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
       for (const e of entries) put.run(doc.id, e.v, e.ts, JSON.stringify(e.actor), JSON.stringify(e.ops), e.oid, e.seq ?? null, e.conflict ? 1 : 0);
       this.db.prepare('UPDATE docs SET title = ?, body = ?, v = ?, updated_at = ?, description = ?, text = ?, shape = ? WHERE id = ?')
         .run(doc.meta.title, JSON.stringify(doc), doc.v, Date.now(), ...derived(doc), doc.id);
-      this.db.exec('COMMIT');
-    } catch (e) {
-      this.db.exec('ROLLBACK');
-      throw e;
-    }
+    });
+    // (Inside a larger transaction that is undone later, the cache is emptied then: see `transaction`.)
     this.cache.set(doc.id, doc);
   }
 
   /** The cloud confirmed these ops where they already are. */
   confirmOps(id: string, confirmed: { oid: string; seq: number }[]): void {
     const set = this.db.prepare('UPDATE ops SET seq = ? WHERE doc_id = ? AND oid = ?');
-    for (const c of confirmed) set.run(c.seq, id, c.oid);
+    this.transaction(() => {
+      for (const c of confirmed) set.run(c.seq, id, c.oid);
+    });
   }
 
   /** A document's library flags, as the cloud says. */
@@ -1175,8 +1224,10 @@ export class Store {
   setTrusted(docId: string, entries: string[]): void {
     const json = JSON.stringify(entries);
     if (this.db.prepare('SELECT trusted FROM docs WHERE id = ?').get(docId)?.trusted === json) return;
-    this.db.prepare('UPDATE docs SET trusted = ? WHERE id = ?').run(json, docId);
-    this.dirty('doclib', docId, this.docOwner(docId) ?? null);
+    this.transaction(() => {
+      this.db.prepare('UPDATE docs SET trusted = ? WHERE id = ?').run(json, docId);
+      this.dirty('doclib', docId, this.docOwner(docId) ?? null);
+    });
   }
 
   /** Documents whose reach was never worked out and that nobody but their owner can change: safe to work out now. */
@@ -1204,26 +1255,29 @@ export class Store {
   }
 
   dropRecord(id: string): void {
-    this.db.prepare('DELETE FROM records WHERE id = ?').run(id);
-    this.gone('record', id);
+    this.transaction(() => {
+      this.db.prepare('DELETE FROM records WHERE id = ?').run(id);
+      this.gone('record', id);
+    });
   }
 
   /** A deck as the cloud says (or gone). Quiet. */
   receiveDeck(owner: string, d: { id: string; title: string; description: string; createdAt: number; updatedAt: number; archivedAt: number | null; docs: string[] } | null, id: string): void {
-    this.quietly(() => {
+    this.quietly(() => this.transaction(() => {
       this.db.prepare('DELETE FROM deck_docs WHERE deck_id = ?').run(id);
       if (!d) {
         this.db.prepare('DELETE FROM decks WHERE id = ?').run(id);
         this.gone('deck', id);
         return;
       }
+      // The deck is `id`, whatever the body says it is (sync checks they agree).
       this.db.prepare('INSERT INTO decks (id, title, description, created_at, updated_at, archived_at, owner) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET title = excluded.title, description = excluded.description, updated_at = excluded.updated_at, archived_at = excluded.archived_at')
-        .run(d.id, d.title, d.description, d.createdAt, d.updatedAt, d.archivedAt, owner);
+        .run(id, d.title, d.description, d.createdAt, d.updatedAt, d.archivedAt, owner);
       d.docs.filter((doc) => this.db.prepare('SELECT 1 FROM docs WHERE id = ? AND owner = ?').get(doc, owner)).forEach((doc, i) => {
         this.db.prepare('DELETE FROM deck_docs WHERE doc_id = ?').run(doc);
-        this.db.prepare('INSERT INTO deck_docs (deck_id, doc_id, pos) VALUES (?, ?, ?)').run(d.id, doc, i);
+        this.db.prepare('INSERT INTO deck_docs (deck_id, doc_id, pos) VALUES (?, ?, ?)').run(id, doc, i);
       });
-    });
+    }));
   }
 
   /** A share link as the cloud says. */
@@ -1272,17 +1326,15 @@ export class Store {
    * start again, as if never synced. Everything here goes up; what the cloud has comes down.
    */
   resetSync(): void {
-    this.db.exec('BEGIN');
-    try {
+    this.transaction(() => {
       this.db.prepare('UPDATE sync_spaces SET cursor = 0, ready = 0').run();
       this.db.prepare('DELETE FROM sync_docs').run();
       this.db.prepare("DELETE FROM sync_meta WHERE key LIKE 'base:%'").run();
       this.db.prepare('UPDATE ops SET seq = NULL').run();
-      this.db.exec('COMMIT');
-    } catch (e) {
-      this.db.exec('ROLLBACK');
-      throw e;
-    }
+      // A restored cloud still has each account's older rows, so the first pull won't find it empty and mark
+      // everything itself (see sync.ts): what changed since that backup would never go up again.
+      for (const r of this.db.prepare('SELECT id FROM users').all()) this.markAll(r.id as string);
+    });
   }
 
   /** The ops of a document the cloud already confirmed, by oid. */
@@ -1292,10 +1344,12 @@ export class Store {
 
   /** Forget an account's sync state (it was deleted). */
   forgetSpace(space: string): void {
-    for (const r of this.db.prepare('SELECT doc_id FROM sync_docs WHERE space = ?').all(space)) this.deleteSyncMeta(`base:${r.doc_id}`);
-    this.db.prepare('DELETE FROM sync_dirty WHERE space = ?').run(space);
-    this.db.prepare('DELETE FROM sync_spaces WHERE space = ?').run(space);
-    this.db.prepare('DELETE FROM sync_docs WHERE space = ?').run(space);
+    this.transaction(() => {
+      for (const r of this.db.prepare('SELECT doc_id FROM sync_docs WHERE space = ?').all(space)) this.deleteSyncMeta(`base:${r.doc_id}`);
+      this.db.prepare('DELETE FROM sync_dirty WHERE space = ?').run(space);
+      this.db.prepare('DELETE FROM sync_spaces WHERE space = ?').run(space);
+      this.db.prepare('DELETE FROM sync_docs WHERE space = ?').run(space);
+    });
   }
 
   close(): void {

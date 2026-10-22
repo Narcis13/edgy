@@ -33,24 +33,27 @@ export function startLive(root: URL, theme: Theme, onTheme: (fn: (t: string) => 
   }, { rootMargin: '100% 0px' });
   for (const b of boxes) io.observe(b);
 
+  // The frames are this site's own files: messages go to, and come from, this origin only (a page opened from disk has none to name).
+  const site = location.origin === 'null' ? '*' : location.origin;
   addEventListener('message', (e) => {
     const m = e.data as { type?: string; id?: string; h?: number };
-    if (!m || typeof m.id !== 'string') return;
+    if (!m || typeof m.id !== 'string' || e.origin !== location.origin) return;
     const f = frames.get(m.id);
     if (!f || e.source !== f.contentWindow) return;
-    if (m.type === 'edgy-live-ready') f.contentWindow!.postMessage({ type: 'edgy-live-doc', source: source(m.id), theme: theme() }, '*');
+    if (m.type === 'edgy-live-ready') f.contentWindow!.postMessage({ type: 'edgy-live-doc', source: source(m.id), theme: theme() }, site);
     if (m.type === 'edgy-live-height' && typeof m.h === 'number') {
       const box = f.parentElement!;
       box.style.height = `${Math.max(80, Math.min(1400, Math.ceil(m.h)))}px`;
     }
   });
 
-  onTheme((t) => { for (const f of frames.values()) f.contentWindow?.postMessage({ type: 'edgy-live-theme', theme: t }, '*'); });
+  onTheme((t) => { for (const f of frames.values()) f.contentWindow?.postMessage({ type: 'edgy-live-theme', theme: t }, site); });
 
   for (const b of document.querySelectorAll<HTMLButtonElement>('[data-live-reset]')) {
     b.addEventListener('click', () => {
       const f = frames.get(b.dataset.liveReset!);
-      if (f) f.src = f.src.replace(/(#.*)?$/, '') + '#' + encodeURIComponent(b.dataset.liveReset!) + '&' + Date.now();
+      // Loaded again from the start: a new #fragment alone would only scroll the frame, not run the example afresh.
+      if (f) f.contentWindow?.location.reload();
       else start(document.querySelector<HTMLElement>(`.live-box[data-live="${b.dataset.liveReset}"]`)!);
     });
   }

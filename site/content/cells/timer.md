@@ -70,7 +70,7 @@ There is no body. The handler goes in `on`:
 | `value` | `false` while stopped. Leave it out for a timer that runs. |
 | `on` | The handlers: `{"tick": action}`. |
 
-A time is longer than 0 and at most a day. Anything else is refused: *every is a time in seconds, like 30, or "500ms", "30s", "2m", "1h", at most a day*. An `every` under a second is read but ticks once a second.
+A time is longer than 0 and at most a day. Anything else is refused: *every is a time in seconds, like 30, or "500ms", "30s", "2m", "1h", at most a day*. An `every` under a second is read but ticks once a second, and an `after` under a second waits a second: a timer that starts itself again from its own `tick` can't run without a pause.
 
 ## Its value
 

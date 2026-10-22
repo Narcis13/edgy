@@ -106,8 +106,13 @@ Only arithmetic is strict. [sum](fn:sum), [avg](fn:avg), [min](fn:min) and [max]
 
 | Message | What it means and what to do |
 | --- | --- |
-| `this takes too long to compute` | One expression used more than 400,000 steps, usually a list worked over inside another list. Make the lists smaller or the expression simpler. |
+| `this takes too long to compute` | One expression used more than 400,000 steps, usually a list worked over inside another list. Each item a function such as `map`, `filter` or `sum` goes through counts, and so does long text. Make the lists smaller or the expression simpler. |
+| `this document's formulas take too long to compute together` | Every formula in the document together used more than 4,000,000 steps, so the ones worked out last show this. Make the heavy cells lighter, or move work into a [data](kind:data) cell an action fills once. |
 | `this nests too deeply` | More than 300 calls inside each other. A formula that needs this is better as several cells. |
+| `this value nests too deeply` | A value with lists inside lists more than 300 deep. |
+| `this list is too long (over 100,000 items)` | A function would make a list longer than that ([concat](fn:concat), [flat](fn:flat), [split](fn:split) …). |
+| `this text is too long (over 2,000,000 characters)` | A function would make text longer than that ([str](fn:str), [join](fn:join), [replace](fn:replace) …). |
+| `this value is too big to show or send` | What the formula gives back, or sends with an action, has more than a million items and characters' worth in it, counting a list held twice twice. |
 
 ```sx
 (count-if (> (count-if (> it 1) (range 700)) 0) (range 700))
