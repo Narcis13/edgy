@@ -248,23 +248,30 @@ function describe(v: unknown): string {
   return String(v);
 }
 
+/** Numbers and dates written as text are never longer than this, so longer text isn't scanned for one. */
+const SHORT_TEXT = 100;
+
+/** Text read as a number, or NaN. */
+const asNumber = (s: string) => (s.length > SHORT_TEXT ? NaN : Number(s));
+
 export function toNum(v: unknown): number {
   if (typeof v === 'number') return v;
   if (v == null || v === '') return 0;
   if (typeof v === 'boolean') return v ? 1 : 0;
-  if (typeof v === 'string') {
+  if (typeof v === 'string' && v.length <= SHORT_TEXT) {
     const n = Number(v.replace(/[,\s]/g, ''));
     if (!Number.isNaN(n)) return n;
   }
   throw new SxError(`expected a number, got ${describe(v)}`);
 }
 
-/** Every number found in the arguments, however deeply nested. Text is skipped. */
-function numbersIn(args: unknown[], out: number[] = []): number[] {
+/** Every number found in the arguments, however deeply nested, a step for each item looked at. Text is skipped. */
+function numbersIn(args: unknown[], I: Interp, out: number[] = []): number[] {
+  I.spend(args.length);
   for (const a of args) {
-    if (Array.isArray(a)) numbersIn(a, out);
+    if (Array.isArray(a)) numbersIn(a, I, out);
     else if (typeof a === 'number') out.push(a);
-    else if (typeof a === 'string' && a.trim() !== '' && !Number.isNaN(Number(a))) out.push(Number(a));
+    else if (typeof a === 'string' && !Number.isNaN(asNumber(a)) && a.trim() !== '') out.push(Number(a));
   }
   return out;
 }
@@ -273,32 +280,48 @@ const toList = (v: unknown): unknown[] => (Array.isArray(v) ? v : v == null ? []
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-export function deepEqual(a: unknown, b: unknown): boolean {
+/** How many characters two texts share at the start, which is what comparing them costs. */
+function shared(a: string, b: string): number {
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < n && a.charCodeAt(i) === b.charCodeAt(i)) i++;
+  return i;
+}
+
+/** Equal in value, fields in any order. With `I`, the comparing is paid for, a step per item and for long shared text. */
+export function deepEqual(a: unknown, b: unknown, I?: Interp): boolean {
+  if (I && typeof a === 'string' && typeof b === 'string' && a.length === b.length) I.spend(textCost(shared(a, b)));
   if (a === b) return true;
   if (typeof a !== typeof b || a === null || b === null || typeof a !== 'object') return false;
   if (Array.isArray(a) !== Array.isArray(b)) return false;
   if (Array.isArray(a)) {
     const bb = b as unknown[];
-    return a.length === bb.length && a.every((x, i) => deepEqual(x, bb[i]));
+    if (a.length !== bb.length) return false;
+    I?.spend(1 + a.length);
+    return a.every((x, i) => deepEqual(x, bb[i], I));
   }
   const ka = Object.keys(a as object);
   const kb = Object.keys(b as object);
-  return ka.length === kb.length && ka.every((k) => deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+  if (ka.length !== kb.length) return false;
+  I?.spend(1 + ka.length);
+  return ka.every((k) => deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k], I));
 }
 
-function looseEq(a: unknown, b: unknown): boolean {
-  if (typeof a === 'number' && typeof b === 'string' && b !== '') return a === Number(b);
-  if (typeof b === 'number' && typeof a === 'string' && a !== '') return b === Number(a);
-  return deepEqual(a ?? null, b ?? null);
+function looseEq(a: unknown, b: unknown, I?: Interp): boolean {
+  if (typeof a === 'number' && typeof b === 'string' && b !== '') return a === asNumber(b);
+  if (typeof b === 'number' && typeof a === 'string' && a !== '') return b === asNumber(a);
+  return deepEqual(a ?? null, b ?? null, I);
 }
 
-function compare(a: unknown, b: unknown): number {
+function compare(a: unknown, b: unknown, I?: Interp): number {
   if (a == null && b == null) return 0;
   if (a == null) return -1;
   if (b == null) return 1;
   if (typeof a === 'string' && typeof b === 'string') {
-    const na = Number(a), nb = Number(b);
+    const na = asNumber(a), nb = asNumber(b);
     if (a !== '' && b !== '' && !Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+    // Sorting long texts that start alike reads them over and over.
+    I?.spend(textCost(shared(a, b)));
     return a < b ? -1 : a > b ? 1 : 0;
   }
   return toNum(a) - toNum(b);
@@ -307,7 +330,7 @@ function compare(a: unknown, b: unknown): number {
 function toDate(v: unknown): Date {
   if (v instanceof Date) return v;
   if (typeof v === 'number') return new Date(v);
-  if (typeof v === 'string' && v) {
+  if (typeof v === 'string' && v && v.length <= SHORT_TEXT) {
     const d = /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(v + 'T00:00:00') : new Date(v);
     if (!Number.isNaN(d.getTime())) return d;
   }
@@ -401,8 +424,111 @@ class Scope {
 
 type Builtin = (a: unknown[], I: Interp) => unknown;
 
+// Limits. A step is an expression evaluated, an item a function visits or
+// makes, or CHARS_PER_STEP characters of text it reads or makes; they keep a
+// formula, even a hostile one, from freezing the page or the server.
 const MAX_STEPS = 400_000;
+/** The steps all the formulas of one document may take between them. */
+const MAX_DOC_STEPS = 4_000_000;
+/** The longest list range makes. */
 const MAX_LIST = 20_000;
+/** The longest list any other function makes. */
+const MAX_ITEMS = 100_000;
+/** The longest text a function makes, about two megabytes. */
+const MAX_TEXT = 2_000_000;
+/** The most a value a formula gives may weigh (see weigh): a collection of tens of thousands of rows is fine. */
+const MAX_SIZE = 1_000_000;
+/** Copying text is cheap, so it is counted in steps of this many characters. */
+const CHARS_PER_STEP = 16;
+/** How deeply calls, and values, may nest. */
+const MAX_DEPTH = 300;
+
+/** Steps for reading or making n characters. */
+const textCost = (n: number) => Math.floor(n / CHARS_PER_STEP);
+
+/**
+ * Pay for walking a value: a step for each item and field, and for each
+ * CHARS_PER_STEP characters. A list held twice is paid for twice, because
+ * that is how everything that shows, sends or compares a value walks it.
+ */
+function weigh(v: unknown, pay: (n: number) => void, depth = 0): void {
+  if (typeof v === 'string') return pay(1 + textCost(v.length));
+  pay(1);
+  if (v === null || typeof v !== 'object') return;
+  // Deeper values break whatever shows or sends them, whose walks have no such guard.
+  if (depth >= MAX_DEPTH) throw new SxError('this value nests too deeply');
+  if (Array.isArray(v)) {
+    for (const x of v) weigh(x, pay, depth + 1);
+    return;
+  }
+  for (const k of Object.keys(v)) {
+    pay(textCost(k.length));
+    weigh((v as Record<string, unknown>)[k], pay, depth + 1);
+  }
+}
+
+/**
+ * A key that values equal by deepEqual share (fields in any order, 1 not "1"),
+ * so repeats are found with a Set rather than by comparing every pair. Null for
+ * NaN, which deepEqual finds equal to nothing, itself included; a function, or
+ * a list or record holding NaN, equals only itself, so its key is who it is.
+ * Sets `odd.undefinedField` for a record field holding undefined (assoc with
+ * no value): deepEqual can find such a record equal to one with another key.
+ */
+function keyOf(v: unknown, I: Interp, odd: { undefinedField: boolean }): string | null {
+  I.spend(1);
+  if (v === undefined) return 'u';
+  if (v === null) return 'n';
+  if (typeof v === 'boolean') return v ? 't' : 'f';
+  if (typeof v === 'number') return Number.isNaN(v) ? null : 'd' + v;
+  if (typeof v === 'string') {
+    I.spend(textCost(v.length));
+    return JSON.stringify(v);
+  }
+  if (typeof v === 'function') return identity(v);
+  if (Array.isArray(v)) {
+    const parts: string[] = [];
+    for (const x of v) {
+      const k = keyOf(x, I, odd);
+      if (k === null) return identity(v);
+      parts.push(k);
+    }
+    return '[' + parts.join(',') + ']';
+  }
+  if (typeof v === 'object') {
+    // deepEqual lets a field holding undefined match a missing one when the counts agree, so such fields are only counted.
+    const names = Object.keys(v);
+    const parts: string[] = [];
+    for (const name of [...names].sort()) {
+      const x = (v as Record<string, unknown>)[name];
+      if (x === undefined) {
+        odd.undefinedField = true;
+        continue;
+      }
+      const k = keyOf(x, I, odd);
+      if (k === null) return identity(v);
+      I.spend(textCost(name.length));
+      parts.push(JSON.stringify(name) + ':' + k);
+    }
+    return '{' + names.length + ':' + parts.join(',') + '}';
+  }
+  return null;
+}
+
+const ids = new WeakMap<object, number>();
+let lastId = 0;
+/** A key for a value equal only to itself. */
+function identity(v: object): string {
+  let id = ids.get(v);
+  if (id === undefined) ids.set(v, (id = ++lastId));
+  return '#' + id;
+}
+
+/** Parts joined by sep, the length checked and paid for before it is built, since sep is repeated between every two. */
+function joined(parts: string[], sep: string, I: Interp): string {
+  I.chars(parts.reduce((n, p) => n + p.length, 0) + sep.length * Math.max(0, parts.length - 1));
+  return parts.join(sep);
+}
 
 function needEffects(I: Interp, form: string) {
   if (!I.host.effect || !I.host.place) throw new SxError(`${form} only works in an action, such as a button`);
@@ -434,17 +560,17 @@ const BUILTINS: Record<string, Builtin> = {
     return Math.round((toNum(a[0]) + Number.EPSILON) * p) / p;
   },
   clamp: (a) => Math.min(Math.max(toNum(a[0]), toNum(a[1])), toNum(a[2])),
-  sum: (a) => clean(numbersIn(a).reduce((s, x) => s + x, 0)),
-  avg: (a) => {
-    const n = numbersIn(a);
+  sum: (a, I) => clean(numbersIn(a, I).reduce((s, x) => s + x, 0)),
+  avg: (a, I) => {
+    const n = numbersIn(a, I);
     return n.length ? clean(n.reduce((s, x) => s + x, 0) / n.length) : 0;
   },
-  min: (a) => {
-    const n = numbersIn(a);
+  min: (a, I) => {
+    const n = numbersIn(a, I);
     return n.length ? Math.min(...n) : 0;
   },
-  max: (a) => {
-    const n = numbersIn(a);
+  max: (a, I) => {
+    const n = numbersIn(a, I);
     return n.length ? Math.max(...n) : 0;
   },
   // (pmt rate periods principal): the payment on a loan
@@ -455,19 +581,19 @@ const BUILTINS: Record<string, Builtin> = {
   },
 
   // comparison and logic
-  '=': (a) => a.slice(1).every((x) => looseEq(a[0], x)),
-  '!=': (a) => !looseEq(a[0], a[1]),
-  '<': (a) => compare(a[0], a[1]) < 0,
-  '<=': (a) => compare(a[0], a[1]) <= 0,
-  '>': (a) => compare(a[0], a[1]) > 0,
-  '>=': (a) => compare(a[0], a[1]) >= 0,
+  '=': (a, I) => a.slice(1).every((x) => looseEq(a[0], x, I)),
+  '!=': (a, I) => !looseEq(a[0], a[1], I),
+  '<': (a, I) => compare(a[0], a[1], I) < 0,
+  '<=': (a, I) => compare(a[0], a[1], I) <= 0,
+  '>': (a, I) => compare(a[0], a[1], I) > 0,
+  '>=': (a, I) => compare(a[0], a[1], I) >= 0,
   not: (a) => !truthy(a[0]),
   default: (a) => a.find((x) => x != null && x !== '') ?? null,
   'empty?': (a) => !truthy(a[0]),
 
   // lists
   list: (a) => a,
-  range: (a) => {
+  range: (a, I) => {
     const [start, end, step] = a.length === 1 ? [0, toNum(a[0]), 1] : [toNum(a[0]), toNum(a[1]), toNum(a[2] ?? 1)];
     if (step === 0) throw new SxError('range step cannot be 0');
     const out: number[] = [];
@@ -475,33 +601,89 @@ const BUILTINS: Record<string, Builtin> = {
       if (out.length >= MAX_LIST) throw new SxError('range is too long');
       out.push(clean(x));
     }
-    return out;
+    return I.made(out);
   },
-  len: (a) => (typeof a[0] === 'string' ? a[0].length : isRecord(a[0]) ? Object.keys(a[0]).length : toList(a[0]).length),
+  len: (a, I) => {
+    if (typeof a[0] === 'string') return a[0].length;
+    if (!isRecord(a[0])) return toList(a[0]).length;
+    const n = Object.keys(a[0]).length;
+    I.spend(n);
+    return n;
+  },
   count: (a) => toList(a[0]).length,
   nth: (a) => toList(a[0])[toNum(a[1])] ?? null,
   first: (a) => toList(a[0])[0] ?? null,
   last: (a) => toList(a[0]).at(-1) ?? null,
-  rest: (a) => toList(a[0]).slice(1),
-  take: (a) => (typeof a[0] === 'number' ? toList(a[1]).slice(0, a[0]) : toList(a[0]).slice(0, toNum(a[1]))),
-  drop: (a) => (typeof a[0] === 'number' ? toList(a[1]).slice(a[0]) : toList(a[0]).slice(toNum(a[1]))),
-  reverse: (a) => [...toList(a[0])].reverse(),
-  sort: (a) => {
-    const out = [...toList(a[0])].sort(compare);
+  rest: (a, I) => I.made(toList(a[0]).slice(1)),
+  take: (a, I) => I.made(typeof a[0] === 'number' ? toList(a[1]).slice(0, a[0]) : toList(a[0]).slice(0, toNum(a[1]))),
+  drop: (a, I) => I.made(typeof a[0] === 'number' ? toList(a[1]).slice(a[0]) : toList(a[0]).slice(toNum(a[1]))),
+  reverse: (a, I) => I.made([...toList(a[0])].reverse()),
+  sort: (a, I) => {
+    const out = I.made([...toList(a[0])]).sort((x, y) => compare(x, y, I));
     return a[1] === 'desc' ? out.reverse() : out;
   },
-  concat: (a) => a.flatMap(toList),
-  flat: (a) => a.flat(Infinity),
-  uniq: (a) => toList(a[0]).filter((x, i, l) => l.findIndex((y) => deepEqual(x, y)) === i),
-  join: (a) => toList(a[0]).map(plain).join(a[1] == null ? ', ' : String(a[1])),
-  'includes?': (a) => (typeof a[0] === 'string' ? a[0].includes(String(a[1])) : toList(a[0]).some((x) => looseEq(x, a[1]))),
-  column: (a) => toList(a[0]).map((r) => (Array.isArray(r) ? r[toNum(a[1])] ?? null : isRecord(r) ? r[String(a[1])] ?? null : null)),
-  where: (a) => toList(a[0]).filter((r) => isRecord(r) && looseEq(r[String(a[1])], a[2])),
-  group: (a) => {
+  concat: (a, I) => {
+    const lists = a.map(toList);
+    // Counted before it is built, so a list joined to itself over and over stops at the cap, not out of memory.
+    I.items(lists.reduce((n, l) => n + l.length, 0));
+    return lists.flat();
+  },
+  flat: (a, I) => {
+    // Built an item at a time, for the same reason: a list holding one long list many times is longer than it looks.
+    const out: unknown[] = [];
+    const add = (l: unknown[]) => {
+      I.spend(l.length);
+      for (const x of l) {
+        if (Array.isArray(x)) add(x);
+        else if (out.push(x) > MAX_ITEMS) I.items(out.length);
+      }
+    };
+    add(a);
+    return out;
+  },
+  uniq: (a, I) => {
+    // Keyed rather than compared pair by pair, which took seconds on a long list and minutes inside a map.
+    const l = toList(a[0]);
+    const seen = new Set<string>();
+    const out: unknown[] = [];
+    l.forEach((x, i) => {
+      const odd = { undefinedField: false };
+      const k = keyOf(x, I, odd);
+      if (k === null || seen.has(k)) return;
+      seen.add(k);
+      if (odd.undefinedField) {
+        // Rare enough to compare the old way, against every item before it.
+        I.spend(i);
+        for (let j = 0; j < i; j++) if (deepEqual(x, l[j], I)) return;
+      }
+      out.push(x);
+    });
+    return out;
+  },
+  join: (a, I) => joined(toList(I.weighed(a[0])).map(plain), a[1] == null ? ', ' : I.word(a[1]), I),
+  'includes?': (a, I) => {
+    if (typeof a[0] === 'string') return I.weighed(a[0]).includes(I.word(a[1]));
+    const l = toList(a[0]);
+    I.spend(l.length);
+    return l.some((x) => looseEq(x, a[1], I));
+  },
+  column: (a, I) => {
+    const name = I.word(a[1]);
+    return I.made(toList(a[0]).map((r) => (Array.isArray(r) ? r[toNum(a[1])] ?? null : isRecord(r) ? r[name] ?? null : null)));
+  },
+  where: (a, I) => {
+    const name = I.word(a[1]);
+    const l = toList(a[0]);
+    I.spend(l.length);
+    return l.filter((r) => isRecord(r) && looseEq(r[name], a[2], I));
+  },
+  group: (a, I) => {
+    const name = I.word(a[1]);
     const groups = new Map<string, { key: unknown; count: number; rows: unknown[] }>();
     for (const r of toList(a[0])) {
-      const key = isRecord(r) ? r[String(a[1])] ?? null : Array.isArray(r) ? r[toNum(a[1])] ?? null : r;
-      const k = JSON.stringify(key);
+      const key = isRecord(r) ? r[name] ?? null : Array.isArray(r) ? r[toNum(a[1])] ?? null : r;
+      // Weighed first: the key is written out in full.
+      const k = JSON.stringify(I.weighed(key));
       const g = groups.get(k) ?? { key, count: 0, rows: [] as unknown[] };
       g.count++;
       g.rows.push(r);
@@ -511,33 +693,54 @@ const BUILTINS: Record<string, Builtin> = {
   },
 
   // records
-  obj: (a) => {
+  obj: (a, I) => {
     const o: Record<string, unknown> = {};
-    for (let i = 0; i + 1 < a.length; i += 2) o[String(a[i])] = a[i + 1];
+    for (let i = 0; i + 1 < a.length; i += 2) o[I.word(a[i])] = a[i + 1];
     return o;
   },
-  get: (a) => {
+  get: (a, I) => {
     const [c, k, d = null] = a;
     if (Array.isArray(c)) return c[toNum(k)] ?? d;
-    if (isRecord(c)) return c[String(k)] ?? d;
+    if (isRecord(c)) return c[I.word(k)] ?? d;
     return d;
   },
-  keys: (a) => (isRecord(a[0]) ? Object.keys(a[0]) : []),
-  vals: (a) => (isRecord(a[0]) ? Object.values(a[0]) : []),
-  assoc: (a) => ({ ...(isRecord(a[0]) ? a[0] : {}), [String(a[1])]: a[2] }),
-  merge: (a) => Object.assign({}, ...a.filter(isRecord)),
+  keys: (a, I) => (isRecord(a[0]) ? I.made(Object.keys(a[0])) : []),
+  vals: (a, I) => (isRecord(a[0]) ? I.made(Object.values(a[0])) : []),
+  assoc: (a, I) => {
+    const o = { ...(isRecord(a[0]) ? a[0] : {}), [I.word(a[1])]: a[2] };
+    // A copy, a step for each field: assoc in a reduce copies the record each time round.
+    I.spend(Object.keys(o).length);
+    return o;
+  },
+  merge: (a, I) => {
+    const o = Object.assign({}, ...a.filter(isRecord));
+    I.spend(Object.keys(o).length);
+    return o;
+  },
 
   // text
-  str: (a) => a.map(plain).join(''),
-  upper: (a) => plain(a[0]).toUpperCase(),
-  lower: (a) => plain(a[0]).toLowerCase(),
-  trim: (a) => plain(a[0]).trim(),
-  split: (a) => plain(a[0]).split(a[1] == null ? ',' : String(a[1])).map((s) => s.trim()),
-  replace: (a) => plain(a[0]).split(String(a[1])).join(plain(a[2])),
-  'starts-with?': (a) => plain(a[0]).startsWith(plain(a[1])),
-  'ends-with?': (a) => plain(a[0]).endsWith(plain(a[1])),
+  str: (a, I) => joined(a.map((x) => plain(I.weighed(x))), '', I),
+  upper: (a, I) => I.made(plain(I.weighed(a[0])).toUpperCase()),
+  lower: (a, I) => I.made(plain(I.weighed(a[0])).toLowerCase()),
+  trim: (a, I) => I.made(plain(I.weighed(a[0])).trim()),
+  split: (a, I) => {
+    const parts = plain(I.weighed(a[0])).split(a[1] == null ? ',' : I.word(a[1]));
+    I.items(parts.length);
+    return parts.map((s) => s.trim());
+  },
+  replace: (a, I) => {
+    const parts = plain(I.weighed(a[0])).split(I.word(a[1]));
+    I.spend(parts.length);
+    return joined(parts, plain(I.weighed(a[2])), I);
+  },
+  'starts-with?': (a, I) => plain(I.weighed(a[0])).startsWith(plain(I.weighed(a[1]))),
+  'ends-with?': (a, I) => plain(I.weighed(a[0])).endsWith(plain(I.weighed(a[1]))),
   num: (a) => toNum(a[0]),
-  fmt: (a, I) => formatValue(a[0], a[1] == null ? undefined : String(a[1]), I.host.currency, a[1] === 'ago' ? I.host.now() : 0),
+  fmt: (a, I) => {
+    const s = formatValue(I.weighed(a[0]), a[1] == null ? undefined : I.word(a[1]), I.host.currency, a[1] === 'ago' ? I.host.now() : 0);
+    I.chars(s.length);
+    return s;
+  },
   type: (a) =>
     a[0] == null ? 'nil' : Array.isArray(a[0]) ? 'list' : isRecord(a[0]) ? 'record' : typeof a[0] === 'function' ? 'fn' : typeof a[0],
 
@@ -556,70 +759,70 @@ const BUILTINS: Record<string, Builtin> = {
   weekday: (a) => toDate(a[0]).toLocaleDateString('en-US', { weekday: 'long' }),
 
   // the document
-  ref: (a, I) => I.host.ref(String(a[0]).replace(/^\$/, '')),
+  ref: (a, I) => I.host.ref(I.word(a[0]).replace(/^\$/, '')),
   sib: (a, I) => I.host.sib(toNum(a[0])),
   idx: (_a, I) => I.host.idx(),
-  child: (a, I) => I.host.child(String(a[0]).replace(/^\$/, ''), toNum(a[1] ?? 0)),
-  rows: (a, I) => I.host.rows(String(a[0])),
+  child: (a, I) => I.host.child(I.word(a[0]).replace(/^\$/, ''), toNum(a[1] ?? 0)),
+  rows: (a, I) => I.host.rows(I.word(a[0])),
 
   // actions
   'set!': (a, I) => {
     needEffects(I, 'set!');
-    const { id } = I.host.place!(String(a[0]));
-    I.host.effect!({ type: 'op', op: ['set', id, 'value', (a[1] ?? null) as Json] });
+    const { id } = I.host.place!(I.word(a[0]));
+    I.host.effect!({ type: 'op', op: ['set', id, 'value', I.sendable(a[1] ?? null) as Json] });
     return a[1] ?? null;
   },
   'toggle!': (a, I) => {
     needEffects(I, 'toggle!');
-    const { id, value } = I.host.place!(String(a[0]));
+    const { id, value } = I.host.place!(I.word(a[0]));
     I.host.effect!({ type: 'op', op: ['set', id, 'value', !truthy(value)] });
     return !truthy(value);
   },
   'dup!': (a, I) => {
     needEffects(I, 'dup!');
-    I.host.effect!({ type: 'op', op: ['dup', I.host.place!(String(a[0])).id] });
+    I.host.effect!({ type: 'op', op: ['dup', I.host.place!(I.word(a[0])).id] });
     return null;
   },
   'remove!': (a, I) => {
     needEffects(I, 'remove!');
-    I.host.effect!({ type: 'op', op: ['remove', I.host.place!(String(a[0])).id] });
+    I.host.effect!({ type: 'op', op: ['remove', I.host.place!(I.word(a[0])).id] });
     return null;
   },
   'insert!': (a, I) => {
     needEffects(I, 'insert!');
     if (!isRecord(a[1])) throw new SxError('insert! needs a record: (insert! "orders" {qty qty})');
-    I.host.effect!({ type: 'insert', collection: String(a[0]), record: a[1] as Record<string, Json> });
+    I.host.effect!({ type: 'insert', collection: I.word(a[0]), record: I.sendable(a[1]) as Record<string, Json> });
     return a[1];
   },
   'update!': (a, I) => {
     needEffects(I, 'update!');
     if (a[1] == null || a[1] === '') throw new SxError('update! needs the id of a record: (update! "orders" (get row "id") {status "paid"})');
     if (!isRecord(a[2])) throw new SxError('update! needs the fields to change: (update! "orders" id {status "paid"})');
-    I.host.effect!({ type: 'update', collection: String(a[0]), id: String(a[1]), fields: a[2] as Record<string, Json> });
+    I.host.effect!({ type: 'update', collection: I.word(a[0]), id: I.word(a[1]), fields: I.sendable(a[2]) as Record<string, Json> });
     return a[2];
   },
   'delete!': (a, I) => {
     needEffects(I, 'delete!');
-    I.host.effect!({ type: 'delete', collection: String(a[0]), id: String(a[1]) });
+    I.host.effect!({ type: 'delete', collection: I.word(a[0]), id: I.word(a[1]) });
     return null;
   },
   'clear!': (a, I) => {
     needEffects(I, 'clear!');
-    I.host.effect!({ type: 'clear', collection: String(a[0]) });
+    I.host.effect!({ type: 'clear', collection: I.word(a[0]) });
     return null;
   },
 
   // events
   'emit!': (a, I) => {
     needEffects(I, 'emit!');
-    const name = String(a[0] ?? '');
+    const name = I.word(a[0] ?? '');
     if (!/^[A-Za-z][\w-]*$/.test(name)) throw new SxError('emit! needs the name of an event: (emit! "saved" {total total})');
-    I.host.effect!({ type: 'emit', name, data: (a[1] ?? null) as Json });
+    I.host.effect!({ type: 'emit', name, data: I.sendable(a[1] ?? null) as Json });
     return null;
   },
   'start!': (a, I) => {
     needEffects(I, 'start!');
-    const t = I.host.place!(String(a[0]));
+    const t = I.host.place!(I.word(a[0]));
     if (t.kind !== 'timer') throw new SxError(`start! needs a timer, and "${a[0]}" is not one`);
     // The time it started, so starting a running timer again starts it over.
     I.host.effect!({ type: 'op', op: ['set', t.id, 'value', I.host.now()] });
@@ -627,26 +830,26 @@ const BUILTINS: Record<string, Builtin> = {
   },
   'stop!': (a, I) => {
     needEffects(I, 'stop!');
-    const t = I.host.place!(String(a[0]));
+    const t = I.host.place!(I.word(a[0]));
     if (t.kind !== 'timer') throw new SxError(`stop! needs a timer, and "${a[0]}" is not one`);
     I.host.effect!({ type: 'op', op: ['set', t.id, 'value', false] });
     return false;
   },
   'refresh!': (a, I) => {
     needEffects(I, 'refresh!');
-    const f = I.host.place!(String(a[0]));
+    const f = I.host.place!(I.word(a[0]));
     if (f.kind !== 'fetch') throw new SxError(`refresh! needs a fetch cell, and "${a[0]}" is not one`);
     I.host.effect!({ type: 'refresh', cell: f.id });
     return null;
   },
   'show!': (a, I) => {
     needEffects(I, 'show!');
-    I.host.effect!({ type: 'op', op: ['set', I.host.place!(String(a[0])).id, 'hidden', null] });
+    I.host.effect!({ type: 'op', op: ['set', I.host.place!(I.word(a[0])).id, 'hidden', null] });
     return null;
   },
   'hide!': (a, I) => {
     needEffects(I, 'hide!');
-    I.host.effect!({ type: 'op', op: ['set', I.host.place!(String(a[0])).id, 'hidden', true] });
+    I.host.effect!({ type: 'op', op: ['set', I.host.place!(I.word(a[0])).id, 'hidden', true] });
     return null;
   },
 };
@@ -658,14 +861,76 @@ export const builtinNames = () => [...Object.keys(BUILTINS), ...SPECIAL].sort();
 
 const SPECIAL = new Set(['if', 'cond', 'and', 'or', 'when', 'let', 'fn', 'do', 'quote', 'map', 'filter', 'find', 'some', 'every', 'count-if', 'sort-by', 'sum-by', 'reduce', 'selected', 'status', 'error-of']);
 
+/**
+ * The steps the formulas of one document take between them. The engine gives
+ * every expression of one evaluation the same Budget, so a thousand cells that
+ * each stay under MAX_STEPS can't add up to minutes.
+ */
+export class Budget {
+  spent = 0;
+  constructor(readonly limit = MAX_DOC_STEPS) {}
+  spend(n: number): void {
+    if ((this.spent += n) > this.limit) throw new SxError("this document's formulas take too long to compute together");
+  }
+}
+
 export class Interp {
   private steps = 0;
   private depth = 0;
-  constructor(public host: Host) {}
+  constructor(public host: Host, readonly budget = new Budget()) {}
 
   /** Evaluate; `vars` are names bound for this run, such as a table action's `row`. */
   run(x: Sx, vars: Record<string, unknown> = {}): unknown {
-    return this.ev(x, new Scope(vars));
+    return this.sendable(this.ev(x, new Scope(vars)));
+  }
+
+  /** Count n steps of work, toward this expression's limit and the document's. */
+  spend(n: number): void {
+    if ((this.steps += n) > MAX_STEPS) throw new SxError('this takes too long to compute');
+    this.budget.spend(n);
+  }
+
+  /** Pay for walking v (see weigh) before walking it. */
+  weighed<T>(v: T): T {
+    weigh(v, (n) => this.spend(n));
+    return v;
+  }
+
+  /** v as a name, key or separator: a list is spelled out item by item, so it is weighed first. */
+  word(v: unknown): string {
+    return String(this.weighed(v));
+  }
+
+  /**
+   * A value leaving the language: a result, or what an action sends. Whatever
+   * shows, sends or compares it walks all of it, so the document pays for that
+   * walk, though not this expression: showing a big collection is no mistake.
+   */
+  sendable<T>(v: T): T {
+    let size = 0;
+    weigh(v, (n) => {
+      if ((size += n) > MAX_SIZE) throw new SxError('this value is too big to show or send');
+      this.budget.spend(n);
+    });
+    return v;
+  }
+
+  /** Pay for a list or text a function made, from what it was given. */
+  made<T>(v: T): T {
+    this.spend(typeof v === 'string' ? textCost(v.length) : Array.isArray(v) ? v.length : 0);
+    return v;
+  }
+
+  /** Pay for a list of n items about to be made, longer than any it was given; past MAX_ITEMS is an error. */
+  items(n: number): void {
+    if (n > MAX_ITEMS) throw new SxError(`this list is too long (over ${MAX_ITEMS.toLocaleString('en-US')} items)`);
+    this.spend(n);
+  }
+
+  /** Pay for text of n characters about to be made; past MAX_TEXT is an error. */
+  chars(n: number): void {
+    if (n > MAX_TEXT) throw new SxError(`this text is too long (over ${MAX_TEXT.toLocaleString('en-US')} characters)`);
+    this.spend(Math.floor(n / CHARS_PER_STEP));
   }
 
   private lookup(name: string, scope: Scope): unknown {
@@ -690,14 +955,14 @@ export class Interp {
   ev(x: Sx, scope: Scope): unknown {
     if (x === null || typeof x === 'number' || typeof x === 'boolean') return x;
     if (typeof x === 'string') return x.startsWith('$') ? this.lookup(x.slice(1), scope) : x;
-    if (++this.steps > MAX_STEPS) throw new SxError('this takes too long to compute');
+    this.spend(1);
     if (!Array.isArray(x)) {
       const o: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(x)) o[k] = this.ev(v, scope);
       return o;
     }
     if (!x.length) return [];
-    if (++this.depth > 300) throw new SxError('this nests too deeply');
+    if (++this.depth > MAX_DEPTH) throw new SxError('this nests too deeply');
     try {
       return this.call(x, scope);
     } finally {
@@ -767,7 +1032,12 @@ export class Interp {
         case 'count-if':
         case 'sort-by':
         case 'sum-by': {
-          const f = this.fnArg(x[1], scope);
+          const fn = this.fnArg(x[1], scope);
+          // A step for every item visited, even when the function itself costs none, as (count-if true l) or (map "abs" l) don't.
+          const f = (v: unknown, i: number) => {
+            this.spend(1);
+            return fn(v, i);
+          };
           const l = toList(this.ev(x[2] ?? null, scope));
           if (name === 'map') return l.map((v, i) => f(v, i));
           if (name === 'filter') return l.filter((v, i) => truthy(f(v, i)));
@@ -776,7 +1046,7 @@ export class Interp {
           if (name === 'every') return l.every((v, i) => truthy(f(v, i)));
           if (name === 'count-if') return l.filter((v, i) => truthy(f(v, i))).length;
           if (name === 'sum-by') return clean(l.reduce((s: number, v, i) => s + toNum(f(v, i)), 0));
-          const out = l.map((v, i) => [f(v, i), v] as const).sort((p, q) => compare(p[0], q[0])).map((p) => p[1]);
+          const out = l.map((v, i) => [f(v, i), v] as const).sort((p, q) => compare(p[0], q[0], this)).map((p) => p[1]);
           return this.ev(x[3] ?? null, scope) === 'desc' ? out.reverse() : out;
         }
         case 'selected': {
@@ -795,7 +1065,10 @@ export class Interp {
         }
         case 'reduce': {
           const f = this.fnArg(x[1], scope, ['acc', 'it', 'i']);
-          return toList(this.ev(x[3] ?? null, scope)).reduce((acc, v, i) => f(acc, v, i), this.ev(x[2] ?? null, scope));
+          return toList(this.ev(x[3] ?? null, scope)).reduce((acc, v, i) => {
+            this.spend(1);
+            return f(acc, v, i);
+          }, this.ev(x[2] ?? null, scope));
         }
       }
       const b = BUILTINS[name];

@@ -16,28 +16,41 @@ export function DataPage({ navigate }: { navigate: (p: string) => void }) {
   const [collections, setCollections] = useState<Collection[] | null>(null);
   const [current, setCurrent] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
+  const [problem, setProblem] = useState<string | null>(null);
+  const failed = (e: unknown) => setProblem(e instanceof Error ? e.message : 'The server could not answer just now. Try again in a moment.');
   const load = () => api<Collection[]>('GET', '/api/data').then((c) => {
     setCollections(c);
     if (!current && c.length) setCurrent(c[0].name);
     if (current && !c.some((x) => x.name === current)) setCurrent(c[0]?.name ?? null);
-  });
+  }).catch(failed);
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (current) void api<Row[]>('GET', `/api/data/${encodeURIComponent(current)}`).then(setRows);
-    else setRows([]);
+    if (!current) return setRows([]);
+    // Clicking through collections quickly: only the one picked last fills the table.
+    let mine = true;
+    api<Row[]>('GET', `/api/data/${encodeURIComponent(current)}`).then((r) => { if (mine) setRows(r); }, (e) => { if (mine) failed(e); });
+    return () => { mine = false; };
   }, [current]);
 
   const cols = [...new Set(rows.flatMap((r) => Object.keys(r)))].filter((k) => k !== 'id' && k !== 'at');
   const removeRow = async (id: string) => {
-    await api('DELETE', `/api/data/${encodeURIComponent(current!)}/${encodeURIComponent(id)}`);
-    setRows((r) => r.filter((x) => x.id !== id));
-    void load();
+    try {
+      await api('DELETE', `/api/data/${encodeURIComponent(current!)}/${encodeURIComponent(id)}`);
+      setRows((r) => r.filter((x) => x.id !== id));
+      void load();
+    } catch (e) {
+      failed(e);
+    }
   };
   const clear = async () => {
     if (!current || !window.confirm(`Delete every record in "${current}"?`)) return;
-    await api('DELETE', `/api/data/${encodeURIComponent(current)}`);
-    setRows([]);
-    void load();
+    try {
+      await api('DELETE', `/api/data/${encodeURIComponent(current)}`);
+      setRows([]);
+      void load();
+    } catch (e) {
+      failed(e);
+    }
   };
 
   return (
@@ -46,6 +59,7 @@ export function DataPage({ navigate }: { navigate: (p: string) => void }) {
         <aside className="collections">
           <h1>Data</h1>
           <p className="panel-note">What buttons with <code>insert!</code> have saved. Any document can read it back with <code>(rows "name")</code>.</p>
+          {problem && <p className="data-problem" role="alert">{problem}</p>}
           {collections && !collections.length && <p className="home-empty">No records yet. Try the feedback form template.</p>}
           <ul>
             {collections?.map((c) => (

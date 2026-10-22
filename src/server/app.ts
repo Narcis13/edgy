@@ -7,6 +7,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
+import { bodyLimit } from 'hono/body-limit';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -47,12 +48,20 @@ const ASSET_TYPES: Record<string, string> = {
   'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/avif': 'avif', 'image/svg+xml': 'svg',
 };
 const MAX_ASSET = 8 * 1024 * 1024;
+/** The largest request body: a picture, or a document's worth of ops. */
+const MAX_BODY = 16 * 1024 * 1024;
+/** The most ids one request may list (pins, a bulk action, a deck's documents). */
+const MAX_IDS = 1000;
+/** The pictures one exported file may hold in all, as text: more would make a file no browser opens well. */
+const MAX_EXPORT_PICTURES = 64 * 1024 * 1024;
 /** How long a person's compose request waits for a listening agent. */
 const AGENT_WAIT = 45_000;
 /** A session's expiry moves forward at most this often, so reading doesn't write on every request. */
 const SESSION_SLIDE = 60 * 60_000;
 
 const cleanName = (n: unknown, max = 40) => (typeof n === 'string' ? n.trim().slice(0, max) : '');
+/** A request body as an object: JSON that is null, a number or a list is an empty one, so the route's own checks answer. */
+const objectOf = (v: unknown) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {}) as Record<string, unknown>;
 
 /** What tests swap: the clock timers run on, how addresses are fetched, the environment secrets come from. */
 export interface AppOptions {
@@ -96,7 +105,19 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   // Failed sign-ins slow down the guesser: fast for one email from one address, much later for an email
   // (so someone else can't lock a person out) or for an address (a proxy's, shared by many) alone.
   const clock = { now: opts.now ?? Date.now };
-  const throttles = { pair: new Throttle(clock, 4), email: new Throttle(clock, 50), address: new Throttle(clock, 30) };
+  const throttles = { pair: new Throttle(clock, 4), email: new Throttle(clock, 50), address: new Throttle(clock, 30), signup: new Throttle(clock, 10) };
+  /** off: nobody new signs up once the server has its first account (EDGY_SIGNUPS=off, for a server on the internet). */
+  const signupsOpen = () => (opts.env ?? process.env).EDGY_SIGNUPS !== 'off' || !store.users().some((u) => !u.local);
+  /**
+   * Ask AI with Claude spends the server's ANTHROPIC_API_KEY, which is its owner's, like its secrets: it answers
+   * in the owner's documents (and for whoever the owner lets edit them), or in everyone's with EDGY_AI_USERS=all.
+   */
+  const claudeFor = (docId: string | undefined, asker: string | null) => {
+    const claude = claudeConfig(opts.env ?? process.env);
+    if (!claude || (opts.env ?? process.env).EDGY_AI_USERS === 'all') return claude;
+    const owner = store.serverOwner();
+    return owner && (docId ? store.docOwner(docId) : asker) === owner ? claude : null;
+  };
 
   // ── records, as each document sees them ──
 
@@ -285,7 +306,16 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const incoming = c.env?.incoming;
     return !incoming || isLoopbackAddress(incoming.socket?.remoteAddress);
   };
-  const address = (c: C) => c.env?.incoming?.socket?.remoteAddress ?? 'here';
+  /**
+   * Who is knocking, for slowing down guesses. Behind a proxy on this machine (how edgy is put online) every
+   * socket is the proxy's, so its X-Forwarded-For counts: the last entry, the one the proxy added itself.
+   * From anywhere else the header is the caller's own word and is ignored.
+   */
+  const address = (c: C) => {
+    const socket = c.env?.incoming?.socket?.remoteAddress;
+    const hops = socket && isLoopbackAddress(socket) ? (c.req.header('x-forwarded-for') ?? '').split(',').map((s) => s.trim()).filter(Boolean) : [];
+    return hops.at(-1) ?? socket ?? 'here';
+  };
   const secure = (c: C) => new URL(c.req.url).protocol === 'https:' || c.req.header('x-forwarded-proto') === 'https';
 
   /** Who is asking, or why the credential they sent doesn't count. */
@@ -327,8 +357,37 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     return { kind: 'none' };
   }
 
-  /** The origins edgy's own pages are served from: this server, and the dev server in development. */
-  const origins = (c: C) => [new URL(c.req.url).origin, ...(webUrl ? [new URL(webUrl).origin] : [])];
+  /**
+   * This server's address as the browser sees it. Behind a proxy that ends HTTPS (how edgy is put online) the
+   * request arrives as plain http, perhaps for another host name: the proxy's X-Forwarded-Proto and -Host say
+   * what the browser asked for. (A page on another site can't set these headers on a person's request.)
+   */
+  const publicOrigin = (c: C) => {
+    const url = new URL(c.req.url);
+    const host = c.req.header('x-forwarded-host')?.split(',')[0].trim();
+    return `${secure(c) ? 'https:' : url.protocol}//${host && /^[\w.-]+(:\d+)?$|^\[[\da-f:.]+\](:\d+)?$/i.test(host) ? host : url.host}`;
+  };
+  /** The origins edgy's own pages are served from: this server (as asked, and as the browser sees it), and the dev server in development. */
+  const origins = (c: C) => [new URL(c.req.url).origin, publicOrigin(c), ...(webUrl ? [new URL(webUrl).origin] : [])];
+
+  // Every answer: no other site may frame edgy (a click on its buttons there would be the person's), nor learn a
+  // share link's address from the Referer, and no browser guesses a type other than the one sent.
+  app.use('*', async (c, next) => {
+    await next();
+    const guard = (h: Headers) => {
+      h.set('x-content-type-options', 'nosniff');
+      h.set('referrer-policy', 'same-origin');
+      h.set('x-frame-options', 'SAMEORIGIN');
+      if (!h.has('content-security-policy')) h.set('content-security-policy', "frame-ancestors 'self'");
+    };
+    try {
+      guard(c.res.headers);
+    } catch {
+      // A response whose headers can't change (a redirect made by Response.redirect, say): copied, then set.
+      c.res = new Response(c.res.body, c.res);
+      guard(c.res.headers);
+    }
+  });
 
   // Every request passes here first: who is asking, and nobody gets past without a credential.
   app.use('/api/*', async (c, next) => {
@@ -347,6 +406,12 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     c.set('checked', {});
     await next();
   });
+
+  // A body is read whole into memory, so none may be large: a picture's 8 MB with room to spare, a sign-in's few words.
+  // Checked once the asker is known, so nobody without a credential gets to send megabytes.
+  const tooLarge = (max: string) => (c: C) => c.json({ error: `that request is larger than ${max}` }, 413);
+  app.use('/api/auth/*', bodyLimit({ maxSize: 64 * 1024, onError: tooLarge('64 KB') }));
+  app.use('/api/*', bodyLimit({ maxSize: MAX_BODY, onError: tooLarge(`${MAX_BODY / 1024 / 1024} MB`) }));
 
   const need = guards({ store, reaches });
   const me = (c: C): User | null => {
@@ -533,13 +598,42 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     }
   };
 
+  /**
+   * Pictures for one export: each address fetched once (a picture in fifty cells is one request), four at a time,
+   * and at most MAX_EXPORT_PICTURES of them in all; past that they are left out and counted as missing.
+   */
+  function picturesFor(): Pictures {
+    const got = new Map<string, Promise<string | null>>();
+    const waiting: (() => void)[] = [];
+    let running = 0;
+    let total = 0;
+    const slot = () => (running < 4 ? (running++, Promise.resolve()) : new Promise<void>((go) => waiting.push(go)));
+    const free = () => {
+      const next = waiting.shift();
+      if (next) next();
+      else running--;
+    };
+    return async (src) => {
+      let p = got.get(src);
+      if (!p) {
+        p = slot().then(() => pictures(src)).finally(free);
+        got.set(src, p);
+      }
+      const uri = await p;
+      if (!uri || total + uri.length > MAX_EXPORT_PICTURES) return null;
+      total += uri.length;
+      return uri;
+    };
+  }
+
   /** What an export of these documents holds: them, the records they read, their fetch answers; nothing else. */
   async function exportOf(docs: Doc[], deck?: Deck) {
     const missing: string[] = [];
     const payload: ExportPayload = { kind: deck ? 'deck' : 'doc', exportedAt: Date.now(), docs: [], shapes: {}, records: {}, fetched: {} };
+    const once = picturesFor();
     for (const doc of docs) {
       const computed = evaluate(doc, world(doc.id, true));
-      payload.docs.push(await forExport(doc, (c) => computed.cells[c.id]?.value, pictures, missing));
+      payload.docs.push(await forExport(doc, (c) => computed.cells[c.id]?.value, once, missing));
       payload.shapes[doc.id] = shapeOf(doc.root);
       const owner = store.docOwner(doc.id) ?? null;
       for (const name of reads(doc.id)) payload.records[name] ??= store.rows(owner, name);
@@ -639,14 +733,22 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   });
 
   // Public: whether the server is up, its mode, and whether the asker is signed in (so a signed-out page asks nothing it would be refused).
-  app.get('/api/health', need('public'), (c) => c.json({ ok: true, name: 'edgy', web: webUrl ?? new URL(c.req.url).origin, auth: mode, signedIn: c.get('who').kind === 'user', sync: !!sync }));
+  app.get('/api/health', need('public'), (c) => c.json({ ok: true, name: 'edgy', web: webUrl ?? publicOrigin(c), auth: mode, signedIn: c.get('who').kind === 'user', sync: !!sync, signups: signupsOpen() }));
   app.get('/api/guide', need('user'), (c) => c.text(GUIDE));
   app.get('/api/templates', need('user'), (c) => c.json(TEMPLATES.map((t) => ({ id: t.id, title: t.title, about: t.about, root: t.root }))));
 
   // ── accounts ──
 
   app.post('/api/auth/signup', need('public'), async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { email?: unknown; password?: unknown; name?: unknown };
+    const body = objectOf(await c.req.json().catch(() => ({}))) as { email?: unknown; password?: unknown; name?: unknown };
+    if (!signupsOpen()) return c.json({ error: "This server does not take new accounts. Sign in with the one you have, or ask the server's owner.", reason: 'closed' }, 403);
+    // Each new account costs a password hash and a tour document: one address makes a few, then waits.
+    const waitNew = throttles.signup.wait(address(c));
+    if (waitNew > 0) {
+      const s = Math.ceil(waitNew / 1000);
+      c.header('retry-after', String(s));
+      return c.json({ error: `Too many new accounts from here. Wait ${s} seconds and try again.`, wait: s }, 429);
+    }
     const email = normalEmail(body.email);
     const wrong = emailProblem(email) ?? passwordProblem(body.password);
     if (wrong) return c.json({ error: wrong }, 400);
@@ -660,6 +762,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     // Someone else may have taken the email while this one was being checked and hashed.
     if (store.userByEmail(email)) return c.json({ error: 'An account with this email already exists. Sign in instead.' }, 409);
     const user = store.createUser({ email, name, color: colorFor(email), password: hash });
+    throttles.signup.fail(address(c));
     // Someone new starts with the tour, unless (the first account) they own what was here before.
     if (!store.listDocs(user.id).length) create(undefined, 'tour', undefined, { kind: 'agent', name: 'Edgy' }, user.id);
     signIn(c, user);
@@ -667,7 +770,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   });
 
   app.post('/api/auth/signin', need('public'), async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { email?: unknown; password?: unknown };
+    const body = objectOf(await c.req.json().catch(() => ({}))) as { email?: unknown; password?: unknown };
     const email = normalEmail(body.email);
     const pair = email + ' ' + address(c);
     const wait = Math.max(throttles.pair.wait(pair), throttles.email.wait(email), throttles.address.wait(address(c)));
@@ -720,7 +823,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
 
   app.patch('/api/me', need('person'), async (c) => {
     const user = me(c)!;
-    const body = (await c.req.json()) as { name?: unknown; color?: unknown; theme?: unknown; email?: unknown };
+    const body = objectOf(await c.req.json()) as { name?: unknown; color?: unknown; theme?: unknown; email?: unknown };
     const fields: Parameters<Store['updateUser']>[1] = {};
     if (body.name !== undefined) {
       const name = cleanName(body.name, 60);
@@ -754,7 +857,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   /** A new password. The person's other sessions end; this one stays. */
   app.post('/api/me/password', need('person'), async (c) => {
     const user = me(c)!;
-    const body = (await c.req.json()) as { current?: unknown; password?: unknown };
+    const body = objectOf(await c.req.json()) as { current?: unknown; password?: unknown };
     const stored = store.passwordOf(user.id);
     if (stored && !(await verifyPassword(typeof body.current === 'string' ? body.current : '', stored))) return c.json({ error: 'The current password is wrong.' }, 403);
     const wrong = passwordProblem(body.password);
@@ -770,7 +873,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   /** The account goes, with everything it owns (see Decisions). Asks for the password when it has one. */
   app.delete('/api/me', need('person'), async (c) => {
     const user = me(c)!;
-    const body = (await c.req.json().catch(() => ({}))) as { password?: unknown; confirm?: unknown };
+    const body = objectOf(await c.req.json().catch(() => ({}))) as { password?: unknown; confirm?: unknown };
     const stored = store.passwordOf(user.id);
     if (stored ? !(await verifyPassword(typeof body.password === 'string' ? body.password : '', stored)) : body.confirm !== user.name) {
       return c.json({ error: stored ? 'The password is wrong.' : 'Type the account name to confirm.' }, 403);
@@ -787,7 +890,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   app.get('/api/me/keys', need('person'), (c) => c.json(store.keys(myId(c)!)));
 
   app.post('/api/me/keys', need('person'), async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { name?: unknown };
+    const body = objectOf(await c.req.json().catch(() => ({}))) as { name?: unknown };
     const name = cleanName(body.name, 60) || 'Agent';
     const key = newApiKey();
     const saved = store.createKey(myId(c)!, name, digest(key), key.slice(0, KEY_PREFIX.length + 6));
@@ -806,7 +909,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   app.get('/api/docs', need('user'), (c) => c.json(store.listDocs(myId(c)!)));
 
   app.post('/api/docs', need('user'), async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { title?: string; template?: string; root?: Json; actor?: unknown };
+    const body = objectOf(await c.req.json().catch(() => ({}))) as { title?: string; template?: string; root?: Json; actor?: unknown };
     const doc = create(body.title, body.template, body.root, actorOf(c, body.actor), myId(c));
     return c.json(doc, 201);
   });
@@ -838,7 +941,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   app.patch('/api/docs/:id', need({ doc: 'edit' }), async (c) => {
     const doc = store.getDoc(c.req.param('id'));
     if (!doc) return c.json({ error: 'no such document' }, 404);
-    const body = (await c.req.json()) as { title?: unknown; description?: unknown; pinned?: unknown; archived?: unknown; actor?: unknown };
+    const body = objectOf(await c.req.json()) as { title?: unknown; description?: unknown; pinned?: unknown; archived?: unknown; actor?: unknown };
     const owner = c.get('checked').role === 'owner';
     if (!owner && (body.pinned !== undefined || body.archived !== undefined)) return c.json({ error: 'only its owner can pin or archive it' }, 403);
     const ops: Op[] = [];
@@ -862,7 +965,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   });
 
   app.post('/api/docs/:id/ops', need({ doc: 'edit', link: 'edit' }), async (c) => {
-    const body = (await c.req.json()) as { ops?: Op[]; actor?: unknown; client?: string; batch?: string; format?: string };
+    const body = objectOf(await c.req.json()) as { ops?: Op[]; actor?: unknown; client?: string; batch?: string; format?: string };
     // Read the document after the body has arrived, so a change saved meanwhile (a timer's) is the base.
     const doc = store.getDoc(c.req.param('id'));
     if (!doc) return c.json({ error: 'no such document' }, 404);
@@ -880,14 +983,16 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
 
   app.get('/api/docs/:id/log', need({ doc: 'view' }), (c) => {
     const id = c.req.param('id');
-    const log = store.log(id, Number(c.req.query('since') ?? 0), Math.min(500, Number(c.req.query('limit') ?? 200)));
+    // A limit that isn't a number from 1 to 500 is 200: a negative one would mean no limit at all to SQLite.
+    const limit = Math.trunc(Number(c.req.query('limit') ?? 200));
+    const log = store.log(id, Number(c.req.query('since') ?? 0) || 0, limit >= 1 && limit <= 500 ? limit : limit > 500 ? 500 : 200);
     return c.json(seesAddresses(c.get('checked').role) ? log : withoutAddressesIn(log, fetchCells(id)));
   });
 
   app.post('/api/docs/:id/eval', need({ doc: 'view' }), async (c) => {
     const doc = store.getDoc(c.req.param('id'));
     if (!doc) return c.json({ error: 'no such document' }, 404);
-    const body = (await c.req.json()) as { expr?: Sx; src?: string; cell?: string };
+    const body = objectOf(await c.req.json()) as { expr?: Sx; src?: string; cell?: string };
     const expr = typeof body.src === 'string' ? read(body.src) : (body.expr ?? null);
     const r = evalIn(doc, world(doc.id, c.get('checked').role === 'owner'), expr, body.cell);
     return c.json(r.error ? { error: r.error } : { value: plainValue(r.value) });
@@ -918,6 +1023,8 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
       const unsubscribe = hub.subscribe(id, (e) => {
         // Someone with a link hears changes, not the conversation, the people or the agents' work.
         if (!guestHears(who, e as { type: string })) return;
+        // A request for an agent is for the asker's agent's wait (see Requests), not for everyone's browser.
+        if (e.type === 'compose') return;
         // Records of the owner's that this document doesn't reach are none of a collaborator's business, not even by name.
         if (e.type === 'data' && role !== 'owner' && !reaches(id).includes(e.collection)) return;
         // Viewers and links see what fetch cells answered, never where from (nor what handlers did with addresses).
@@ -966,7 +1073,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   /** A browser switched between Edit, Live and Page, or selected a cell. */
   app.post('/api/docs/:id/viewer', need({ doc: 'view', link: 'view' }), async (c) => {
     const id = c.req.param('id');
-    const body = (await c.req.json()) as { client?: string; mode?: string; selected?: unknown };
+    const body = objectOf(await c.req.json()) as { client?: string; mode?: string; selected?: unknown };
     if (typeof body.client !== 'string' || !['edit', 'live', 'page'].includes(body.mode ?? '')) return c.json({ error: 'send {"client", "mode": "edit"|"live"|"page"}' }, 400);
     const who = c.get('who');
     const role = c.get('checked').role;
@@ -998,7 +1105,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   /** Give someone access by the email of their account, or change it. */
   app.post('/api/docs/:id/people', need({ doc: 'owner' }), async (c) => {
     const id = c.req.param('id');
-    const body = (await c.req.json()) as { email?: unknown; role?: unknown };
+    const body = objectOf(await c.req.json()) as { email?: unknown; role?: unknown };
     const role = body.role ?? 'viewer';
     if (role !== 'viewer' && role !== 'editor') return c.json({ error: 'role is "viewer" or "editor"' }, 400);
     const user = store.userByEmail(normalEmail(body.email));
@@ -1014,7 +1121,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   /** Change someone's role, or take their access away (the owner); or leave a document shared with you. */
   app.patch('/api/docs/:id/people/:user', need({ doc: 'owner' }), async (c) => {
     const id = c.req.param('id');
-    const body = (await c.req.json()) as { role?: unknown };
+    const body = objectOf(await c.req.json()) as { role?: unknown };
     if (body.role !== 'viewer' && body.role !== 'editor') return c.json({ error: 'role is "viewer" or "editor"' }, 400);
     if (!store.people(id).some((p) => p.id === c.req.param('user') && p.role !== 'owner')) return c.json({ error: 'that person has no access to change' }, 404);
     store.setRole(id, c.req.param('user'), body.role);
@@ -1045,16 +1152,16 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
 
   /** Pinned documents and decks, in this order. */
   app.post('/api/library/pins', need('user'), async (c) => {
-    const body = (await c.req.json()) as { ids?: unknown };
-    if (!Array.isArray(body.ids) || body.ids.some((x) => typeof x !== 'string')) return c.json({ error: 'send {"ids": [the pinned ids, in order]}' }, 400);
+    const body = objectOf(await c.req.json()) as { ids?: unknown };
+    if (!Array.isArray(body.ids) || body.ids.length > MAX_IDS || body.ids.some((x) => typeof x !== 'string')) return c.json({ error: `send {"ids": [the pinned ids, in order]}, at most ${MAX_IDS}` }, 400);
     return c.json({ pins: store.orderPins(myId(c), body.ids as string[]) });
   });
 
   /** One action on several of my documents or decks: pin, unpin, archive, restore, delete (a deck: ungroup). */
   app.post('/api/library/bulk', need('user'), async (c) => {
-    const body = (await c.req.json()) as { ids?: unknown; action?: string };
+    const body = objectOf(await c.req.json()) as { ids?: unknown; action?: string };
     const actions = ['pin', 'unpin', 'archive', 'restore', 'delete'];
-    if (!Array.isArray(body.ids) || body.ids.some((x) => typeof x !== 'string') || !actions.includes(body.action ?? '')) {
+    if (!Array.isArray(body.ids) || body.ids.length > MAX_IDS || body.ids.some((x) => typeof x !== 'string') || !actions.includes(body.action ?? '')) {
       return c.json({ error: `send {"action": one of ${actions.join(', ')}, "ids": [...]}` }, 400);
     }
     const done: string[] = [];
@@ -1087,8 +1194,8 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
 
   /** Group my documents into a deck, in this order. */
   app.post('/api/decks', need('user'), async (c) => {
-    const body = (await c.req.json()) as { title?: unknown; description?: unknown; docs?: unknown };
-    if (!Array.isArray(body.docs) || !body.docs.length || body.docs.some((x) => typeof x !== 'string')) {
+    const body = objectOf(await c.req.json()) as { title?: unknown; description?: unknown; docs?: unknown };
+    if (!Array.isArray(body.docs) || !body.docs.length || body.docs.length > MAX_IDS || body.docs.some((x) => typeof x !== 'string')) {
       return c.json({ error: 'send {"title": …, "docs": [document ids, in order]}' }, 400);
     }
     const title = typeof body.title === 'string' && body.title.trim() ? body.title.trim().slice(0, 200) : 'Untitled deck';
@@ -1111,12 +1218,12 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   /** Rename, describe, reorder (docs: the ids in their new order; one left out is taken out), pin, archive. */
   app.patch('/api/decks/:id', need({ deck: 'owner' }), async (c) => {
     const id = c.req.param('id');
-    const body = (await c.req.json()) as { title?: unknown; description?: unknown; docs?: unknown; pinned?: unknown; archived?: unknown };
+    const body = objectOf(await c.req.json()) as { title?: unknown; description?: unknown; docs?: unknown; pinned?: unknown; archived?: unknown };
     const fields: { title?: string; description?: string } = {};
     if (typeof body.title === 'string') fields.title = body.title.trim().slice(0, 200) || 'Untitled deck';
     if (typeof body.description === 'string' || body.description === null) fields.description = ((body.description as string | null) ?? '').trim().slice(0, 2000);
     if (body.docs !== undefined) {
-      if (!Array.isArray(body.docs) || body.docs.some((x) => typeof x !== 'string')) return c.json({ error: 'docs is a list of document ids' }, 400);
+      if (!Array.isArray(body.docs) || body.docs.length > MAX_IDS || body.docs.some((x) => typeof x !== 'string')) return c.json({ error: `docs is a list of at most ${MAX_IDS} document ids` }, 400);
       try {
         store.setDeckDocs(id, body.docs as string[]);
       } catch (e) {
@@ -1146,18 +1253,18 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
 
   /** The links that are on. */
   app.get('/api/docs/:id/shares', need({ doc: 'owner' }), (c) => {
-    const origin = new URL(c.req.url).origin;
+    const origin = publicOrigin(c);
     return c.json(store.shares(c.req.param('id')).filter((s) => s.revokedAt == null).map((s) => shareView(s, origin)));
   });
 
   /** Turn a link on, "view" or "edit"; the one already on is returned as it is. */
   app.post('/api/docs/:id/shares', need({ doc: 'owner' }), async (c) => {
     const id = c.req.param('id');
-    const body = (await c.req.json().catch(() => ({}))) as { access?: string };
+    const body = objectOf(await c.req.json().catch(() => ({}))) as { access?: string };
     const access = (body.access ?? 'view') as Access;
     if (access !== 'view' && access !== 'edit') return c.json({ error: 'access is "view" or "edit"' }, 400);
     if (store.reaches(id) === null) approve(id);
-    return c.json(shareView(store.openShare(id, access, reaches(id)), new URL(c.req.url).origin), 201);
+    return c.json(shareView(store.openShare(id, access, reaches(id)), publicOrigin(c)), 201);
   });
 
   /** Turn a link off. Whoever has it open sees that it is no longer shared. */
@@ -1166,7 +1273,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     if (!found || store.docOwner(found.doc) !== myId(c)) return c.json({ error: 'no such link' }, 404);
     const share = store.closeShare(found.token)!;
     hub.publish(share.doc, { type: 'unshared', token: share.token });
-    return c.json(shareView(share, new URL(c.req.url).origin));
+    return c.json(shareView(share, publicOrigin(c)));
   });
 
   // ── one self-contained .html file ──
@@ -1198,7 +1305,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     if (!doc) return c.json({ error: 'no such document' }, 404);
     const cell = indexTree(doc.root).byId.get(c.req.param('cell')) ?? indexTree(doc.root).byName.get(c.req.param('cell'));
     if (!cell || cell.kind !== 'fetch') return c.json({ error: `no fetch cell "${c.req.param('cell')}"` }, 404);
-    const body = (await c.req.json().catch(() => ({}))) as { handlers?: boolean };
+    const body = objectOf(await c.req.json().catch(() => ({}))) as { handlers?: boolean };
     return c.json(await runner.refresh(id, cell.id, body.handlers !== false));
   });
 
@@ -1225,7 +1332,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
 
   app.post('/api/docs/:id/messages', need({ doc: 'edit' }), async (c) => {
     const id = c.req.param('id');
-    const body = (await c.req.json()) as { text?: string; actor?: unknown; cell?: string };
+    const body = objectOf(await c.req.json()) as { text?: string; actor?: unknown; cell?: string };
     const text = (body.text ?? '').trim();
     if (!text) return c.json({ error: 'a message needs text' }, 400);
     const message = store.addMessage(id, actorOf(c, body.actor), text.slice(0, 4000), body.cell);
@@ -1238,16 +1345,16 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const id = c.req.param('id');
     const after = Number(c.req.query('after') ?? 0);
     const seconds = Math.min(120, Math.max(1, Number(c.req.query('timeout') ?? 25)));
-    const stop = hub.listen(id);
+    const stop = hub.listen(id, myId(c));
     try {
       const waiting = store.messages(id, after).filter((m) => m.actor.kind === 'human');
-      const asked = requests.take(id);
+      const asked = requests.take(id, myId(c));
       if (waiting.length || asked.length) return c.json({ messages: waiting, requests: asked });
       const actor: Actor = { ...actorOf(c, { name: c.req.query('agent') || 'Agent' }), kind: 'agent' };
       hub.publish(id, { type: 'presence', actor, state: 'listening', ts: Date.now() });
       const e = await hub.waitFor(id, (ev) => (ev.type === 'message' && ev.message.actor.kind === 'human') || ev.type === 'compose', seconds * 1000, c.req.raw.signal);
       hub.publish(id, { type: 'presence', actor, state: e ? 'reading' : 'idle', ts: Date.now() });
-      return c.json({ messages: e && e.type === 'message' ? [e.message] : [], requests: requests.take(id) });
+      return c.json({ messages: e && e.type === 'message' ? [e.message] : [], requests: requests.take(id, myId(c)) });
     } finally {
       stop();
     }
@@ -1256,14 +1363,14 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   // ── composing: words in, checked code out ──
 
   app.get('/api/ai', need('user'), (c) => {
-    const claude = claudeConfig();
-    return c.json({ providers: { claude: !!claude, agent: hub.listening(c.req.query('doc') || undefined), local: true }, model: claude?.model ?? null });
+    const claude = claudeFor(c.req.query('doc') || undefined, myId(c));
+    return c.json({ providers: { claude: !!claude, agent: hub.listening(c.req.query('doc') || undefined, myId(c)), local: true }, model: claude?.model ?? null });
   });
 
   app.post('/api/docs/:id/compose', need({ doc: 'edit' }), async (c) => {
     const doc = store.getDoc(c.req.param('id'));
     if (!doc) return c.json({ error: 'no such document' }, 404);
-    const body = (await c.req.json()) as { prompt?: string; cell?: string; target?: string; current?: string; provider?: string };
+    const body = objectOf(await c.req.json()) as { prompt?: string; cell?: string; target?: string; current?: string; provider?: string };
     const prompt = typeof body.prompt === 'string' ? body.prompt.trim().slice(0, 2000) : '';
     if (!prompt) return c.json({ error: 'say what the cell should do' }, 400);
     const target = body.target ?? 'expr';
@@ -1276,9 +1383,9 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     const wrong = event && eventProblem(ctx.cell ?? null, event);
     if (wrong) return c.json({ error: wrong }, 400);
     const cell = ctx.cell;
-    const agent = hub.listening(doc.id)
+    const agent = hub.listening(doc.id, myId(c))
       ? () => {
-          const { request, answer } = requests.open(doc.id, {
+          const { request, answer } = requests.open(doc.id, myId(c), {
             prompt, target, current: ctx.current,
             ...(cell ? { cell: cell.id, ...(cell.name ? { cellName: cell.name } : {}) } : {}),
           }, AGENT_WAIT, c.req.raw.signal);
@@ -1287,7 +1394,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
         }
       : null;
     try {
-      return c.json(await compose(ctx, prompt, { provider, claude: claudeConfig(), agent }));
+      return c.json(await compose(ctx, prompt, { provider, claude: claudeFor(doc.id, myId(c)), agent }));
     } catch (e) {
       if (e instanceof ComposeError) return c.json({ error: e.message, ...(e.suggestions?.length ? { suggestions: e.suggestions } : {}) }, 422);
       throw e;
@@ -1298,9 +1405,9 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   app.post('/api/docs/:id/compose/:rid', need({ doc: 'edit' }), async (c) => {
     const id = c.req.param('id');
     const doc = store.getDoc(id);
-    const request = doc && requests.get(id, c.req.param('rid'));
+    const request = doc && requests.get(id, c.req.param('rid'), myId(c));
     if (!doc || !request) return c.json({ error: 'no such request; it may have been answered or timed out' }, 404);
-    const body = (await c.req.json()) as { code?: unknown; explanation?: string; actor?: unknown };
+    const body = objectOf(await c.req.json()) as { code?: unknown; explanation?: string; actor?: unknown };
     let answer: ReturnType<typeof accept>;
     try {
       const ctx = context(doc, world(id, c.get('checked').role === 'owner'), collectionsFor(id, c.get('checked').role), { cell: request.cell, target: request.target, current: request.current });
@@ -1334,7 +1441,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   app.post('/api/data/:name', need({ data: 'write', link: 'edit' }), async (c) => {
     const name = c.req.param('name');
     if (!/^[\w-]{1,60}$/.test(name)) return c.json({ error: 'collection names use letters, digits, - and _' }, 400);
-    const body = (await c.req.json()) as { record?: Record<string, Json>; source?: Json };
+    const body = objectOf(await c.req.json()) as { record?: Record<string, Json>; source?: Json };
     if (!body.record || typeof body.record !== 'object' || Array.isArray(body.record)) return c.json({ error: 'send {"record": {…}}' }, 400);
     const row = store.insert(dataOwner(c), name, plainValue(body.record) as Record<string, Json>, body.source);
     dataChanged(dataOwner(c), name);
@@ -1343,7 +1450,7 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
 
   app.patch('/api/data/:name/:id', need({ data: 'write', link: 'edit' }), async (c) => {
     const name = c.req.param('name');
-    const body = (await c.req.json()) as { fields?: Record<string, Json> };
+    const body = objectOf(await c.req.json()) as { fields?: Record<string, Json> };
     if (!body.fields || typeof body.fields !== 'object' || Array.isArray(body.fields)) return c.json({ error: 'send {"fields": {…}}' }, 400);
     const id = c.req.param('id');
     const row = store.update(dataOwner(c), name, id, plainValue(body.fields) as Record<string, Json>);
@@ -1381,11 +1488,15 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
   // ── pictures ──
 
   app.post('/api/assets', need('user'), async (c) => {
-    const type = (c.req.header('content-type') ?? '').split(';')[0];
-    const ext = ASSET_TYPES[type];
-    if (!ext) return c.json({ error: 'pictures can be PNG, JPEG, GIF, WebP, AVIF or SVG' }, 415);
+    const said = (c.req.header('content-type') ?? '').split(';')[0].trim().toLowerCase();
+    if (!ASSET_TYPES[said]) return c.json({ error: 'pictures can be PNG, JPEG, GIF, WebP, AVIF or SVG' }, 415);
+    if (Number(c.req.header('content-length') ?? 0) > MAX_ASSET) return c.json({ error: 'that picture is larger than 8 MB' }, 413);
     const bytes = Buffer.from(await c.req.arrayBuffer());
     if (bytes.length > MAX_ASSET) return c.json({ error: 'that picture is larger than 8 MB' }, 413);
+    // What the bytes are, not what the request says: a page or a script sent as "image/png" is not a picture.
+    const type = sniffImage(bytes);
+    const ext = type && ASSET_TYPES[type];
+    if (!ext) return c.json({ error: 'that file is not a PNG, JPEG, GIF, WebP, AVIF or SVG picture' }, 415);
     const file = createHash('sha256').update(bytes).digest('hex').slice(0, 20) + '.' + ext;
     mkdirSync(assetsDir, { recursive: true });
     if (!existsSync(join(assetsDir, file))) {
@@ -1404,8 +1515,15 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     // Uploaded on another machine: fetched from the cloud once, then kept here.
     if (!existsSync(join(assetsDir, file)) && sync && (missingAssets.get(file) ?? 0) < Date.now()) {
       const got = await sync.fetchAsset(file).catch(() => null);
-      // Not there either: don't ask the cloud again for a while (each ask is a read it bills).
-      if (!got) missingAssets.set(file, Date.now() + 10 * 60_000);
+      // Not there either: don't ask the cloud again for a while (each ask is a read it bills). Anyone can ask for
+      // made-up names, so what is remembered is kept small: past entries go, then the oldest.
+      if (!got) {
+        if (missingAssets.size >= 5_000) {
+          for (const [k, until] of missingAssets) if (until < Date.now()) missingAssets.delete(k);
+          for (const k of missingAssets.keys()) if (missingAssets.size >= 5_000) missingAssets.delete(k);
+        }
+        missingAssets.set(file, Date.now() + 10 * 60_000);
+      }
       if (got) {
         mkdirSync(assetsDir, { recursive: true });
         writeFileSync(join(assetsDir, file), got.bytes);
@@ -1415,10 +1533,14 @@ export function createApp(store: Store, assetsDir: string, webUrl?: string, opts
     return c.body(new Uint8Array(readFileSync(join(assetsDir, file))), 200, {
       'content-type': type,
       'cache-control': 'public, max-age=31536000, immutable',
-      // An uploaded SVG must never run script if someone opens it directly.
+      // An uploaded SVG must never run script if someone opens it directly; nor may a browser guess another type.
       'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      'x-content-type-options': 'nosniff',
     });
   });
+
+  // An /api address no route answers is an error an agent can read, not the app's page (which a built server sends for any other path).
+  app.all('/api/*', (c) => c.json({ error: `no such route: ${c.req.method} ${c.req.path}` }, 404));
 
   return { app, hub, view, runner, mode, sync };
 }

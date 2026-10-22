@@ -108,6 +108,8 @@ export interface ThrottleClock {
 const FREE_TRIES = 4;
 const WINDOW = 15 * 60_000;
 const MAX_WAIT = 300_000;
+/** How many emails and addresses one throttle remembers at most. */
+const MAX_KEPT = 10_000;
 
 /**
  * Counts failed sign-ins by key. After `free` failures, a try is refused until a
@@ -135,6 +137,15 @@ export class Throttle {
 
   fail(...keys: string[]): void {
     const now = this.clock.now();
+    // A guesser trying a new email each time leaves an entry each time: those whose window is over go.
+    if (this.seen.size >= MAX_KEPT) {
+      for (const [k, s] of this.seen) if (now - s.first > WINDOW && now >= s.until) this.seen.delete(k);
+      // Still full of fresh ones: the oldest go first (a Map keeps the order they came in).
+      for (const k of this.seen.keys()) {
+        if (this.seen.size < MAX_KEPT) break;
+        this.seen.delete(k);
+      }
+    }
     for (const k of keys) {
       const s = this.seen.get(k) ?? { fails: 0, first: now, until: 0 };
       s.fails++;

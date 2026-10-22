@@ -187,3 +187,16 @@ test('deleting a typed row keeps picks on the same rows; text keeps its zeros', 
   assert.equal(numericColumn([{ a: 1 }, { a: '' }, { a: 2 }], 'a'), true);
   assert.equal(numericColumn([{ a: 1 }, { a: 'x' }], 'a'), false);
 });
+
+test('names that every object inherits name nothing: a badge, an action and an icon called "constructor" draw plainly', async () => {
+  const { iconFor } = await import('../editor/icons');
+  for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+    assert.deepEqual(badgeColors({ Paid: 'live' }, name), { bg: 'var(--sunken)', fg: 'var(--muted)' }, name);
+    assert.equal(typeof actionName({ label: '', icon: name }), 'string', name);
+    assert.equal(iconFor(name), undefined, name);
+  }
+  assert.deepEqual(badgeColors({ Paid: 'live' }, 'Paid'), { bg: 'var(--live-soft)', fg: 'var(--live)' });
+  assert.equal(actionName({ label: '', icon: 'trash-2' }), 'Delete');
+  assert.equal(actionName({ label: 7 as unknown as string }), '7', 'a label that is not text still names the action');
+  assert.ok(iconFor('star'));
+});

@@ -24,6 +24,10 @@ test('a next must be a path in this app', () => {
   assert.equal(safeNext(''), null);
   assert.equal(safeNext(null), null);
   assert.equal(safeNext('/a\nb'), null);
+  // A browser drops tabs and newlines in an address: these would be //evil.example.
+  assert.equal(safeNext('/\t/evil.example'), null);
+  assert.equal(safeNext('/\n/evil.example'), null);
+  assert.equal(safeNext('/?q=a b'), '/?q=a b', 'a space is only a space');
 });
 
 test('next never points back at the sign-in pages', () => {

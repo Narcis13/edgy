@@ -8,7 +8,7 @@ import type { Json } from '../../../core/types';
 import { print, read } from '../../../core/sx';
 import { FONTS, type FontDef, fontById } from '../../../core/fonts';
 import { COLOR_TOKENS } from '../look';
-import { CELL_ICONS, ICON_NAMES } from '../icons';
+import { CELL_ICONS, ICON_NAMES, iconFor } from '../icons';
 import { NumberField, TextField } from '../fields';
 import { cx } from '../ctx';
 
@@ -311,7 +311,7 @@ export function IconPicker({ value, onChange, allowNone = true }: { value: strin
 /** A small button showing the icon; opens the picker below it. */
 export function IconChoice({ value, onChange, label = 'Icon' }: { value: string | undefined; onChange: (v: string | null) => void; label?: string }) {
   const [open, setOpen] = useState(false);
-  const I = value ? CELL_ICONS[value] : undefined;
+  const I = iconFor(value);
   return (
     <div className="ins-icon-choice">
       <button type="button" className="ins-icon-btn" aria-expanded={open} aria-label={`${label}: ${value ?? 'none'}`} onClick={() => setOpen(!open)}>

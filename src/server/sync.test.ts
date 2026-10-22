@@ -1,16 +1,18 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { createApp } from './app';
 import { Store } from './store';
-import { LocalCloud, pipelineUrl } from './cloud';
+import { Sync } from './sync';
+import { type Cloud, HttpCloud, LocalCloud, type Value, pipelineUrl } from './cloud';
 
 /** One machine: its own database, the same cloud as the others. Sync runs only when asked (round). */
-function machine(cloud: LocalCloud, store = new Store(':memory:'), cookieFrom?: { cookie: () => Record<string, string> }) {
-  // (A store and a session can be carried over: the same machine pointed at another cloud.)
-  const { app, sync } = createApp(store, join(mkdtempSync(join(tmpdir(), 'edgy-')), 'assets'), undefined, { auth: 'accounts', cloud, syncInterval: 0 });
+function machine(cloud: Cloud, store = new Store(':memory:'), cookieFrom?: { cookie: () => Record<string, string> }, assets = join(mkdtempSync(join(tmpdir(), 'edgy-')), 'assets')) {
+  // (A store, a session and pictures can be carried over: the same machine pointed at another cloud.)
+  const { app, sync } = createApp(store, assets, undefined, { auth: 'accounts', cloud, syncInterval: 0 });
   let cookie: Record<string, string> = cookieFrom?.cookie() ?? {};
   const call = async (method: string, path: string, body?: unknown) => {
     const res = await app.request(path, {
@@ -321,4 +323,243 @@ test('Flow travels like any record: an item posted on one, commented on the othe
   await settle(one, two);
   const gone = (await two.call('GET', '/api/flow')).json;
   assert.deepEqual([gone.items.length, gone.comments.length, gone.reactions.length], [0, 0, 0]);
+});
+
+// ── from the second review ──
+
+test('a change the cloud refuses waits on its own: what comes after it still goes, and it is not sent again each round', async () => {
+  const { cloud, one, two } = await pair();
+  // The cloud refuses any row that says POISON, as Turso does one too large.
+  cloud.db.exec("CREATE TRIGGER refuse BEFORE INSERT ON edgy_log WHEN NEW.body LIKE '%POISON%' BEGIN SELECT RAISE(ABORT, 'string or blob too big'); END");
+  const bad = (await one.call('POST', '/api/data/orders', { record: { item: 'POISON' } })).json;
+  for (const i of [0, 1, 2]) await one.call('POST', '/api/data/orders', { record: { item: `later ${i}` } });
+  const id = (await one.call('POST', '/api/docs', { title: 'After it', root: ROOT })).json.id;
+  await settle(one, two);
+  assert.deepEqual((await two.call('GET', '/api/data/orders')).json.map((o: any) => o.item), ['later 0', 'later 1', 'later 2']);
+  assert.ok(two.store.getDoc(id), 'a document made after it arrived');
+  const s = one.sync.status();
+  assert.deepEqual([s.state, s.refused, s.pending], ['error', 1, 1], 'it says so, and the change stays here');
+  assert.match(s.error ?? '', /too big/);
+  // It waits rather than going (and failing) every round …
+  let tries = 0;
+  cloud.failIf = (stmts) => {
+    if (stmts.some((x) => String(x.args?.[6] ?? '').includes('POISON'))) tries++;
+    return false;
+  };
+  await settle(one);
+  assert.equal(tries, 0);
+  cloud.failIf = null;
+  // … and once it changed, it goes at once.
+  await one.call('PATCH', `/api/data/orders/${bad.id}`, { fields: { item: 'fixed' } });
+  await settle(one, two);
+  // (Sorted: it arrived last, and it may have been made in the same millisecond as the next one.)
+  assert.deepEqual((await two.call('GET', '/api/data/orders')).json.map((o: any) => o.item).sort(), ['fixed', 'later 0', 'later 1', 'later 2']);
+  assert.deepEqual([one.sync.status().state, one.sync.status().refused, one.sync.status().pending], ['synced', 0, 0]);
+});
+
+/**
+ * Turso's /v2/pipeline in a local database, behaving as it does: every request
+ * of a pipeline runs, even after one fails; a batch step runs only when its
+ * condition holds. A statement `refuse` says yes to fails, as one too large does there.
+ */
+function turso(refuse: (args: Value[]) => boolean) {
+  const db = new DatabaseSync(':memory:');
+  const value = (v: any): Value => (v.type === 'null' ? null : v.type === 'integer' ? Number(v.value) : v.type === 'blob' ? new Uint8Array(Buffer.from(v.base64, 'base64')) : v.value);
+  const hrana = (v: unknown) => (v === null ? { type: 'null' } : typeof v === 'number' ? (Number.isInteger(v) ? { type: 'integer', value: String(v) } : { type: 'float', value: v })
+    : typeof v === 'string' ? { type: 'text', value: v } : { type: 'blob', base64: Buffer.from(v as Uint8Array).toString('base64') });
+  const execute = (stmt: { sql: string; args?: unknown[] }) => {
+    const args = (stmt.args ?? []).map(value);
+    if (refuse(args)) throw new Error('SQLITE_TOOBIG: string or blob too big');
+    const st = db.prepare(stmt.sql);
+    const rows = /^\s*(select|with)\b/i.test(stmt.sql) ? (st.all(...(args as never[])) as Record<string, unknown>[]) : (st.run(...(args as never[])), []);
+    const cols = rows[0] ? Object.keys(rows[0]).map((name) => ({ name })) : [];
+    return { cols, rows: rows.map((r) => cols.map((c) => hrana(r[c.name]))), affected_row_count: 0 };
+  };
+  const fetch = async (_url: unknown, init?: RequestInit) => {
+    const { requests } = JSON.parse(String(init!.body)) as { requests: any[] };
+    const results = requests.map((r) => {
+      if (r.type === 'close') return { type: 'ok', response: { type: 'close' } };
+      if (r.type === 'execute') {
+        try {
+          return { type: 'ok', response: { type: 'execute', result: execute(r.stmt) } };
+        } catch (e) {
+          return { type: 'error', error: { message: (e as Error).message } };
+        }
+      }
+      const outcome: ('ok' | 'error' | null)[] = [];
+      const holds = (c: any): boolean => (c.type === 'ok' ? outcome[c.step] === 'ok' : c.type === 'error' ? outcome[c.step] === 'error'
+        : c.type === 'not' ? !holds(c.cond) : c.type === 'and' ? c.conds.every(holds) : c.conds.some(holds));
+      const stepResults: unknown[] = [];
+      const stepErrors: unknown[] = [];
+      for (const step of r.batch.steps) {
+        let result = null;
+        let error = null;
+        if (!step.condition || holds(step.condition)) {
+          try {
+            result = execute(step.stmt);
+          } catch (e) {
+            error = { message: (e as Error).message };
+          }
+        }
+        outcome.push(result ? 'ok' : error ? 'error' : null);
+        stepResults.push(result);
+        stepErrors.push(error);
+      }
+      return { type: 'ok', response: { type: 'batch', result: { step_results: stepResults, step_errors: stepErrors } } };
+    });
+    // The stream ends with the request: a transaction it left open is rolled back.
+    if (db.isTransaction) db.exec('ROLLBACK');
+    return new Response(JSON.stringify({ baton: null, base_url: null, results }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  return { db, fetch: fetch as typeof globalThis.fetch };
+}
+
+test("over Turso's pipeline, a document whose history the cloud refuses leaves nothing of it there; the rest still goes", async () => {
+  const cloud = turso((args) => args[2] === 'hist' && String(args[6]).includes('POISON'));
+  const one = machine(new HttpCloud('http://turso.test', 'token', 15_000, cloud.fetch));
+  assert.equal((await one.call('POST', '/api/auth/signup', { email: 'ana@example.test', password: 'correct horse', name: 'Ana' })).status, 201);
+  await one.round();
+  const id = (await one.call('POST', '/api/docs', { title: 'Half', root: ROOT })).json.id;
+  await one.call('POST', `/api/docs/${id}/ops`, { ops: [['set', 'note', 'text', 'POISON']] });
+  await one.call('POST', `/api/docs/${id}/ops`, { ops: [['set', 'note', 'text', 'Hello again']] });
+  await one.call('POST', '/api/data/orders', { record: { item: 'tea' } });
+  await one.round();
+  assert.deepEqual(cloud.db.prepare("SELECT kind FROM edgy_log WHERE key = ? AND kind IN ('create', 'hist')").all(id).map((r: any) => r.kind), [], 'not its state without its history');
+  assert.equal(cloud.db.prepare("SELECT COUNT(*) AS n FROM edgy_log WHERE kind = 'record' AND body LIKE '%tea%'").get()!.n, 1, 'the record beside it went');
+  assert.equal(one.sync.status().refused, 1);
+});
+
+test('after a failed round, a change waits for the back-off instead of sending the whole backlog again 300 ms later', async () => {
+  const cloud = new LocalCloud();
+  let tries = 0;
+  cloud.failIf = () => (tries++, true);
+  const none = () => {};
+  const sync = new Sync(new Store(':memory:'), cloud, { reset: none, deleted: none, data: none, account: none, accountDeleted: none, access: none, unshared: none }, { interval: 50 });
+  sync.start();
+  await sync.round();
+  assert.equal(tries, 1);
+  sync.kick();
+  await new Promise((r) => setTimeout(r, 500));
+  sync.stop();
+  assert.equal(tries, 1, 'nothing sent before the back-off is over');
+});
+
+test("a row whose body names another id than its key changes nothing, in any account's space", async () => {
+  const { cloud, one, two } = await pair();
+  const id = (await one.call('POST', '/api/docs', { title: 'Ana only', root: ROOT })).json.id;
+  const b = (await one.call('POST', '/api/docs', { title: 'B' })).json.id;
+  const deck = (await one.call('POST', '/api/decks', { title: 'Ana deck', docs: [b] })).json.id;
+  const link = (await one.call('POST', `/api/docs/${b}/shares`, { access: 'view' })).json.token;
+  await one.call('DELETE', `/api/shares/${link}`);
+  await settle(one, two);
+  const ana = two.store.userByEmail('ana@example.test')!;
+  // Mallory has an account on machine two, with a document of her own.
+  assert.equal((await two.call('POST', '/api/auth/signout')).status, 200);
+  const mid = (await two.call('POST', '/api/auth/signup', { email: 'mallory@example.test', password: 'correct horse', name: 'Mallory' })).json.user.id as string;
+  const mine = (await two.call('POST', '/api/docs', { title: 'Mallory doc' })).json.id;
+  await two.round();
+  // Rows in her space, each keyed by something of hers (or nothing at all), whose bodies name Ana's things.
+  const forge = (kind: string, key: string, body: unknown) =>
+    cloud.db.prepare('INSERT INTO edgy_log (space, oid, kind, key, origin, ts, body) VALUES (?, ?, ?, ?, ?, ?, ?)').run(mid, `forged-${kind}`, kind, key, 'x', Date.now(), JSON.stringify(body));
+  const real = two.store.getDoc(id)!;
+  const link0 = two.store.share(link);
+  forge('create', 'zzzzzzzz', { doc: { ...real, meta: { ...real.meta, title: 'Pwned' } }, createdAt: 1, updatedAt: 1 });
+  forge('deck', 'deck-zzzzzzz', { id: deck, title: 'Pwned', description: '', createdAt: 1, updatedAt: 2, archivedAt: 5, docs: [mine] });
+  forge('share', 'some-other-token', { token: link, doc: mine, access: 'edit', createdAt: 1, revokedAt: null, collections: ['salaries'] });
+  await two.round();
+  assert.equal(two.store.getDoc(id)!.meta.title, 'Ana only', 'her document, in the cache too');
+  assert.equal(two.store.syncDoc('zzzzzzzz'), null);
+  const d = two.store.deck(deck)!;
+  assert.deepEqual([d.owner, d.title, d.archivedAt, d.docs], [ana.id, 'Ana deck', null, [b]], 'her deck, with her document');
+  assert.deepEqual(two.store.share(link), link0, 'her link stays off, on her document');
+});
+
+test('a crash between rewriting the history and saving its base leaves neither; pulled again, both machines agree', async () => {
+  const { cloud, one, two } = await pair();
+  const id = (await one.call('POST', '/api/docs', { title: 'Crash', root: ROOT })).json.id;
+  await settle(one, two);
+  cloud.down = true;
+  await one.call('POST', `/api/docs/${id}/ops`, { ops: [['set', 'qty', 'value', 2]] });
+  await two.call('POST', `/api/docs/${id}/ops`, { ops: [['set', 'qty', 'value', 3]] });
+  cloud.down = false;
+  await two.round(); // two's edit reaches the cloud first: one has to put it before its own
+  const before = { log: one.log(id), base: one.store.syncDoc(id), cursors: one.store.spaces() };
+  const real = one.store.setSyncDoc.bind(one.store);
+  (one.store as any).setSyncDoc = () => {
+    // The process stops here: nothing after this runs.
+    (one.store as any).setSyncDoc = real;
+    cloud.down = true;
+    throw new Error('the machine went down');
+  };
+  await one.round();
+  assert.deepEqual(one.log(id), before.log, 'the history is as it was');
+  assert.deepEqual(one.store.syncDoc(id), before.base, 'and so is its base');
+  // Started again: where the pull stood was never saved, so the page comes again.
+  for (const s of before.cursors) one.store.setCursor(s.space, s.cursor);
+  cloud.down = false;
+  await settle(one, two);
+  assert.deepEqual(one.log(id), two.log(id));
+  assert.equal((await one.values(id)).qty, (await two.values(id)).qty);
+  assert.equal(one.sync.status().pending, 0);
+});
+
+test('pointed at a new cloud database, a machine sends its pictures again too', async () => {
+  const assets = join(mkdtempSync(join(tmpdir(), 'edgy-')), 'assets');
+  mkdirSync(assets, { recursive: true });
+  const file = 'a'.repeat(20) + '.png';
+  writeFileSync(join(assets, file), 'a picture');
+  const cloud = new LocalCloud();
+  const one = machine(cloud, new Store(':memory:'), undefined, assets);
+  assert.equal((await one.call('POST', '/api/auth/signup', { email: 'ana@example.test', password: 'correct horse', name: 'Ana' })).status, 201);
+  await one.round();
+  const pictures = (c: LocalCloud) => c.db.prepare('SELECT file FROM edgy_assets').all().map((r: any) => r.file);
+  assert.deepEqual(pictures(cloud), [file]);
+  const fresh = new LocalCloud();
+  const again = machine(fresh, one.store, one, assets);
+  await again.round();
+  assert.deepEqual(pictures(fresh), [file]);
+});
+
+test('a cloud restored from a backup is noticed: what it lost is sent again', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'edgy-cloud-'));
+  const cloud = new LocalCloud(join(dir, 'cloud.db'));
+  const one = machine(cloud);
+  assert.equal((await one.call('POST', '/api/auth/signup', { email: 'ana@example.test', password: 'correct horse', name: 'Ana' })).status, 201);
+  await one.round();
+  const id = (await one.call('POST', '/api/docs', { title: 'Kept', root: ROOT })).json.id;
+  await settle(one);
+  const backup = join(dir, 'backup.db').replaceAll('\\', '/');
+  cloud.db.exec(`VACUUM INTO '${backup}'`);
+  for (const n of [2, 3]) await one.call('POST', `/api/docs/${id}/ops`, { ops: [['set', 'qty', 'value', n]] });
+  await one.call('POST', '/api/data/orders', { record: { item: 'after the backup' } });
+  await settle(one);
+  // The cloud comes back from the backup: the same database, by its id, missing what came after.
+  const restored = new LocalCloud(backup);
+  const again = machine(restored, one.store, one);
+  await settle(again);
+  assert.equal(again.sync.status().pending, 0);
+  const three = machine(restored);
+  assert.equal((await three.call('POST', '/api/auth/signin', { email: 'ana@example.test', password: 'correct horse' })).status, 200);
+  await settle(three);
+  assert.equal((await three.values(id)).qty, 3, 'the edits made after the backup');
+  assert.deepEqual((await three.call('GET', '/api/data/orders')).json.map((o: any) => o.item), ['after the backup']);
+  assert.deepEqual(three.log(id), again.log(id));
+});
+
+test("a profile sent just after the account was deleted in the cloud doesn't list it there again", async () => {
+  const { cloud, one, two } = await pair();
+  const ana = one.store.userByEmail('ana@example.test')!;
+  await settle(one, two);
+  await two.call('PATCH', '/api/me', { name: 'Ana B' });
+  // One machine deletes the account just as the other lists the new name: the deletion lands first.
+  cloud.failIf = (stmts) => {
+    if (stmts.some((s) => /INTO edgy_accounts/.test(s.sql))) {
+      cloud.failIf = null;
+      cloud.db.prepare("UPDATE edgy_accounts SET email = NULL, body = '{}', deleted_at = ? WHERE id = ?").run(Date.now(), ana.id);
+    }
+    return false;
+  };
+  await two.round();
+  const row = cloud.db.prepare('SELECT email, body FROM edgy_accounts WHERE id = ?').get(ana.id) as any;
+  assert.deepEqual([row.email, row.body], [null, '{}'], 'still deleted: no email to find it by, no password hash');
 });

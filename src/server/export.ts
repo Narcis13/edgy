@@ -60,7 +60,8 @@ export function sniffImage(b: Buffer): string | null {
   if (b.toString('ascii', 0, 4) === 'GIF8') return 'image/gif';
   if (b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
   if (b.toString('ascii', 4, 12).startsWith('ftypavi')) return 'image/avif';
-  if (/^\s*(<\?xml[^>]*>\s*)?(<!--[\s\S]*?-->\s*)*<svg[\s>]/i.test(b.toString('utf8', 0, 512))) return 'image/svg+xml';
+  // An SVG as editors save it: maybe a byte-order mark, an XML declaration, comments and a doctype before <svg.
+  if (/^\uFEFF?\s*(<\?xml[^>]*>\s*)?((<!--[\s\S]*?-->|<!DOCTYPE[^>[]*(\[[\s\S]*?\])?\s*>)\s*)*<svg[\s>]/i.test(b.toString('utf8', 0, 1024))) return 'image/svg+xml';
   return null;
 }
 

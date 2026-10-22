@@ -144,7 +144,7 @@ The link points at the server's address, which is on this computer: it reaches o
 ::: tool edgy_export
 Saves a document or a deck as one `.html` file that opens from disk with no server and no network: the layout, fonts, pictures and icons are inside, formulas, inputs and buttons work, a deck plays as slides, and the records the documents read are in it as they are now. See [Export](/library/export/).
 
-Give `doc` or `deck`, not both (`give either doc or deck` otherwise). With `file`, a path on the computer where the MCP server runs, the file is written there. Without it you get the address to download from.
+Give `doc` or `deck`, not both (`give either doc or deck` otherwise). With `file`, a path on the computer where the MCP server runs, the file is written there; it must end in `.html` (`file must end in .html` otherwise), so words in a document can't get an agent to write over another kind of file. Without it you get the address to download from.
 
 ```json
 {"doc": "Quote", "file": "C:/Users/ada/Desktop/quote.html"}
@@ -247,7 +247,7 @@ Waits for the person to write to the agent in a document's **Activity** panel, a
 
 `after` is the id of the last message the agent has seen, so it hears only newer ones. `timeout` is the seconds to wait, up to 120 (30 by default); a message that is already waiting is returned at once.
 
-It also returns requests from **Ask AI**. When the person describes in words what a cell should compute or how it should react, and an agent is listening, the request goes to the agent, which has 45 seconds to answer it with [edgy_answer](tool:edgy_answer). See [Ask AI](/editor/ask-ai/).
+It also returns requests from **Ask AI**: those of the person whose key the agent uses, never another editor's. When the person describes in words what a cell should compute or how it should react, and their agent is listening, the request goes to the agent, which has 45 seconds to answer it with [edgy_answer](tool:edgy_answer). See [Ask AI](/editor/ask-ai/).
 
 ```json
 {"doc": "Quote", "after": 2, "timeout": 60}

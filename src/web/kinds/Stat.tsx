@@ -5,7 +5,7 @@ import { useId } from 'react';
 import type { Cell } from '../../core/types';
 import type { CellState } from '../../core/engine';
 import { formatValue } from '../../core/sx';
-import { CELL_ICONS } from '../editor/icons';
+import { iconFor } from '../editor/icons';
 import { cx } from '../editor/ctx';
 import { change, changeText, numbers, spark } from './kpi';
 import { useCurrency } from './shared';
@@ -18,7 +18,7 @@ export function StatView({ cell, st }: { cell: Cell; st: CellState | undefined }
   const currency = useCurrency();
   const gradient = 'spark' + useId().replace(/[^\w-]/g, '');
   const label = (st?.props?.label as string | undefined) ?? cell.label;
-  const Icon = cell.icon ? CELL_ICONS[cell.icon] : undefined;
+  const Icon = iconFor(cell.icon);
   const props = st?.props ?? {};
   const compare = 'compare' in props ? props.compare : cell.compare;
   const trend = numbers('trend' in props ? props.trend : cell.trend);

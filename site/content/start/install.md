@@ -83,10 +83,9 @@ npm run build
 npm start
 ```
 
-`npm run build` writes the app, the offline copy used by exports, and these docs into `dist/`. `npm start` then serves the app, the API and the docs from one process on `http://127.0.0.1:8787`; there is no Vite and no port 5173.
+`npm run build` writes the app, the offline copy used by exports, and these docs into `dist/`. `npm start` then serves the app, the API and the docs from one process on `http://127.0.0.1:8787`; there is no Vite and no port 5173. It works the same on Windows, macOS and Linux (`scripts/start.mjs` sets `NODE_ENV=production` and runs the server), and it stops at once with `no build in dist/ — run npm run build first` when there is nothing built.
 
-> [!NOTE]
-> The `start` script puts `NODE_ENV=production` in front of the command, which only Unix shells understand. On Windows, set the variable yourself and run the server directly: `$env:NODE_ENV = "production"; npx tsx --disable-warning=ExperimentalWarning src/server/index.ts`. The server only serves the built app when `NODE_ENV` is `production` and `dist/index.html` exists.
+Stop it with Ctrl+C, or with `SIGTERM` from a service manager: timers and sync stop, open pages are told, and the database is closed with nothing half written (at most ten seconds later it exits anyway).
 
 ## Switches
 
@@ -104,6 +103,48 @@ All of these are environment variables, set before the command.
 | `EDGY_WEB_URL` | `http://localhost:5173` in development | The address agents give people to open a document. |
 | `TURSO_URL`, `TURSO_AUTH_TOKEN` | none | Turn sync on; see below. |
 | `EDGY_SYNC_INTERVAL` | `3000` | How often, in milliseconds, this machine asks the cloud for news. |
+| `EDGY_SIGNUPS` | open | `off`: nobody new signs up once the server has its first account. See [Put it online](#put-it-online). |
+| `ANTHROPIC_API_KEY` | none | Lets [Ask AI](/editor/ask-ai/) answer with Claude, in the server owner's documents. `EDGY_AI_MODEL` picks the model, `EDGY_AI=off` turns it off. |
+| `EDGY_AI_USERS` | owner | `all`: Claude answers in every account's documents, on the owner's key. |
+| `EDGY_SECRET_<NAME>` | none | A secret a [fetch](kind:fetch) cell's header can name as `secret:NAME`, in the owner's documents only. |
+
+## Put it online
+
+To let other people (or your other devices) reach edgy at an address of its own, run the built server on a machine that stays on and put a web server that speaks HTTPS in front of it, on the same machine: Caddy, nginx or another reverse proxy. edgy itself speaks plain HTTP and keeps listening on `127.0.0.1`; only the proxy faces the internet.
+
+```text
+npm ci
+npm run build
+EDGY_AUTH=accounts EDGY_DATA=/srv/edgy/data EDGY_WEB_URL=https://edgy.example.org npm start
+```
+
+A Caddy site for it is two lines; Caddy gets the certificate and adds the headers edgy reads:
+
+```text
+edgy.example.org {
+  reverse_proxy 127.0.0.1:8787
+}
+```
+
+What to set, and why:
+
+- **`EDGY_AUTH=accounts`.** Behind a proxy every request comes from `127.0.0.1`, so edgy would otherwise choose local mode. It still treats proxied requests as coming from elsewhere (they carry `X-Forwarded-For`), but say it plainly.
+- **`EDGY_WEB_URL`** to the public address, so the links agents and share links give out are the ones people open. Without it edgy works the address out from the proxy's `X-Forwarded-Proto` and `X-Forwarded-Host`.
+- **`EDGY_SIGNUPS=off`** once you have made your own account, unless you want anyone who finds the address to make one. The first account is the server's owner.
+- **`EDGY_DATA`** to a folder outside the code, and back it up. The database is SQLite in WAL mode: copy the folder while the server is stopped, or use `sqlite3 edgy.db ".backup backup.db"` while it runs.
+- **A service manager** (systemd, pm2, a Windows service) that restarts it and stops it with `SIGTERM`.
+
+The proxy must pass the `Host` header on (Caddy does; in nginx, `proxy_set_header Host $host;`) or send `X-Forwarded-Host`, send `X-Forwarded-Proto` and `X-Forwarded-For` (both do by default), and must not buffer `text/event-stream` answers (in nginx, `proxy_buffering off;` for `/api/`), which carry live changes.
+
+What edgy does by itself on a server others can reach:
+
+- Every answer says `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin` and that no other site may frame it.
+- A request body is at most 16 MB (64 KB for sign-in and sign-up), and is read only once the asker is known.
+- Failed sign-ins and new accounts are slowed down per address, the address the proxy saw.
+- The session cookie is `HttpOnly`, `SameSite=Lax`, and `Secure` when the proxy says the browser used HTTPS.
+- Fetch cells can't reach private or local addresses, at most 32 of them are on the network at once, and each is cut off at 10 seconds and 1 MB.
+- Claude and the server's secrets are spent only for the owner's documents.
+- An `/api` address that doesn't exist answers JSON `404`; the built app's pages are sent with `Cache-Control: no-cache` and its bundles, named by their content, are kept by browsers for a year.
 
 ## Sync between machines
 
@@ -145,5 +186,7 @@ In development the docs are built the first time you open them, which takes a mo
 - **It stops straight away on an old Node.** Check `node --version`; you need 22.13 or newer.
 - **`npm run dev:sync` stops at once.** The `.env` file isn't there. Make it, or use `npm run dev`.
 - **The browser shows a sign-in page and you expected none.** The server is in accounts mode: `HOST` or `EDGY_AUTH` is set. Unset them, or sign in.
+- **`npm start` says there is no build.** Run `npm run build` first.
+- **Behind a proxy, every change says *a page on another site can not change edgy*.** The proxy doesn't tell edgy the address the browser used: make it pass `Host` and `X-Forwarded-Proto` on (see [Put it online](#put-it-online)), or set `EDGY_WEB_URL` to the public address.
 
 Next: [The screens](/start/screens/).

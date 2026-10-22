@@ -19,7 +19,8 @@ import { ListView } from '../kinds/List';
 import { FetchView, TimerChip } from '../kinds/Background';
 import { StatView } from '../kinds/Stat';
 import { TableView } from '../kinds/Table';
-import { CELL_ICONS } from './icons';
+import { iconFor } from './icons';
+import { Boundary } from '../Boundary';
 import { SxField } from './fields';
 import { Markdown } from './Markdown';
 import { COLOR_TOKENS, color, cssOf, flexOf } from './look';
@@ -52,7 +53,13 @@ export const CellView = memo(function CellView({ cell, dir }: Props) {
   );
 
   const sizing = dir ? (cell.size === 'hug' ? 'hug' : typeof cell.size === 'string' ? 'fixed' : 'fill') : undefined;
-  if (isContainer(cell)) return <ContainerView cell={cell} st={st} className={classes} style={style} sizing={sizing} />;
+  if (isContainer(cell)) {
+    return (
+      <Boundary resetKeys={[cell, st]} fallback={(e) => <div className={classes} data-cell={cell.id} data-size={sizing} style={style} {...pointer}>{broken(e)}</div>}>
+        <ContainerView cell={cell} st={st} className={classes} style={style} sizing={sizing} />
+      </Boundary>
+    );
+  }
   if (isGroup(cell)) {
     return (
       <div className={classes} data-cell={cell.id} data-size={sizing} data-stack={cell.kind === 'row' ? stackOf(cell) : undefined} style={style}>
@@ -62,7 +69,9 @@ export const CellView = memo(function CellView({ cell, dir }: Props) {
   }
   return (
     <div className={classes} data-cell={cell.id} data-size={sizing} style={style} {...pointer}>
-      {cell.kind === 'data' ? <DataChip cell={cell} st={st} /> : <Leaf cell={cell} st={st} editing={editing} live={live} />}
+      <Boundary resetKeys={[cell, st, editing, live]} fallback={broken}>
+        {cell.kind === 'data' ? <DataChip cell={cell} st={st} /> : <Leaf cell={cell} st={st} editing={editing} live={live} />}
+      </Boundary>
       {st?.error && cell.kind !== 'text' && <span className="cell-error" title={st.error}>{st.error}</span>}
     </div>
   );
@@ -124,6 +133,13 @@ function usePointer(cell: Cell): React.HTMLAttributes<HTMLDivElement> {
 }
 
 /** A group's cells with the edges between them; cells readers can't see leave no edge behind. */
+/** A cell whose drawing threw (a value of a shape it can't show): the rest of the document carries on, and this one can be selected and fixed. */
+const broken = (e: Error) => (
+  <span className="cell-error" role="alert" title={e.message}>
+    This cell can not be shown: {/Minified React error #31\b|Objects are not valid as a React child/.test(e.message) ? 'it holds a list or an object where text belongs (a label, say)' : e.message}
+  </span>
+);
+
 export function Kids({ cell }: { cell: Cell }) {
   const live = useS((s) => s.mode !== 'edit');
   const visible = useS((s) =>
@@ -165,7 +181,7 @@ function Leaf({ cell, st, editing, live }: { cell: Cell; st: CellState | undefin
     case 'image':
       return <ImageView cell={cell} st={st} live={live} />;
     case 'icon': {
-      const Icon = (cell.icon && CELL_ICONS[cell.icon]) || CircleHelp;
+      const Icon = iconFor(cell.icon) ?? CircleHelp;
       return <Icon className="cell-icon" strokeWidth={1.75} aria-label={cell.icon} />;
     }
     case 'chart':
@@ -434,7 +450,7 @@ function ButtonView({ cell, st, editing }: { cell: Cell; st: CellState | undefin
       />
     );
   }
-  const Icon = cell.icon ? CELL_ICONS[cell.icon] : undefined;
+  const Icon = iconFor(cell.icon);
   if (asking) {
     // Asked first: the question and two answers take the button's place until one is chosen.
     return (

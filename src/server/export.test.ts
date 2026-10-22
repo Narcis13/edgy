@@ -137,3 +137,15 @@ function* walkCells(c: any): Generator<any> {
   yield c;
   for (const ch of c.children ?? []) if (ch && typeof ch === 'object' && 'kind' in ch) yield* walkCells(ch);
 }
+
+test('an export fetches a picture used in many cells once', async () => {
+  const { call, asked } = setup();
+  const cells = Array.from({ length: 30 }, (_, i) => ['image', { name: `p${i}` }, 'https://pics.example/cat.png']);
+  const doc = (await (await call('POST', '/api/docs', { title: 'Cats', root: ['col', ...cells] })).json()) as { id: string };
+  const res = await call('GET', `/api/docs/${doc.id}/export`);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('x-edgy-missing-pictures'), '0');
+  assert.equal(asked.filter((u) => u === 'https://pics.example/cat.png').length, 1, 'one request for thirty cells');
+  const payload = payloadOf(await res.text());
+  assert.equal(JSON.stringify(payload).split('data:image/png;base64').length - 1, 30, 'and every cell shows it');
+});

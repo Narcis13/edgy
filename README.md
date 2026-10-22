@@ -27,7 +27,7 @@ Other scripts:
 | --- | --- |
 | `npm test` | the core language, ops and server, with Node's test runner |
 | `npm run typecheck` | `tsc --noEmit` |
-| `npm run build` then `npm start` | one production process serving the app and the API on 8787 |
+| `npm run build` then `npm start` | one production process serving the app and the API on 8787 (on Windows too); see [Putting it online](#putting-it-online) |
 | `npm run mcp` | the MCP server for agents (started by Claude Code from `.mcp.json`) |
 | `docs/showcase/data-tables/shoot.sh` | rebuilds the data-table showcase screenshots and PDF from a fresh server |
 | `docs/showcase/library/shoot.sh` | rebuilds the library showcase (search, pins, decks, Play, sharing, exports) from a fresh server |
@@ -54,7 +54,7 @@ To put the docs online, build them and copy `dist/docs/` to any static host, at 
 
 ## Writing code without knowing the language
 
-Every place that takes an expression is a code editor: colours, matching brackets, autocomplete for functions and for the document's own cells (with their current values), the signature of the function you are in, and errors underlined where they are. Press **⌘E** (or the expand button) for the **code studio**: the same expression as **Blocks** you can click together, a searchable list of functions, the cells you can use, and the live result. The **Ask AI** tab turns a sentence into code in the context of the document — "what is left of the budget, never below zero" becomes `(max 0 (- budget total))`, checked against the document before you see it. It answers with Claude when `ANTHROPIC_API_KEY` is set (model `EDGY_AI_MODEL`, default `claude-sonnet-5-5`), with an agent connected over MCP when one is listening (`edgy_listen` shows the request, `edgy_answer` replies), and otherwise with a built-in composer that understands everyday phrasings offline.
+Every place that takes an expression is a code editor: colours, matching brackets, autocomplete for functions and for the document's own cells (with their current values), the signature of the function you are in, and errors underlined where they are. Press **⌘E** (or the expand button) for the **code studio**: the same expression as **Blocks** you can click together, a searchable list of functions, the cells you can use, and the live result. The **Ask AI** tab turns a sentence into code in the context of the document — "what is left of the budget, never below zero" becomes `(max 0 (- budget total))`, checked against the document before you see it. It answers with Claude when `ANTHROPIC_API_KEY` is set (model `EDGY_AI_MODEL`, default `claude-sonnet-5-5`; in the server owner's documents, since the key is theirs, or in everyone's with `EDGY_AI_USERS=all`), with an agent connected over MCP when one is listening (`edgy_listen` shows the request, `edgy_answer` replies), and otherwise with a built-in composer that understands everyday phrasings offline.
 
 ## Data tables
 
@@ -90,7 +90,7 @@ The home page keeps up with hundreds of documents. **Search** finds words in tit
 
 ## Accounts and people
 
-Every document has an **owner**. Sign up with an email and a password (stored as a salted scrypt hash); a session lasts 30 days in an HttpOnly cookie and survives restarts. Five wrong passwords in a row and sign-in starts asking you to wait, a little longer each time. The first account on an installation that existed before accounts owns everything that was there.
+Every document has an **owner**. Sign up with an email and a password (stored as a salted scrypt hash); a session lasts 30 days in an HttpOnly cookie and survives restarts. Five wrong passwords in a row and sign-in starts asking you to wait, a little longer each time; new accounts are slowed down the same way after ten from one address. The first account on an installation that existed before accounts owns everything that was there, and is the server's owner: its secrets and its Claude key are spent only for that account's documents. `EDGY_SIGNUPS=off` closes sign-up once the server has its owner.
 
 - **Mine and Shared with me.** The library shows your documents under Mine; Shared with me lists documents other people gave your account access to, with their owner and what you may do. Pins, archive and decks are your own arrangement of your own documents.
 - **People.** In a document, Share → People: add someone by the email of their account as **can view** or **can edit**, change it, or remove them. Removing takes effect at once, even in a browser that has the document open. Someone you shared with can leave it. Share links keep working, and belong to the owner.
@@ -108,6 +108,10 @@ An agent (the MCP server, a script) acts for a person with an **API key**: Profi
 ```
 
 With a key, an agent sees and changes only what its person can, and Activity shows it as "Claude for Ana". A missing or revoked key gets a clear message from every tool. Over HTTP send `Authorization: Bearer edgy_…`. In local mode, agents on this machine need no key.
+
+### Putting it online
+
+Build once, run `npm start` behind a reverse proxy that speaks HTTPS (Caddy: `edgy.example.org { reverse_proxy 127.0.0.1:8787 }`), and set `EDGY_AUTH=accounts`, `EDGY_WEB_URL=https://edgy.example.org`, `EDGY_DATA` to a folder you back up, and `EDGY_SIGNUPS=off` once your own account exists. edgy reads the proxy's `X-Forwarded-*` headers for the address the browser used and for who to slow down, sends `nosniff`, `same-origin` referrers and no-framing headers on every answer, caps request bodies (16 MB, 64 KB for sign-in), and closes the database cleanly on `SIGTERM`. The whole checklist is in the docs: Install and run → Put it online. The production review that added these is in [docs/production-review-2026-10-22.md](docs/production-review-2026-10-22.md).
 
 ## Sync between machines
 

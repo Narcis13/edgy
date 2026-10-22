@@ -57,6 +57,12 @@ export const LIMITS: Limits = { ms: 10_000, bytes: 1024 * 1024 };
 export const MIN_REFRESH = 5_000;
 /** The shortest interval a timer gets. */
 export const MIN_TICK = 1_000;
+/** The soonest a fetch cell fetches again because its address changed after an answer (a load handler that changes it, say). */
+export const MIN_REFETCH = 1_000;
+/** Requests to the network at once, from every document together; the rest wait their turn. */
+const MAX_FETCHING = 32;
+/** Documents nobody is in Live on whose last answers are kept (for readers who open them); older ones are forgotten. */
+const MAX_IDLE_DOCS = 200;
 
 /** The paths on this server a fetch cell may read. */
 const LOCAL_PATHS = [/^\/api\/data\/[\w-]+(\?.*)?$/, /^\/api\/demo\/[\w-]+(\?.*)?$/];
@@ -120,6 +126,9 @@ export class Runner {
   private live = new Map<string, Live>();
   private fetched = new Map<string, Map<string, FetchState>>();
   private inflight = new Map<string, { p: Promise<FetchState>; job: { handlers: boolean } }>();
+  /** When each cell's last request started, and a fetch waiting for MIN_REFETCH to pass (by "<doc>\n<cell>"). */
+  private started = new Map<string, number>();
+  private later = new Map<string, unknown>();
   private clock: Clock;
   private limits: Limits;
   private n = 0;
@@ -173,6 +182,14 @@ export class Runner {
     for (const t of run.timers.values()) this.clearTimer(t);
     for (const p of run.polls.values()) this.clock.clearInterval(p.handle);
     this.live.delete(doc);
+    for (const [key, h] of this.later) {
+      if (!key.startsWith(doc + '\n')) continue;
+      this.clock.clearTimeout(h);
+      this.later.delete(key);
+    }
+    // Answers stay for readers who open the document later, for the most recent documents only.
+    const idle = [...this.fetched.keys()].filter((id) => !this.live.has(id));
+    while (idle.length > MAX_IDLE_DOCS) this.fetched.delete(idle.shift()!);
   }
 
   /** Stop everything (the server is shutting down, or a test is over). */
@@ -217,9 +234,15 @@ export class Runner {
           t.count++;
           // A one-off delay is done; it stays listed so it doesn't run again until changed or reopened.
           if (!t.every) t.handle = null;
-          this.apply(docId, { events: [{ cell: c.id, name: 'tick', data: { count: t.count, at: this.clock.now() } }] });
+          // Called by a timer: whatever goes wrong is the document's trouble, never the process's.
+          try {
+            this.apply(docId, { events: [{ cell: c.id, name: 'tick', data: { count: t.count, at: this.clock.now() } }] });
+          } catch (e) {
+            console.error(`edgy: timer ${c.id} of ${docId} failed`, e);
+          }
         };
-        t.handle = every ? this.clock.setInterval(tick, Math.max(MIN_TICK, every)) : this.clock.setTimeout(tick, after!);
+        // A one-off delay waits at least as long as a repeating one, so a timer that restarts itself can't run a thousand times a second.
+        t.handle = every ? this.clock.setInterval(tick, Math.max(MIN_TICK, every)) : this.clock.setTimeout(tick, Math.max(MIN_TICK, after!));
         run.timers.set(c.id, t);
       } else if (c.kind === 'fetch') {
         const url = String(computed.cells[c.id]?.props?.url ?? c.url ?? '');
@@ -231,13 +254,13 @@ export class Runner {
         if (had?.key === key) return;
         if (had) this.clock.clearInterval(had.handle);
         const poll: Poll = { key, handle: null };
-        if (every) poll.handle = this.clock.setInterval(() => void this.refresh(docId, c.id), Math.max(MIN_REFRESH, every));
+        if (every) poll.handle = this.clock.setInterval(() => this.background(docId, c.id), Math.max(MIN_REFRESH, every));
         run.polls.set(c.id, poll);
         // First time seen while live, or its address changed: fetch now, unless an answer for this address is fresh.
         const st = this.fetched.get(docId)?.get(c.id);
         const fresh = st?.state === 'ready' && st.at !== undefined && (st as FetchState & { url?: string }).url === url
           && this.clock.now() - st.at < (every ?? 60_000);
-        if (!fresh) void this.refresh(docId, c.id);
+        if (!fresh) this.background(docId, c.id);
       }
     });
     for (const [id, t] of run.timers) if (!seenTimers.has(id)) { this.clearTimer(t); run.timers.delete(id); }
@@ -288,15 +311,27 @@ export class Runner {
         r.trace.push({ cell: null, name: 'save', depth: 0, ops: [], effects: [], at: this.clock.now(), error: e instanceof Error ? e.message : String(e) });
       }
     }
-    for (const e of r.effects) this.effect(docId, e);
+    for (const e of r.effects) {
+      // A record that can't be saved (too big to write, say) is the handler's error, shown in its trace.
+      try {
+        this.effect(docId, e);
+      } catch (err) {
+        r.trace.push({ cell: null, name: e.type, depth: 0, ops: [], effects: [], at: this.clock.now(), error: err instanceof Error ? err.message : String(err) });
+      }
+    }
     if (r.trace.length) this.deps.hub.publish(docId, { type: 'trace', trace: r.trace });
     if (r.ops.length) this.changed(docId);
     return r.trace;
   }
 
+  /** Fetch in the background (a poll, a handler's refresh!, a changed address): a failure is logged, never left to end the process. */
+  private background(docId: string, cellId: string): void {
+    this.refresh(docId, cellId).catch((e) => console.error(`edgy: fetch ${cellId} of ${docId} failed`, e));
+  }
+
   /** Records and fetches a handler asked for. */
   effect(docId: string, e: { type: string } & Record<string, unknown>): void {
-    if (e.type === 'refresh') return void this.refresh(docId, String(e.cell));
+    if (e.type === 'refresh') return this.background(docId, String(e.cell));
     if (['insert', 'update', 'delete', 'clear'].includes(e.type)) this.deps.data.write(docId, e);
   }
 
@@ -315,7 +350,9 @@ export class Runner {
 
   private setState(docId: string, cell: string, st: FetchState & { url?: string }): void {
     let m = this.fetched.get(docId);
-    if (!m) this.fetched.set(docId, (m = new Map()));
+    // Most recently fetched last, so the documents forgotten first (see stop) are the ones fetched longest ago.
+    if (m) this.fetched.delete(docId);
+    this.fetched.set(docId, (m ??= new Map()));
     m.set(cell, st);
     this.deps.hub.publish(docId, { type: 'fetch', cell, state: st });
   }
@@ -333,6 +370,7 @@ export class Runner {
       return running.p;
     }
     const job = { handlers };
+    this.started.set(key, this.clock.now());
     const p = this.fetchNow(docId, cellId, job).finally(() => {
       this.inflight.delete(key);
       this.recheck(docId, cellId);
@@ -348,7 +386,17 @@ export class Runner {
     const st = this.fetched.get(docId)?.get(cellId) as (FetchState & { url?: string }) | undefined;
     if (!doc || !cell || cell.kind !== 'fetch' || !st || !this.isLive(docId)) return;
     const url = String(evaluate(doc, this.world(docId)).cells[cellId]?.props?.url ?? cell.url ?? '');
-    if (url && st.url !== url) void this.refresh(docId, cellId);
+    if (!url || st.url === url) return;
+    // Not straight away: a load handler that changes the address would otherwise fetch again and again, as fast as the
+    // network answers (or, for a path on this server, without ever letting a timer run).
+    const key = docId + '\n' + cellId;
+    const wait = (this.started.get(key) ?? 0) + MIN_REFETCH - this.clock.now();
+    if (wait <= 0) return this.background(docId, cellId);
+    if (this.later.has(key)) return;
+    this.later.set(key, this.clock.setTimeout(() => {
+      this.later.delete(key);
+      this.recheck(docId, cellId);
+    }, wait));
   }
 
   private async fetchNow(docId: string, cellId: string, job: { handlers: boolean }): Promise<FetchState> {
@@ -451,8 +499,10 @@ export function isPrivateAddress(ip: string): boolean {
     if (zero(0, 12)) return true;
     if (zero(0, 8) && b[8] === 0xff && b[9] === 0xff && zero(10, 12)) return isPrivateAddress(v4);
     if (b[0] === 0x00 && b[1] === 0x64 && b[2] === 0xff && b[3] === 0x9b) return isPrivateAddress(v4);
-    return (b[0] & 0xfe) === 0xfc || (b[0] === 0xfe && (b[1] & 0xc0) === 0x80) || b[0] === 0xff
-      || (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0x0d && b[3] === 0xb8) || (b[0] === 0x20 && b[1] === 0x02);
+    // Unique local, link-local, the old site-local, multicast, documentation, Teredo (2001::/32) and 6to4 (2002::/16).
+    return (b[0] & 0xfe) === 0xfc || (b[0] === 0xfe && (b[1] & 0xc0) === 0x80) || (b[0] === 0xfe && (b[1] & 0xc0) === 0xc0) || b[0] === 0xff
+      || (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0x0d && b[3] === 0xb8) || (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0x00 && b[3] === 0x00)
+      || (b[0] === 0x20 && b[1] === 0x02);
   }
   if (v === 4) {
     const [a, b] = ip.split('.').map(Number);
@@ -482,24 +532,54 @@ function ipv6Bytes(ip: string): number[] | null {
 }
 
 /** Resolve a host, refusing it when any of its addresses is private. Used at connect time, so a second lookup can't sneak past. */
-async function safeLookup(host: string): Promise<{ address: string; family: number }> {
+async function safeLookup(host: string, local = false): Promise<{ address: string; family: number }> {
   const all = isIP(host) ? [{ address: host, family: isIP(host) }] : await dnsLookup(host, { all: true }).catch(() => {
     throw new FetchError(`the address ${host} could not be found`);
   });
   if (!all.length) throw new FetchError(`the address ${host} could not be found`);
-  if (all.some((a) => isPrivateAddress(a.address))) throw new FetchError(`${host} is a private or local address, which fetch cells may not reach`);
+  if (!local && all.some((a) => isPrivateAddress(a.address))) throw new FetchError(`${host} is a private or local address, which fetch cells may not reach`);
   return all[0];
 }
 
-/** GET with node's http(s): the address checked when connecting, at most 3 redirects, a time and a size limit. */
-export const getGuarded: Getter = (url, headers, limits) => withDeadline(getHops(url, headers, limits), limits.ms);
+/**
+ * GET with node's http(s): the address checked when connecting, at most 3 redirects, a time and a size limit.
+ * At the deadline the request is ended, not merely given up on: a server that sends a byte now and then keeps no socket.
+ * At most MAX_FETCHING run at once, from all documents together.
+ */
+export const getGuarded: Getter = (url, headers, limits) => getGuardedFor(url, headers, limits, false);
 
-async function getHops(url: string, headers: Record<string, string>, limits: Limits): Promise<Got> {
+/** getGuarded, and with `local` (tests only, never a document) to a server on this machine. */
+export async function getGuardedFor(url: string, headers: Record<string, string>, limits: Limits, local: boolean): Promise<Got> {
+  await turn();
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), limits.ms);
+  try {
+    return await getHops(url, headers, limits, stop.signal, local);
+  } catch (e) {
+    if (stop.signal.aborted) throw new FetchError(`no answer within ${limits.ms / 1000} s`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+    done();
+  }
+}
+
+let fetching = 0;
+const queue: (() => void)[] = [];
+const turn = () => (fetching < MAX_FETCHING ? (fetching++, Promise.resolve()) : new Promise<void>((go) => queue.push(go)));
+const done = () => {
+  const next = queue.shift();
+  if (next) next();
+  else fetching--;
+};
+
+async function getHops(url: string, headers: Record<string, string>, limits: Limits, signal: AbortSignal, local: boolean): Promise<Got> {
   let current = new URL(url);
   const origin = current.origin;
   for (let hop = 0; hop <= 3; hop++) {
+    if (signal.aborted) throw new FetchError(`no answer within ${limits.ms / 1000} s`);
     const host = current.hostname.replace(/^\[|\]$/g, '');
-    const target = await safeLookup(host);
+    const target = await safeLookup(host, local);
     // The document's headers (and secrets) go only to the origin it named, not to wherever a redirect points.
     const sent = current.origin === origin ? headers : { accept: 'application/json' };
     const got = await new Promise<Got & { location?: string }>((resolve, reject) => {
@@ -510,10 +590,12 @@ async function getHops(url: string, headers: Record<string, string>, limits: Lim
         lookup: ((_h: string, o: { all?: boolean }, cb: (e: Error | null, a: unknown, f?: number) => void) =>
           (o?.all ? cb(null, [{ address: target.address, family: target.family }]) : cb(null, target.address, target.family))) as never,
         timeout: limits.ms,
+        signal,
       }, (res) => {
         const status = res.statusCode ?? 0;
         if (status >= 300 && status < 400 && res.headers.location) {
-          res.resume();
+          // The redirect's own body is never read: however long it is, it isn't waited for.
+          res.destroy();
           return resolve({ status, body: '', location: String(res.headers.location) });
         }
         let size = 0;

@@ -136,15 +136,25 @@ Failed sign-ins slow down the guesser. `Throttle` counts failures by key over 15
 | Email alone | 50 |
 | Address alone | 30 |
 
-A sign-in that is made too soon gets `429` with `retry-after` and `Too many tries. Wait N seconds and try again.` A success clears the pair's count. The counts are in memory, so a restart resets them, which is acceptable for a slow-down.
+A sign-in that is made too soon gets `429` with `retry-after` and `Too many tries. Wait N seconds and try again.` A success clears the pair's count. The counts are in memory, so a restart resets them, which is acceptable for a slow-down. Each throttle remembers at most 10,000 keys: past that, the ones whose window is over go first, then the oldest, so a guesser trying a new email each time can't make the server's memory grow without end.
+
+A fourth throttle counts new accounts by address (ten free in 15 minutes), and `EDGY_SIGNUPS=off` closes sign-up once the server has an account with an email (`403`, reason `closed`; [GET /api/health](<route:GET /api/health>) says `"signups": false`).
+
+The address is the socket's, except behind a proxy on this machine: when the socket is loopback, the last entry of `X-Forwarded-For` (the one the proxy itself added) is the address. From any other socket the header is the caller's own word and is ignored.
 
 ## Cross-site requests
 
 The cookie is `SameSite=Lax`, and on top of that `crossSite()` refuses a *write* (POST, PUT, PATCH, DELETE) made with the cookie, or as the local account, unless it comes from edgy's own pages. Browsers say where a request comes from, in `Sec-Fetch-Site` or else `Origin`:
 
 - `Sec-Fetch-Site` must be `same-origin` or `none` when present.
-- `Origin`, when present, must be this server's origin or (in development) the web dev server's. `Origin: null` is refused.
+- `Origin`, when present, must be this server's origin or (in development) the web dev server's. `Origin: null` is refused. Behind a proxy that ends HTTPS, the request reaches edgy as plain `http`, perhaps for another host name; the origin the browser sees is worked out from `X-Forwarded-Proto` and `X-Forwarded-Host` (`publicOrigin`), and counts too. A page on another site can't set those headers on a person's request, so this lets nothing new in; without it, every write from the browser behind such a proxy was refused. Share links are made with the same origin, so they say `https://`.
 - A client that sends neither isn't a browser carrying someone's cookie, so it passes. A key and a share token carry their own secrets and aren't checked.
+
+## Every answer
+
+A middleware sets on every response: `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin` (a share link's address never goes to another site in a `Referer`), `X-Frame-Options: SAMEORIGIN`, and, where the answer has no policy of its own, `Content-Security-Policy: frame-ancestors 'self'`: no other site can frame edgy and have a person click its buttons there. An uploaded picture keeps its own stricter policy (`sandbox`).
+
+A request body is read whole, so its size is checked first, once the asker is known (a request with no credential is refused before its body counts): 64 KB for `/api/auth/*`, 16 MB for everything else (`413`, `that request is larger than …`). A JSON body that is `null`, a number or a list counts as an empty object, so the route's own checks answer `400` instead of the server failing. Lists of ids in one request (pins, a bulk action, a deck's documents) have at most 1000.
 
 ## Local mode
 

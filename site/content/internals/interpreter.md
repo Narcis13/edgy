@@ -153,9 +153,13 @@ An expression runs in the browser while someone types it, so nothing it does can
 
 | Limit | Where | What you see |
 | --- | --- | --- |
-| `MAX_STEPS = 400_000` | Every array or object evaluated counts one step. | `this takes too long to compute` |
-| 300 levels | The nesting of calls. | `this nests too deeply` |
+| `MAX_STEPS = 400_000` | One expression. A step is an array or object evaluated, an item a built-in visits or makes (`map`, `filter`, `reduce`, `sum`, `sort`, `=` on lists…), or 16 characters of text it reads or makes. | `this takes too long to compute` |
+| `MAX_DOC_STEPS = 4_000_000` | All the formulas of one evaluation of a document together (`Budget`, shared through `Evaluator.budget`), so a thousand cells each just under the limit can't add up to minutes. | `this document's formulas take too long to compute together` |
+| 300 levels | The nesting of calls, and of a value (a list in a list in …). | `this nests too deeply`, `this value nests too deeply` |
 | `MAX_LIST = 20_000` | The length of a list `range` makes. | `range is too long` |
+| `MAX_ITEMS = 100_000` | A list `concat`, `flat`, `split` and the like would make; checked before it is built. | `this list is too long (over 100,000 items)` |
+| `MAX_TEXT = 2_000_000` | Text `str`, `join`, `replace`, `fmt` would make. | `this text is too long (over 2,000,000 characters)` |
+| `MAX_SIZE = 1_000_000` | What a formula hands back, or sends with `set!`, `insert!` and the like, weighed item by item, a list held twice counted twice (a value that holds the same list many times is small to make and enormous to spell out). | `this value is too big to show or send` |
 
 ```sx
 (count (map (count (map (+ it 1) (range 700))) (range 700)))
@@ -164,7 +168,7 @@ An expression runs in the browser while someone types it, so nothing it does can
 ⇒ error: range is too long
 ```
 
-Those are the guards against an accident. The step counter belongs to one `Interp`, so it restarts for each expression. The language has no `while`: the only repetition is over a list, or a custom action that calls itself, which the depth limit stops (`this nests too deeply`). It has no access to anything the host doesn't give it.
+Those are the guards against an accident, and on the server against a document written to stop it: a viewer may evaluate any expression ([POST /api/docs/:id/eval](<route:POST /api/docs/:id/eval>)), so a hostile one must fail fast with an error, never run out of memory or hold the process. The step counter belongs to one `Interp` and restarts for each expression; the document's budget doesn't. [uniq](fn:uniq) keys each value once (`keyOf`), so it is linear, with the same answers as comparing every pair. The language has no `while`: the only repetition is over a list, or a custom action that calls itself, which the depth limit stops (`this nests too deeply`). It has no access to anything the host doesn't give it.
 
 ## The Host
 

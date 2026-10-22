@@ -42,6 +42,8 @@ A small badge on the box names who answers: **Claude**, **Your agent** or **Buil
 
 Set `ANTHROPIC_API_KEY` in the server's environment and restart it. Asking then goes to the Anthropic API, from the server: the key never reaches the browser. `EDGY_AI_MODEL` names the model; without it edgy uses `claude-sonnet-5-5`. `EDGY_AI=off` turns Claude off even with a key, and `EDGY_AI_BASE_URL` points the server at another address that speaks the same API.
 
+The key is the server owner's (the first account made on it), like the server's secrets, and so is what it costs: Claude answers in the owner's documents, including for the people the owner lets edit them. In everyone else's documents Ask AI uses an agent or the built-in composer. On a server you share with people you trust to spend it, `EDGY_AI_USERS=all` lets Claude answer in every document.
+
 What is sent: your sentence; the code already in the editor; the list of functions; the document as an outline, one line per cell with its id, kind, name, source and current value; and the names of the collections the document can read, with their fields (not their records). Think about that before you turn it on for a document that holds private values.
 
 If the code that comes back doesn't fit the document, edgy tells Claude why and asks once more. A request that takes more than 30 seconds, or fails, is noted, and the next answerer takes over.
@@ -49,6 +51,8 @@ If the code that comes back doesn't fit the document, edgy tells Claude why and 
 ### An agent over MCP
 
 An [agent](term:agent) connected to the document can answer instead. It waits with [edgy_listen](tool:edgy_listen), which hands it your messages in [Activity](/editor/activity/) and, as *compose requests*, the sentences people have typed into Ask AI. Each request says which cell it is for, what the cell holds now and what shape of answer it needs. The agent replies with [edgy_answer](tool:edgy_answer): the code and, if it likes, a sentence of explanation. See [Connecting an agent with MCP](/agents/mcp/).
+
+A request goes only to an agent acting for the person who asked: one that signs in with that person's [API key](/people/api-keys/), or, in local mode, an agent on the same machine. Someone else who can edit the document, and their agent, neither sees your requests nor can answer them; their agent listening doesn't count as yours.
 
 An agent counts as listening on a document from the moment it calls `edgy_listen` on it until about half a minute after its last call. While one is, Ask AI says **Waiting for your agent… it can take up to a minute** and holds your request for up to 45 seconds. The code is checked as it arrives, exactly as anything else is: if edgy rejects it, the agent gets the reason back and can answer the same request again. If nobody answers in time, the built-in composer tries instead and the answer says so.
 

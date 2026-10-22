@@ -56,7 +56,11 @@ export function checkFolder(dir: string): LinkReport {
     for (const name of readdirSync(d)) {
       const p = join(d, name);
       if (statSync(p).isDirectory()) walk(p);
-      else if (name.endsWith('.html') && !p.includes(join('_', ''))) files.set(relative(dir, p).replace(/\\/g, '/'), readFileSync(p, 'utf8'));
+      else if (name.endsWith('.html')) {
+        // The folder's own _/ (the live examples' frame) is not a page; an underscore elsewhere in the path is nothing.
+        const rel = relative(dir, p).replace(/\\/g, '/');
+        if (!rel.startsWith('_/')) files.set(rel, readFileSync(p, 'utf8'));
+      }
     }
   };
   walk(dir);

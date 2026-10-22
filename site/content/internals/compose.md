@@ -75,7 +75,7 @@ Each one that is skipped or fails adds a line to `notes` ("Claude could not answ
 
 ### 1. Claude
 
-On when the server has an `ANTHROPIC_API_KEY` and `EDGY_AI` isn't `off` (`claudeConfig`). The model is `EDGY_AI_MODEL` or the default, and `EDGY_AI_BASE_URL` can point at another host. [GET /api/ai](<route:GET /api/ai>) says which paths are on.
+On when the server has an `ANTHROPIC_API_KEY` and `EDGY_AI` isn't `off` (`claudeConfig`), and only for documents of the server's owner, whose key it spends (`claudeFor` in [app.ts](src:src/server/app.ts); `EDGY_AI_USERS=all` lifts that). The model is `EDGY_AI_MODEL` or the default, and `EDGY_AI_BASE_URL` can point at another host. [GET /api/ai](<route:GET /api/ai>) says which paths are on.
 
 `systemPrompt(ctx)` builds what the model is told, from the document, so the model sees this document and no other:
 

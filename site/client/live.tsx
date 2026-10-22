@@ -21,7 +21,9 @@ import { StandIn } from '../../src/web/offline/standin';
 interface LiveSource { title: string; root: Json; meta?: Record<string, Json>; data?: Record<string, Record<string, Json>[]> }
 
 const id = decodeURIComponent(location.hash.slice(1).split('&')[0]);
-const tell = (m: Record<string, unknown>) => parent.postMessage({ ...m, id }, '*');
+// The page holding the example is on this site (the frame is one of its files); a file opened from disk has no origin to name.
+const SITE = location.origin === 'null' ? '*' : location.origin;
+const tell = (m: Record<string, unknown>) => parent.postMessage({ ...m, id }, SITE);
 
 function build(src: LiveSource): Doc {
   const ops: Op[] = [...Object.entries(src.meta ?? {}).map(([k, v]): Op => ['meta', k, v]), ['put', 'c1', src.root]];
@@ -44,7 +46,8 @@ function Example({ doc }: { doc: Doc }) {
 
 let started = false;
 addEventListener('message', (e) => {
-  if (e.source !== parent) return;
+  // Only the docs page that holds this frame: another site framing it can't make it run a document of its own.
+  if (e.source !== parent || e.origin !== location.origin) return;
   const m = e.data as { type?: string; source?: LiveSource; theme?: string };
   if (m.type === 'edgy-live-theme' || m.type === 'edgy-live-doc') applyTheme(m.theme === 'dark' ? 'dark' : 'light');
   if (m.type !== 'edgy-live-doc' || !m.source || started) return;

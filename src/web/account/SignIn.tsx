@@ -11,8 +11,10 @@ import { signInAddress } from './paths';
 export const waitText = (n: number) => `Too many tries. Wait ${n} ${n === 1 ? 'second' : 'seconds'} and try again.`;
 
 export function SignIn({ mode, next, navigate }: { mode: 'signin' | 'signup'; next: string; navigate: (p: string, o?: { replace?: boolean }) => void }) {
-  const { me, via, auth } = useMe();
+  const { me, via, auth, signups } = useMe();
   const up = mode === 'signup';
+  // A server that takes no new accounts (EDGY_SIGNUPS=off) says so instead of showing a form it would refuse.
+  const closed = up && !signups;
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -77,7 +79,8 @@ export function SignIn({ mode, next, navigate }: { mode: 'signin' | 'signup'; ne
       <main className="auth-card">
         <a className="auth-logo" href="/" onClick={(e) => { e.preventDefault(); navigate('/'); }} aria-label="edgy"><Logo size={26} /></a>
         <h1>{up ? 'Create an account' : 'Sign in'}</h1>
-        <form onSubmit={(e) => void submit(e)} aria-describedby={error ? errorId : undefined}>
+        {closed && <p className="auth-closed" role="status">This server does not take new accounts. Sign in with the one you have, or ask the server's owner.</p>}
+        {!closed && <form onSubmit={(e) => void submit(e)} aria-describedby={error ? errorId : undefined}>
           {up && (
             <label className="auth-field">
               <span>Name <small>optional</small></span>
@@ -118,13 +121,13 @@ export function SignIn({ mode, next, navigate }: { mode: 'signin' | 'signup'; ne
           <button type="submit" className="btn solid auth-submit" disabled={busy || wait > 0}>
             {busy ? (up ? 'Creating…' : 'Signing in…') : wait > 0 ? `Wait ${wait}s` : up ? 'Create account' : 'Sign in'}
           </button>
-        </form>
-        <p className="auth-switch">
+        </form>}
+        {(up || signups) && <p className="auth-switch">
           {up ? 'Have an account? ' : 'New here? '}
           <a href={signInAddress(next, up ? 'signin' : 'signup')} onClick={(e) => { e.preventDefault(); navigate(signInAddress(next, up ? 'signin' : 'signup'), { replace: true }); }}>
             {up ? 'Sign in' : 'Create an account'}
           </a>
-        </p>
+        </p>}
         {local && !up && (
           <div className="auth-local">
             <button type="button" className="btn ghost auth-submit" disabled={busy} onClick={() => void asLocal()}>Continue as {local.name}</button>

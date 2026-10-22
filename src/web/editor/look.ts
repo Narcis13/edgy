@@ -13,7 +13,8 @@ const TOKENS = new Set<string>(COLOR_TOKENS);
 export function color(v: unknown): string | undefined {
   if (typeof v !== 'string' || !v) return undefined;
   if (TOKENS.has(v)) return `var(--${v})`;
-  return /^[#\w(),.%\s/-]+$/.test(v) ? v : undefined;
+  // A colour, never something that loads: url(…) in a background would tell another site who opened the document, and when.
+  return /^[#\w(),.%\s/-]+$/.test(v) && !/(url|image|image-set|cross-fade|element|src)\s*\(/i.test(v) ? v : undefined;
 }
 
 const px = (v: unknown): string | undefined => {

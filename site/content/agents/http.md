@@ -35,7 +35,7 @@ On a document, a person is its owner, an editor or a viewer (see [Sharing with p
 | `404` `this link does not open anything` | The share token doesn't exist. |
 | `410` `this document is no longer shared` | The link was turned off. |
 
-Errors from the guard carry a `reason`: `signin`, `forbidden`, `unknown` or `revoked`. The other statuses: `400` for a body that isn't right (`the request body is not valid JSON` or the route's own words), `422` for ops or an expression that don't apply, `409` for a clash, `413` and `415` for pictures, `429` for sign-ins that come too fast, `500` for `something went wrong on the server`.
+Errors from the guard carry a `reason`: `signin`, `forbidden`, `unknown` or `revoked`. The other statuses: `400` for a body that isn't right (`the request body is not valid JSON` or the route's own words), `422` for ops or an expression that don't apply, `409` for a clash, `413` for a body larger than the limit (64 KB on `/api/auth/*`, 16 MB elsewhere: `that request is larger than …`), `415` for pictures, `429` for sign-ins and sign-ups that come too fast, `500` for `something went wrong on the server`. An `/api` address no route answers is `404` with `no such route: GET /api/…` (once signed in).
 
 ### Writes from a page and the Origin check
 
@@ -53,10 +53,10 @@ A client that sends neither header, such as `curl` or a script, passes: it isn't
 Says whether the server is up and how it runs, and whether the asker is signed in, so that a signed-out page asks for nothing it would be refused.
 
 ```json
-{"ok": true, "name": "edgy", "web": "http://localhost:5173", "auth": "local", "signedIn": true, "sync": false}
+{"ok": true, "name": "edgy", "web": "http://localhost:5173", "auth": "local", "signedIn": true, "sync": false, "signups": true}
 ```
 
-`web` is where people open edgy (the API's own address once the app is built); `auth` is `"local"` or `"accounts"`; `sync` says whether a cloud is set up.
+`web` is where people open edgy (the API's own address once the app is built, as the browser sees it behind a proxy); `auth` is `"local"` or `"accounts"`; `sync` says whether a cloud is set up; `signups` is false when the server takes no new accounts (`EDGY_SIGNUPS=off`).
 :::
 
 ::: route GET /api/guide
@@ -220,7 +220,7 @@ Says which helpers can answer **Ask AI** right now, so the page can choose.
 {"providers": {"claude": false, "agent": true, "local": true}, "model": null}
 ```
 
-`claude` is true when the server has an `ANTHROPIC_API_KEY` and `EDGY_AI` isn't `off` (and `model` says which model); `agent` is true when an agent is listening on the document in `?doc=` (on any document when `doc` is left out), which it counts as for 30 seconds after its last wait ended; `local` is the built-in composer, which is always there.
+`claude` is true when the server has an `ANTHROPIC_API_KEY`, `EDGY_AI` isn't `off`, and the document in `?doc=` belongs to the server's owner (without `doc`: when you are the owner; `EDGY_AI_USERS=all` lets every document), and `model` says which model; `agent` is true when an agent is listening on the document in `?doc=` (on any document when `doc` is left out), which it counts as for 30 seconds after its last wait ended; `local` is the built-in composer, which is always there.
 :::
 
 ::: route POST /api/docs/:id/compose
@@ -540,7 +540,7 @@ Syncs now and answers how it went, in the form above. With no cloud set up it an
 ::: route POST /api/assets
 Uploads a picture for an [image](kind:image) cell. The body is the picture itself, and the `Content-Type` says what it is: PNG, JPEG, GIF, WebP, AVIF or SVG. The answer is `201` and `{"url": "/assets/<name>.<ext>"}`, where the name is a digest of the bytes, so the same picture uploaded twice is one file.
 
-Another type answers `415` and `pictures can be PNG, JPEG, GIF, WebP, AVIF or SVG`; more than 8 MB, `413`. The address is served at `/assets/<name>.<ext>` to anyone who has it, with a header that stops an SVG from running script.
+Another type answers `415` and `pictures can be PNG, JPEG, GIF, WebP, AVIF or SVG`; more than 8 MB, `413`. What counts is what the bytes are, not what the request says: a file that isn't one of those pictures answers `415` and `that file is not a PNG, JPEG, GIF, WebP, AVIF or SVG picture`, and a PNG sent as `image/jpeg` is kept as the `.png` it is. The address is served at `/assets/<name>.<ext>` to anyone who has it, with a header that stops an SVG from running script.
 :::
 
 Source: [app.ts](src:src/server/app.ts) (the routes), [access.ts](src:src/server/access.ts) (who may call what).
